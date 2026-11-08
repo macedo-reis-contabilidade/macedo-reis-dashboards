@@ -17,6 +17,7 @@
     a[href="setores.html"]        .dashboard-card-icon { background: rgba(133,151,224,.15); color:#8597E0; }
     a[href="ajuda.html"]          .dashboard-card-icon { background: rgba(224,143,168,.15); color:#E08FA8; }
     a[href="noticias.html"]       .dashboard-card-icon { background: rgba(227,179,65,.15);  color:#E3B341; }
+    a[href="atendimento.html"]    .dashboard-card-icon { background: rgba(63,176,122,.15);  color:#3FB07A; }
 
     /* Selo "hoje" (urgência do dia) — canto superior direito */
     .badge-hoje { position:absolute; top:14px; right:14px; background:rgba(227,179,65,.18); border:1px solid rgba(227,179,65,.5); color:var(--warn); font-size:11px; font-weight:700; padding:3px 10px; border-radius:999px; letter-spacing:.04em; text-transform:uppercase; box-shadow:0 0 0 3px rgba(227,179,65,.06); }
@@ -98,6 +99,21 @@
           </div>
         </a>
 
+        <a href="atendimento.html" class="dashboard-card">
+          <div class="dashboard-card-icon">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M21 11.5a8.4 8.4 0 0 1-9 8.4 8.6 8.6 0 0 1-4-1L3 20l1.2-4.4A8.4 8.4 0 1 1 21 11.5Z"/>
+              <path d="M8.5 11.5h.01"/><path d="M12 11.5h.01"/><path d="M15.5 11.5h.01"/>
+            </svg>
+          </div>
+          <h3>Atendimento</h3>
+          <p>As conversas dos clientes pelo WhatsApp, na fila de cada setor. Por enquanto, no simulador.</p>
+          <div class="dashboard-card-footer">
+            <span>Acessar →</span>
+            <span class="badge card-status st-load">·</span>
+          </div>
+        </a>
+
         <a href="noticias.html" class="dashboard-card">
           <div class="dashboard-card-icon">
             <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -167,10 +183,26 @@
         document.getElementById('userAvatar').textContent = displayName.charAt(0).toUpperCase();
       }
       pintarNoticias(user);
+      pintarAtendimento(user);
       await pintarSelosDoDia(user);
     })();
 
     // o card das Notícias: as novas pra quem entrou (as mesmas regras da aba do balão) e as importantes em destaque
+    // o card do Atendimento: as conversas abertas pra quem entrou (a da fila dos setores dele e as que estão com ele)
+    async function pintarAtendimento(user) {
+      const card = document.querySelector('a.dashboard-card[href="atendimento.html"]');
+      const st = card && card.querySelector('.card-status');
+      if (!st || !user) return;
+      try {
+        const { ehPraMim } = await import('./assets/js/atendimento.js');
+        const { data, error } = await supabase.from('atend_conversas').select('id, situacao, setor, responsavel').in('situacao', ['robo', 'fila', 'atendendo']);
+        if (error) { st.remove(); return; }
+        const n = (data || []).filter(c => ehPraMim(c, user.email)).length;
+        st.textContent = n ? n + ' pra você' : 'Em dia';
+        st.className = 'badge card-status ' + (n ? 'st-open' : 'st-clear');
+      } catch (e) { st.remove(); }
+    }
+
     async function pintarNoticias(user) {
       const card = document.querySelector('a.dashboard-card[href="noticias.html"]');
       const st = card && card.querySelector('.card-status');

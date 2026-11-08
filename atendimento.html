@@ -1,0 +1,736 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Atendimento — Macedo & Reis</title>
+  <link rel="icon" href="assets/favicon.ico">
+  <link rel="stylesheet" href="assets/css/style.css">
+  <script type="module" src="assets/js/auth-guard.js"></script>
+  <style>
+    [hidden] { display:none !important; }
+    .at-head { display:flex; justify-content:space-between; align-items:flex-end; gap:16px; flex-wrap:wrap; margin-bottom:18px; }
+    .at-head p { margin:0; }
+    .at-aviso { background:rgba(227,179,65,.08); border:1px solid rgba(227,179,65,.35); color:var(--text-2); border-radius:12px; padding:9px 14px; font-size:13.5px; margin-bottom:16px; }
+    .at-aviso b { color:var(--warn); font-weight:600; }
+
+    /* a lista e a conversa lado a lado */
+    .at-grade { display:grid; grid-template-columns:minmax(300px, 380px) minmax(0, 1fr); gap:16px; align-items:start; }
+    .at-lista, .at-conversa { background:var(--fill-1); border:1px solid var(--line); border-radius:16px; }
+    .at-lista { padding:12px; display:flex; flex-direction:column; gap:10px; position:sticky; top:84px; max-height:calc(100vh - 110px); }
+    .at-abas { display:grid; grid-template-columns:repeat(4, 1fr); gap:4px; background:var(--fill-1); border:1px solid var(--line); border-radius:12px; padding:3px; }
+    .at-abas button { background:none; border:0; border-radius:9px; padding:7px 4px; color:var(--text-muted); font:inherit; font-size:13px; cursor:pointer; white-space:nowrap; }
+    .at-abas button:hover { color:var(--text); }
+    .at-abas button[aria-selected="true"] { background:var(--fill-3); color:var(--text); font-weight:600; }
+    .at-abas button:focus-visible { outline:2px solid var(--brand-light); outline-offset:1px; }
+    .at-n { display:inline-block; min-width:18px; padding:0 5px; margin-left:3px; border-radius:999px; background:var(--line); font-size:11.5px; font-weight:600; color:var(--text-2); }
+    .at-n.tem { background:rgba(91,130,166,.35); color:var(--text); }
+    .at-setores { display:flex; flex-wrap:wrap; gap:5px; }
+    .at-setores button { background:none; border:1px solid var(--line); border-radius:999px; padding:3px 10px; color:var(--text-muted); font:inherit; font-size:12px; cursor:pointer; }
+    .at-setores button[aria-pressed="true"] { border-color:var(--brand-light); color:var(--text); background:var(--sel); }
+    .at-setores button:focus-visible { outline:2px solid var(--brand-light); outline-offset:1px; }
+    .at-lista .input-search { min-width:0; max-width:none; width:100%; }
+    .at-itens { list-style:none; margin:0; padding:0; overflow:auto; display:flex; flex-direction:column; gap:4px; min-height:80px; }
+    .at-item { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:2px 10px; width:100%; text-align:left; background:none; border:1px solid transparent; border-radius:12px; padding:9px 11px; color:var(--text); font:inherit; cursor:pointer; }
+    .at-item:hover { background:var(--fill-2); }
+    .at-item:focus-visible { outline:2px solid var(--brand-light); outline-offset:0; }
+    .at-item.is-on { background:var(--sel); border-color:rgba(138,174,200,.35); }
+    .at-item-nome { font-weight:600; font-size:14px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    .at-item-hora { color:var(--text-muted); font-size:12px; white-space:nowrap; align-self:center; justify-self:end; }
+    .at-item-emp { grid-column:1 / -1; color:var(--text-muted); font-size:12.5px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    .at-item-prev { color:var(--text-2); font-size:13px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    .at-item.espera .at-item-prev { color:var(--text); font-weight:600; }
+    .at-item-sit { font-size:11.5px; white-space:nowrap; align-self:center; justify-self:end; color:var(--text-muted); }
+    .at-ponto { display:inline-block; width:8px; height:8px; border-radius:50%; background:var(--accent); margin-right:6px; vertical-align:1px; }
+    .tipo-fila { color:var(--warn); }
+    .tipo-pra-mim, .tipo-comigo { color:var(--ok); }
+    .at-teste { display:inline-block; margin-left:6px; padding:0 6px; border-radius:6px; font-size:10.5px; font-weight:600; color:var(--warn); border:1px solid rgba(227,179,65,.45); vertical-align:1px; }
+    .at-vazio { color:var(--text-muted); font-size:13.5px; margin:8px 4px; line-height:1.5; }
+
+    /* a conversa aberta */
+    .at-conversa { min-height:min(640px, calc(100vh - 160px)); display:flex; flex-direction:column; }
+    .at-nada { margin:auto; padding:40px 24px; text-align:center; color:var(--text-muted); max-width:420px; line-height:1.55; }
+    .at-aberta { display:flex; flex-direction:column; flex:1; min-height:0; }
+    .at-cab { display:flex; justify-content:space-between; align-items:flex-start; gap:14px; flex-wrap:wrap; padding:14px 16px 12px; border-bottom:1px solid var(--line); }
+    .at-cab h2 { margin:0; font-family:var(--font-display); font-weight:600; font-size:20px; color:var(--text); }
+    .at-voltar { display:none; }
+    .at-cab-meta { color:var(--text-muted); font-size:13px; margin-top:3px; }
+    .at-cab-meta a { color:var(--brand-light); }
+    .at-cab-sit { font-size:13px; margin-top:6px; color:var(--text-2); }
+    .at-cab-acoes { display:flex; gap:6px; flex-wrap:wrap; align-items:center; }
+    .at-faixa { margin:10px 16px 0; padding:10px 12px; border-radius:12px; background:var(--fill-2); border:1px solid var(--line); font-size:13.5px; color:var(--text-2); }
+    .at-faixa .at-linha { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+    .at-faixa + .at-faixa { margin-top:8px; }
+    .at-faixa label { display:flex; flex-direction:column; gap:4px; font-size:12.5px; color:var(--text-muted); }
+    .at-faixa select, .at-faixa input { min-width:160px; }
+    .at-res { list-style:none; margin:6px 0 0; padding:0; display:flex; flex-direction:column; gap:4px; }
+    .at-res button { width:100%; text-align:left; background:var(--surface); border:1px solid var(--line); border-radius:10px; padding:7px 10px; color:var(--text); font:inherit; font-size:13.5px; cursor:pointer; }
+    .at-res button:hover, .at-res button:focus-visible { border-color:var(--brand-light); outline:none; }
+    .at-res small { color:var(--text-muted); margin-left:6px; }
+
+    /* o histórico: o cliente à esquerda, o escritório à direita, os eventos no meio */
+    .at-tempo { list-style:none; margin:0; padding:16px; overflow:auto; flex:1; min-height:200px; display:flex; flex-direction:column; gap:6px; }
+    .at-dia { align-self:center; font-size:11.5px; color:var(--text-muted); background:var(--fill-2); border-radius:999px; padding:2px 10px; margin:8px 0 2px; }
+    .at-ev { align-self:center; font-size:12px; color:var(--text-muted); text-align:center; max-width:80%; padding:2px 0; }
+    .at-msg { max-width:min(78%, 560px); padding:8px 11px 6px; border-radius:14px; font-size:14px; line-height:1.45; white-space:pre-wrap; overflow-wrap:anywhere; }
+    .at-msg.entrada { align-self:flex-start; background:var(--surface-2); border:1px solid var(--line); border-bottom-left-radius:4px; }
+    .at-msg.saida { align-self:flex-end; background:rgba(91,130,166,.22); border:1px solid rgba(91,130,166,.42); border-bottom-right-radius:4px; }
+    .at-msg.interna { align-self:center; background:rgba(227,179,65,.08); border:1px dashed rgba(227,179,65,.4); font-size:13px; }
+    .at-msg a { color:var(--brand-light); }
+    .at-msg-pe { display:block; text-align:right; font-size:11px; color:var(--text-muted); margin-top:3px; white-space:nowrap; }
+    .at-msg-erro { color:var(--err); }
+    .at-caixa { display:flex; gap:8px; align-items:flex-end; padding:12px 16px 14px; border-top:1px solid var(--line); }
+    .at-caixa textarea { flex:1; resize:vertical; min-height:44px; max-height:220px; font:inherit; }
+    .at-nota { margin:0; padding:12px 16px 14px; border-top:1px solid var(--line); color:var(--text-muted); font-size:13.5px; }
+    .at-erro { color:var(--err); font-size:13px; padding:0 16px 10px; }
+    .at-erro:empty { display:none; }
+    .at-erro button { margin-left:8px; }
+
+    /* o simulador: o "celular" do cliente de mentira, por cima, à direita */
+    .at-sim { position:fixed; top:76px; right:16px; bottom:92px; width:min(380px, calc(100vw - 32px)); z-index:90; display:flex; flex-direction:column; background:var(--surface); border:1px solid var(--line-strong); border-radius:18px; box-shadow:var(--shadow-lg); }
+    .at-sim-cab { display:flex; justify-content:space-between; align-items:center; gap:8px; padding:12px 14px 8px; }
+    .at-sim-cab h2 { margin:0; font-family:var(--font-display); font-weight:600; font-size:17px; }
+    .at-sim-fechar { background:none; border:0; color:var(--text-muted); font-size:24px; line-height:1; cursor:pointer; padding:0 4px; }
+    .at-sim-intro { margin:0 14px 8px; font-size:12.5px; color:var(--text-muted); line-height:1.5; }
+    .at-sim-campos { display:grid; gap:8px; padding:0 14px 10px; }
+    .at-sim-campos label { display:flex; flex-direction:column; gap:4px; font-size:12.5px; color:var(--text-muted); }
+    .at-sim-dois { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+    .at-sim-tela { flex:1; min-height:120px; overflow:auto; margin:0 10px; padding:12px 10px; border-radius:14px; background:var(--bg); border:1px solid var(--line); display:flex; flex-direction:column; gap:6px; }
+    .at-sim-tela .at-msg { max-width:86%; font-size:13.5px; }
+    .at-sim-tela .at-msg.cli { align-self:flex-end; background:rgba(63,176,122,.16); border:1px solid rgba(63,176,122,.4); border-bottom-right-radius:4px; border-bottom-left-radius:14px; }
+    .at-sim-tela .at-msg.esc { align-self:flex-start; background:var(--surface-2); border:1px solid var(--line); border-bottom-left-radius:4px; border-bottom-right-radius:14px; }
+    .at-sim-quem { display:block; font-size:11px; font-weight:600; color:var(--brand-light); margin-bottom:2px; }
+    .at-sim-vazio { margin:auto; color:var(--text-muted); font-size:13px; text-align:center; padding:12px; }
+    .at-sim form { display:flex; gap:8px; align-items:flex-end; padding:10px 14px 4px; }
+    .at-sim form textarea { flex:1; resize:none; min-height:42px; max-height:140px; font:inherit; }
+    .at-sim .at-erro { padding:0 14px 8px; }
+
+    /* com o simulador aberto, a tela abre espaço pra ele (embaixo de 1000 px, ele fica por cima) */
+    @media (min-width: 1000px) { body.at-com-sim .content { padding-right:420px; } }
+    @media (max-width: 900px) {
+      .at-grade { grid-template-columns:1fr; }
+      .at-lista { position:static; max-height:none; }
+      .at-grade.tem-aberta .at-lista { display:none; }
+      .at-grade:not(.tem-aberta) .at-conversa { display:none; }
+      .at-voltar { display:inline-flex; }
+      .at-msg { max-width:88%; }
+      .at-sim { top:0; right:0; bottom:88px; width:100vw; border-radius:0 0 18px 18px; }
+    }
+  </style>
+</head>
+<body>
+  <!-- Atendimento pelo WhatsApp (08/11/2026, a etapa 2 da fase 1; as etapas no Projeto, whatsapp/fase1.md): as conversas dos
+       clientes na fila de cada setor — quem pega assume, responde, passa pra outro setor ou pessoa e encerra; o número
+       que fala por uma empresa se liga com um clique (atend_numeros, confirmado). A tela muda só a situação, o setor, o
+       responsável e a empresa da conversa (o privilégio por coluna do banco) e grava o evento de cada mudança
+       (atend_eventos: as métricas por empresa e por pessoa saem dele); a mensagem só a Edge Function whatsapp grava. Por
+       enquanto não há número ligado: o simulador faz o papel do cliente (as conversas de teste ficam marcadas). As regras
+       puras: assets/js/atendimento.js. Tudo que vem do banco entra escapado. ?c=<id> abre a conversa; ?sim=1 abre o
+       simulador. -->
+  <div class="app-shell">
+    <header class="topbar">
+      <div class="topbar-brand">
+        <div class="topbar-logo"><img src="assets/logo-mr.png" alt="Macedo & Reis" width="32" height="32" style="display:block;object-fit:contain;"></div>
+        <div class="topbar-name">Macedo <span>&</span> Reis</div>
+      </div>
+      <div class="topbar-actions">
+        <div class="user-chip"><div class="user-avatar" id="userAvatar">—</div><span id="userName">Carregando…</span></div>
+        <button class="btn btn-ghost btn-sm" id="btnLogout">Sair</button>
+      </div>
+    </header>
+
+    <main class="content">
+      <div class="page-header at-head">
+        <div>
+          <div class="breadcrumb">
+            <a href="index.html">Painel central</a>
+            <span class="breadcrumb-sep">/</span>
+            <span>Atendimento</span>
+          </div>
+          <h1>Atendimento pelo WhatsApp</h1>
+          <p>As conversas dos clientes, na fila de cada setor: quem pega assume e responde, passa pra outro setor ou pessoa quando não é com ela e encerra no fim.</p>
+        </div>
+        <button class="btn btn-ghost btn-sm" id="btnSimulador" aria-expanded="false" aria-controls="simulador">Abrir o simulador</button>
+      </div>
+      <div class="at-aviso" role="note"><b>Ainda sem número ligado.</b> As conversas aqui vêm do simulador, onde você escreve como se fosse o cliente, e nada sai pro WhatsApp. As de teste ficam marcadas.</div>
+
+      <div class="at-grade" id="grade">
+        <section class="at-lista" aria-label="Conversas">
+          <div class="at-abas" role="tablist" aria-label="Quais conversas">
+            <button role="tab" id="aba-minhas" data-aba="minhas" aria-selected="false">Minhas<span class="at-n" id="nMinhas">0</span></button>
+            <button role="tab" id="aba-fila" data-aba="fila" aria-selected="false">Fila<span class="at-n" id="nFila">0</span></button>
+            <button role="tab" id="aba-todas" data-aba="todas" aria-selected="false">Abertas<span class="at-n" id="nTodas">0</span></button>
+            <button role="tab" id="aba-encerradas" data-aba="encerradas" aria-selected="false">Encerradas</button>
+          </div>
+          <div class="at-setores" id="setores" role="group" aria-label="Setor"></div>
+          <input type="search" id="busca" class="input input-search" placeholder="Buscar por nome, telefone ou empresa…" aria-label="Buscar conversa">
+          <ul class="at-itens" id="itens" aria-label="Lista de conversas"></ul>
+          <p class="at-vazio" id="vazio" hidden></p>
+        </section>
+
+        <section class="at-conversa" id="conversa" aria-label="Conversa aberta">
+          <div class="at-nada" id="nada">Escolha uma conversa na lista.</div>
+          <div class="at-aberta" id="aberta" hidden>
+            <header class="at-cab">
+              <div>
+                <button class="btn btn-ghost btn-sm at-voltar" id="btnVoltar">Voltar pra lista</button>
+                <h2 id="cNome"></h2>
+                <div class="at-cab-meta" id="cMeta"></div>
+                <div class="at-cab-sit" id="cSit"></div>
+              </div>
+              <div class="at-cab-acoes" id="cAcoes"></div>
+            </header>
+            <div id="cFaixas"></div>
+            <ol class="at-tempo" id="cTempo" aria-label="Mensagens da conversa"></ol>
+            <form class="at-caixa" id="cCaixa" hidden>
+              <textarea id="cTexto" class="input" rows="2" maxlength="4096" placeholder="Escreva a resposta… (Shift+Enter quebra a linha)" aria-label="Resposta pro cliente"></textarea>
+              <button class="btn btn-primary" type="submit" id="cEnviar">Enviar</button>
+            </form>
+            <p class="at-nota" id="cNota" hidden></p>
+            <div class="at-erro" id="cErro" role="alert"></div>
+          </div>
+        </section>
+      </div>
+    </main>
+  </div>
+
+  <aside class="at-sim" id="simulador" hidden aria-labelledby="simTit">
+    <div class="at-sim-cab">
+      <h2 id="simTit">Simulador do cliente</h2>
+      <button class="at-sim-fechar" id="simFechar" aria-label="Fechar o simulador">&times;</button>
+    </div>
+    <p class="at-sim-intro">Escreva como se fosse o cliente no WhatsApp: a mensagem chega na lista como chegaria do número de verdade, marcada como teste. As respostas do escritório aparecem aqui.</p>
+    <div class="at-sim-campos">
+      <label>Quem escreve<select id="simQuem" class="input"></select></label>
+      <div class="at-sim-dois" id="simOutro" hidden>
+        <label>Telefone<input id="simTel" class="input" inputmode="tel" placeholder="(51) 90000-0000"></label>
+        <label>Nome no WhatsApp<input id="simNome" class="input" maxlength="120" placeholder="Opcional"></label>
+      </div>
+      <label>A primeira mensagem vai pra fila<select id="simSetor" class="input"></select></label>
+    </div>
+    <div class="at-sim-tela" id="simTela" aria-live="polite" aria-label="O que o cliente vê"></div>
+    <form id="simForm">
+      <textarea id="simTexto" class="input" rows="2" maxlength="4096" placeholder="A mensagem do cliente…" aria-label="Mensagem do cliente"></textarea>
+      <button class="btn btn-primary btn-sm" type="submit" id="simEnviar">Enviar como cliente</button>
+    </form>
+    <div class="at-erro" id="simErro" role="alert"></div>
+  </aside>
+
+  <script type="module">
+    import { supabase, getCurrentUser, signOut } from './assets/js/supabase.js';
+    import { SETORES, SEM_SETOR, ATENDENTES, MAX_TEXTO, nomeDe, nomeDoSetor, setoresDe, formatarTelefone, normalizarTelefone,
+      tituloDaConversa, situacaoDaConversa, ehPraMim, podeAssumir, podeResponder, podeDevolver, podeTransferir, podeEncerrar,
+      podeReabrir, porQueNaoResponde, mudancaDe, textoDoEvento, linhaDoTempo, previa, esperaResposta, filtrar, contagens } from './assets/js/atendimento.js';
+    import { BIPE, horaCurta, horaDaLista, rotuloDoDia, linkificar, esperaParaReligar } from './assets/js/chat-equipe.js';
+    import { buscarEmpresas } from './assets/js/tarefas-acoes.js';
+
+    const $ = id => document.getElementById(id);
+    const esc = t => String(t == null ? '' : t).replace(/[&<>"']/g, m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m]));
+    const COLS_CONV = 'id, telefone, contato_nome, cliente_id, situacao, setor, responsavel, assumida_por, assumida_em, encerrada_por, encerrada_em, resumo, janela_ate, ultima_em, ultima_do_cliente_em, teste, criado_em';
+    const COLS_MSG = 'id, conversa_id, direcao, autor, tipo, texto, transcricao, anexos, status, erro, criada_em';
+    const COLS_EV = 'id, conversa_id, tipo, setor, para, por, observacao, em';
+    const TESTES = [
+      { tel: '5551900000001', nome: 'Cliente de teste A' },
+      { tel: '5551900000002', nome: 'Cliente de teste B' },
+      { tel: '5551900000003', nome: 'Cliente de teste C' }
+    ];
+    const tempo = iso => { const n = new Date(iso || '').getTime(); return isNaN(n) ? 0 : n; };
+    const guardar = (k, v) => { try { localStorage.setItem(k, v); } catch (e) { /* sem armazenamento */ } };
+    const lerGuardado = k => { try { return localStorage.getItem(k); } catch (e) { return null; } };
+
+    let eu = null, aba = null, filtro = 'meus', atual = null;
+    let conversas = [], ultimas = new Map(), empresas = new Map();
+    let mensagens = [], eventos = [], numeros = [], numerosTodos = [];
+    let painel = null;            // a faixa aberta na conversa: 'transferir' | 'vincular' | null
+    let pendente = null;          // a resposta que não foi: { id, texto } (o "Tentar de novo" manda o mesmo id)
+    let aoVivo = false;
+
+    // ---------- quem entrou ----------
+    (async () => {
+      const user = await getCurrentUser();
+      eu = String((user && user.email) || '').toLowerCase();
+      const n = (user && user.user_metadata && user.user_metadata.full_name) || nomeDe(eu) || 'Usuário';
+      $('userName').textContent = n; $('userAvatar').textContent = n.charAt(0).toUpperCase();
+      filtro = lerGuardado('mr_atend_setor:' + eu) || 'meus';
+      montarSetores(); montarSimulador();
+      await carregar();
+      const guardada = lerGuardado('mr_atend_aba:' + eu);
+      aba = ['minhas', 'fila', 'todas', 'encerradas'].includes(guardada) ? guardada : (contagens(conversas, eu, filtro).minhas ? 'minhas' : 'fila');
+      render();
+      ligar();
+      const q = new URLSearchParams(location.search);
+      if (q.get('c')) abrir(q.get('c'));
+      if (q.get('sim') === '1') abrirSimulador();
+    })();
+    $('btnLogout').addEventListener('click', signOut);
+
+    // ---------- o banco ----------
+    async function carregar() {
+      const desde = new Date(Date.now() - 30 * 864e5).toISOString();
+      const { data, error } = await supabase.from('atend_conversas').select(COLS_CONV)
+        .or('situacao.neq.encerrada,ultima_em.gte.' + desde).order('ultima_em', { ascending: false }).limit(500);
+      if (error) { $('vazio').hidden = false; $('vazio').textContent = 'Não consegui carregar as conversas: ' + error.message; return; }
+      conversas = data || [];
+      await carregarUltimas(conversas.map(c => c.id));
+      await carregarEmpresas(conversas.map(c => c.cliente_id));
+    }
+    async function carregarUltimas(ids) {
+      if (!ids.length) return;
+      const { data } = await supabase.from('atend_mensagens').select(COLS_MSG).in('conversa_id', ids).order('criada_em', { ascending: false }).limit(1500);
+      (data || []).forEach(guardarUltima);
+    }
+    function guardarUltima(m) {
+      const u = ultimas.get(m.conversa_id);
+      if (!u || tempo(m.criada_em) >= tempo(u.criada_em)) ultimas.set(m.conversa_id, m);
+    }
+    async function carregarEmpresas(ids) {
+      const falta = [...new Set((ids || []).filter(id => id && !empresas.has(id)))];
+      if (!falta.length) return;
+      const { data } = await supabase.from('clientes').select('id, nome_principal, nome_fantasia').in('id', falta);
+      (data || []).forEach(c => empresas.set(c.id, { id: c.id, nome: c.nome_fantasia || c.nome_principal || 'Empresa' }));
+    }
+    const conversa = id => conversas.find(c => c.id === id) || null;
+    const nomeDaEmpresa = c => (c && c.cliente_id && empresas.get(c.cliente_id) ? empresas.get(c.cliente_id).nome : '');
+
+    // ---------- a lista ----------
+    function montarSetores() {
+      const op = [['meus', 'Meus setores'], ['todos', 'Todos'], ...SETORES.map(s => [s.id, s.nome]), ['sem', 'Sem setor']];
+      if (!setoresDe(eu).length) op.shift();
+      if (!op.some(([v]) => v === filtro)) filtro = op[0][0];
+      $('setores').innerHTML = op.map(([v, r]) => '<button type="button" data-f="' + esc(v) + '" aria-pressed="false">' + esc(r) + '</button>').join('');
+      $('setores').querySelectorAll('button').forEach(b => b.addEventListener('click', () => { filtro = b.dataset.f; guardar('mr_atend_setor:' + eu, filtro); render(); }));
+    }
+    document.querySelectorAll('.at-abas button').forEach(b => b.addEventListener('click', () => { aba = b.dataset.aba; guardar('mr_atend_aba:' + eu, aba); render(); }));
+    $('busca').addEventListener('input', render);
+
+    function render() {
+      if (!eu || !aba) return;
+      const n = contagens(conversas, eu, filtro);
+      [['minhas', 'nMinhas'], ['fila', 'nFila'], ['todas', 'nTodas']].forEach(([a, id]) => { $(id).textContent = n[a]; $(id).classList.toggle('tem', n[a] > 0); });
+      document.querySelectorAll('.at-abas button').forEach(b => b.setAttribute('aria-selected', b.dataset.aba === aba ? 'true' : 'false'));
+      $('setores').hidden = aba === 'minhas';
+      $('setores').querySelectorAll('button').forEach(b => b.setAttribute('aria-pressed', b.dataset.f === filtro ? 'true' : 'false'));
+      const q = $('busca').value.trim().toLowerCase(), qd = q.replace(/\D/g, '');
+      let itens = filtrar(conversas, aba, eu, filtro);
+      if (q) itens = itens.filter(c => (tituloDaConversa(c) + ' ' + nomeDaEmpresa(c)).toLowerCase().includes(q) || (qd.length >= 3 && String(c.telefone).includes(qd)));
+      const agora = new Date();
+      $('itens').innerHTML = itens.map(c => {
+        const u = ultimas.get(c.id), s = situacaoDaConversa(c, eu, agora), espera = esperaResposta(c, u);
+        return '<li><button type="button" class="at-item' + (c.id === atual ? ' is-on' : '') + (espera ? ' espera' : '') + '" data-id="' + esc(c.id) + '">'
+          + '<span class="at-item-nome">' + (espera ? '<span class="at-ponto" aria-label="Esperando resposta"></span>' : '') + esc(tituloDaConversa(c)) + (c.teste ? '<span class="at-teste">teste</span>' : '') + '</span>'
+          + '<span class="at-item-hora">' + esc(horaDaLista(c.ultima_em, agora)) + '</span>'
+          + '<span class="at-item-emp">' + esc(nomeDaEmpresa(c) || 'Sem empresa') + ' · ' + esc(c.setor ? nomeDoSetor(c.setor) : 'sem setor') + '</span>'
+          + '<span class="at-item-prev">' + esc(previa(u) || 'Sem mensagem') + '</span>'
+          + '<span class="at-item-sit tipo-' + esc(s.tipo) + '">' + esc(s.texto) + '</span>'
+          + '</button></li>';
+      }).join('');
+      $('itens').querySelectorAll('.at-item').forEach(b => b.addEventListener('click', () => abrir(b.dataset.id)));
+      const vazio = !itens.length;
+      $('vazio').hidden = !vazio;
+      if (vazio) $('vazio').textContent = q ? 'Nenhuma conversa com essa busca.'
+        : aba === 'minhas' ? 'Nenhuma conversa com você agora. As da fila dos seus setores estão em Fila.'
+        : aba === 'fila' ? 'Ninguém esperando na fila' + (filtro === 'meus' ? ' dos seus setores.' : '.') + ' Pra testar, abra o simulador e escreva como cliente.'
+        : aba === 'todas' ? 'Nenhuma conversa aberta.' : 'Nenhuma conversa encerrada nos últimos 30 dias.';
+      atualizarTitulo();
+    }
+    function atualizarTitulo() {
+      // o número das que esperam resposta vai depois do nome: o "(N) " da frente é o do chat da equipe (chat-equipe.js), que fica
+      const n = conversas.filter(c => ehPraMim(c, eu) && esperaResposta(c, ultimas.get(c.id))).length;
+      const doChat = (document.title.match(/^\(\d+\+?\)\s/) || [''])[0];
+      const novo = doChat + 'Atendimento' + (n ? ' (' + n + ' esperando)' : '') + ' — Macedo & Reis';
+      if (document.title !== novo) document.title = novo;
+    }
+
+    // ---------- a conversa aberta ----------
+    async function abrir(id) {
+      if (!conversa(id)) {
+        const { data } = await supabase.from('atend_conversas').select(COLS_CONV).eq('id', id);
+        if (!data || !data[0]) return;
+        conversas.push(data[0]); await carregarEmpresas([data[0].cliente_id]);
+      }
+      const c = conversa(id);
+      atual = id; painel = null; pendente = null;
+      $('nada').hidden = true; $('aberta').hidden = false; $('grade').classList.add('tem-aberta');
+      $('cErro').textContent = ''; $('cTexto').value = '';
+      render();
+      const u = new URL(location.href); u.searchParams.set('c', id); history.replaceState(null, '', u);
+      await Promise.all([carregarMensagens(id), carregarEventos(id), carregarNumeros(c.telefone)]);
+      if (atual === id) pintarConversa(true);
+    }
+    async function carregarMensagens(id) {
+      const { data, error } = await supabase.from('atend_mensagens').select(COLS_MSG).eq('conversa_id', id).order('criada_em', { ascending: true });
+      if (atual !== id) return;
+      if (error) { $('cErro').textContent = 'Não consegui carregar as mensagens: ' + error.message; return; }
+      mensagens = (data || []).sort((a, b) => tempo(a.criada_em) - tempo(b.criada_em));
+      mensagens.forEach(guardarUltima);
+    }
+    async function carregarEventos(id) {
+      const { data } = await supabase.from('atend_eventos').select(COLS_EV).eq('conversa_id', id).order('em', { ascending: true });
+      if (atual === id) eventos = (data || []).sort((a, b) => tempo(a.em) - tempo(b.em));
+    }
+    async function carregarNumeros(tel) {
+      const { data } = await supabase.from('atend_numeros').select('id, telefone, cliente_id, nome, confirmado, ativo').eq('telefone', tel);
+      numerosTodos = data || [];
+      numeros = numerosTodos.filter(n => n.ativo !== false);
+      await carregarEmpresas(numeros.map(n => n.cliente_id));
+    }
+    function fecharConversa() {
+      atual = null; painel = null;
+      $('aberta').hidden = true; $('nada').hidden = false; $('grade').classList.remove('tem-aberta');
+      const u = new URL(location.href); u.searchParams.delete('c'); history.replaceState(null, '', u);
+      render();
+    }
+    $('btnVoltar').addEventListener('click', fecharConversa);
+
+    function pintarConversa(rolar = false) {
+      const c = conversa(atual);
+      if (!c) return;
+      const agora = new Date(), s = situacaoDaConversa(c, eu, agora), emp = nomeDaEmpresa(c);
+      $('cNome').innerHTML = esc(tituloDaConversa(c)) + (c.teste ? '<span class="at-teste">teste</span>' : '');
+      $('cMeta').innerHTML = esc(formatarTelefone(c.telefone)) + ' · '
+        + (emp ? '<a href="clientes/editar.html?id=' + encodeURIComponent(c.cliente_id) + '">' + esc(emp) + '</a>' : 'Sem empresa')
+        + ' · ' + esc(c.setor ? nomeDoSetor(c.setor) : 'sem setor');
+      $('cSit').innerHTML = '<span class="tipo-' + esc(s.tipo) + '">' + esc(s.texto) + '</span>'
+        + (c.situacao === 'atendendo' && c.assumida_em ? ' · desde ' + esc(horaCurta(c.assumida_em)) : '')
+        + (c.situacao === 'encerrada' && c.encerrada_em ? ' · ' + esc(rotuloDoDia(c.encerrada_em, agora).toLowerCase()) + ' às ' + esc(horaCurta(c.encerrada_em)) : '');
+      pintarAcoes(c); pintarFaixas(c); pintarTempo(rolar); pintarCaixa(c);
+    }
+    function pintarAcoes(c) {
+      const b = [];
+      if (podeAssumir(c, eu)) b.push('<button class="btn btn-primary btn-sm" data-acao="assumir">Assumir</button>');
+      if (podeTransferir(c, eu)) b.push('<button class="btn btn-ghost btn-sm" data-acao="transferir" aria-expanded="' + (painel === 'transferir') + '">Passar pra…</button>');
+      if (podeDevolver(c, eu)) b.push('<button class="btn btn-ghost btn-sm" data-acao="devolver">Devolver pra fila</button>');
+      if (podeEncerrar(c, eu)) b.push('<button class="btn btn-ghost btn-sm" data-acao="encerrar">Encerrar</button>');
+      if (podeReabrir(c)) b.push('<button class="btn btn-ghost btn-sm" data-acao="reabrir">Reabrir</button>');
+      $('cAcoes').innerHTML = b.join('');
+      $('cAcoes').querySelectorAll('button').forEach(el => el.addEventListener('click', () => clicar(el.dataset.acao)));
+    }
+    async function clicar(acao) {
+      if (acao === 'transferir') { painel = painel === 'transferir' ? null : 'transferir'; pintarConversa(); if (painel) $('trSetor').focus(); return; }
+      await mudar(acao);
+    }
+
+    // a empresa do número e a passagem pra outro setor ou pessoa
+    function pintarFaixas(c) {
+      const h = [];
+      const outras = numeros.filter(n => n.cliente_id !== c.cliente_id);
+      const doVinculo = numeros.find(n => n.cliente_id === c.cliente_id);
+      if (c.cliente_id && doVinculo && !doVinculo.confirmado) {
+        h.push('<div class="at-faixa"><div class="at-linha">Este número fala mesmo pela <b>' + esc(nomeDaEmpresa(c)) + '</b>? Confirmado, o assistente vai poder mandar documento da empresa pra ele.'
+          + ' <button class="btn btn-primary btn-sm" data-num="confirmar" data-id="' + esc(doVinculo.id) + '">Confirmar</button></div></div>');
+      }
+      if (!c.cliente_id && outras.length) {
+        h.push('<div class="at-faixa"><div>Este número já falou por: ' + outras.map(n => '<button class="btn btn-ghost btn-sm" data-num="ligar" data-cliente="' + esc(n.cliente_id) + '">'
+          + esc((empresas.get(n.cliente_id) || {}).nome || 'empresa') + (n.confirmado ? '' : ' (a confirmar)') + '</button>').join(' ') + '</div></div>');
+      }
+      if (!c.cliente_id && !outras.length && painel !== 'vincular' && painel !== 'transferir') {
+        h.push('<div class="at-faixa at-linha"><span>De qual empresa é este número?</span><button class="btn btn-ghost btn-sm" data-num="trocar">Procurar a empresa</button></div>');
+      }
+      if (painel === 'vincular') {
+        h.push('<div class="at-faixa"><label>De qual empresa é este número?<input id="vBusca" class="input" placeholder="Digite 3 letras do nome ou o CNPJ…" autocomplete="off"></label>'
+          + '<ul class="at-res" id="vRes"></ul><div class="at-linha" style="margin-top:6px"><button class="btn btn-ghost btn-sm" data-num="cancelar">Cancelar</button></div></div>');
+      } else if (c.cliente_id && painel !== 'transferir') {
+        h.push('<div class="at-faixa at-linha"><span>Empresa: <b>' + esc(nomeDaEmpresa(c)) + '</b></span><button class="btn btn-ghost btn-sm" data-num="trocar">Trocar a empresa</button></div>');
+      }
+      if (painel === 'transferir') {
+        const setores = [['', 'Sem setor'], ...SETORES.map(s => [s.id, s.nome])];
+        const pessoas = ATENDENTES.filter(e => e !== eu);
+        h.push('<div class="at-faixa" id="trFaixa"><div class="at-linha">'
+          + '<label>Setor<select id="trSetor" class="input">' + setores.map(([v, r]) => '<option value="' + esc(v) + '"' + ((c.setor || '') === v ? ' selected' : '') + '>' + esc(r) + '</option>').join('') + '</select></label>'
+          + '<label>Pra quem<select id="trPara" class="input"><option value="">A fila do setor</option>' + pessoas.map(e => '<option value="' + esc(e) + '">' + esc(nomeDe(e)) + '</option>').join('') + '</select></label>'
+          + '<label style="flex:1;min-width:200px">Recado pra quem pega (opcional)<input id="trObs" class="input" maxlength="1000" placeholder="O assunto, o que já foi dito…"></label></div>'
+          + '<div class="at-linha" style="margin-top:8px"><button class="btn btn-primary btn-sm" data-num="passar">Passar</button><button class="btn btn-ghost btn-sm" data-num="fechar-tr">Cancelar</button></div></div>');
+      }
+      const box = $('cFaixas'), valores = {}, ativo = document.activeElement;
+      box.querySelectorAll('input, select').forEach(i => { if (i.id) valores[i.id] = i.value; });
+      const foco = ativo && ativo.id && box.contains(ativo) ? ativo.id : null;
+      box.innerHTML = h.join('');
+      Object.entries(valores).forEach(([id, v]) => { const i = $(id); if (i) i.value = v; });
+      if (foco && $(foco)) $(foco).focus();
+      if ($('vBusca') && $('vBusca').value.trim().length >= 3) procurarEmpresa($('vBusca').value);
+      $('cFaixas').querySelectorAll('[data-num]').forEach(el => el.addEventListener('click', () => faixa(el.dataset.num, el)));
+      const vb = $('vBusca');
+      if (vb) { let t = null; vb.addEventListener('input', () => { clearTimeout(t); t = setTimeout(() => procurarEmpresa(vb.value), 250); }); }
+    }
+    async function faixa(o, el) {
+      const c = conversa(atual);
+      if (!c) return;
+      if (o === 'confirmar') {
+        const { error } = await supabase.from('atend_numeros').update({ confirmado: true }).eq('id', el.dataset.id);
+        if (error) { $('cErro').textContent = 'Não consegui confirmar: ' + error.message; return; }
+        await carregarNumeros(c.telefone); pintarConversa();
+      } else if (o === 'ligar') {
+        await ligarEmpresa(c, { id: el.dataset.cliente, nome: (empresas.get(el.dataset.cliente) || {}).nome || '' });
+      } else if (o === 'trocar') { painel = 'vincular'; pintarConversa(); const v = $('vBusca'); if (v) v.focus(); }
+      else if (o === 'cancelar' || o === 'fechar-tr') { painel = null; pintarConversa(); }
+      else if (o === 'passar') {
+        const setor = $('trSetor').value || null, para = $('trPara').value || null;
+        await mudar('transferir', { setor, para, observacao: $('trObs').value });
+      }
+    }
+    async function procurarEmpresa(termo) {
+      const res = $('vRes');
+      if (!res) return;
+      if (String(termo || '').trim().length < 3) { res.innerHTML = ''; return; }
+      const { empresas: achadas, erro } = await buscarEmpresas(supabase, termo, 8);
+      if (!$('vRes')) return;
+      if (erro) { res.innerHTML = '<li class="at-vazio">Não consegui procurar: ' + esc(erro) + '</li>'; return; }
+      res.innerHTML = achadas.length ? achadas.map(e => '<li><button type="button" data-cliente="' + esc(e.id) + '" data-nome="' + esc(e.nome_fantasia || e.nome_principal) + '">'
+        + esc(e.nome_fantasia || e.nome_principal) + (e.cidade ? '<small>' + esc(e.cidade) + '</small>' : '') + '</button></li>').join('') : '<li class="at-vazio">Nenhuma empresa com esse nome.</li>';
+      res.querySelectorAll('button').forEach(b => b.addEventListener('click', () => ligarEmpresa(conversa(atual), { id: b.dataset.cliente, nome: b.dataset.nome })));
+    }
+    // ligar o número à empresa: a conversa ganha a empresa e o número fica confirmado pra ela (quem confirmou e quando, o banco grava)
+    async function ligarEmpresa(c, cli) {
+      if (!c || !cli || !cli.id) return;
+      empresas.set(cli.id, { id: cli.id, nome: cli.nome || 'Empresa' });
+      const ok = await mudar('vincular', { cliente: cli });
+      if (!ok) return;
+      const ja = numerosTodos.find(n => n.cliente_id === cli.id);
+      const r = ja ? await supabase.from('atend_numeros').update({ confirmado: true, ativo: true }).eq('id', ja.id)
+        : await supabase.from('atend_numeros').insert({ telefone: c.telefone, cliente_id: cli.id, nome: c.contato_nome || null, confirmado: true, origem: 'conversa' });
+      if (r.error) $('cErro').textContent = 'A conversa ficou com a empresa, mas o número não foi guardado: ' + r.error.message;
+      painel = null;
+      await carregarNumeros(c.telefone); pintarConversa();
+    }
+
+    // assumir, passar, devolver, encerrar, reabrir e ligar a empresa: só muda se a conversa segue como a tela leu
+    async function mudar(acao, extra = {}) {
+      const c = conversa(atual);
+      if (!c) return false;
+      const m = mudancaDe(acao, c, { eu, ...extra });
+      if (!m) return false;
+      $('cErro').textContent = '';
+      let q = supabase.from('atend_conversas').update(m.patch).eq('id', c.id);
+      if (acao !== 'vincular') { q = q.eq('situacao', c.situacao); q = c.responsavel ? q.eq('responsavel', c.responsavel) : q.is('responsavel', null); }
+      const { data, error } = await q.select('id');
+      if (error) { $('cErro').textContent = 'Não consegui: ' + error.message; return false; }
+      if (!data || !data.length) {
+        $('cErro').textContent = 'Alguém mexeu nesta conversa agora. A tela já mostra como ela ficou.';
+        await recarregarConversa(c.id); return false;
+      }
+      Object.assign(c, m.patch);
+      if (acao === 'assumir' || acao === 'reabrir') c.assumida_em = new Date().toISOString();
+      const ev = await supabase.from('atend_eventos').insert({ conversa_id: c.id, ...m.evento });
+      if (ev.error) $('cErro').textContent = 'A mudança entrou, mas o registro dela (pras contas do atendimento) não: ' + ev.error.message;
+      if (acao === 'transferir') painel = null;
+      await carregarEventos(c.id);
+      render(); pintarConversa();
+      if (acao === 'assumir' || acao === 'reabrir') $('cTexto').focus();
+      return true;
+    }
+    async function recarregarConversa(id) {
+      const { data } = await supabase.from('atend_conversas').select(COLS_CONV).eq('id', id);
+      const n = (data || [])[0];
+      if (n) { const i = conversas.findIndex(c => c.id === id); if (i >= 0) conversas[i] = n; else conversas.unshift(n); }
+      await carregarEventos(id); render(); if (atual === id) pintarConversa();
+    }
+
+    // o histórico
+    function pintarTempo(rolar = false) {
+      const el = $('cTempo'), c = conversa(atual);
+      if (!c) return;
+      const noFim = el.scrollHeight - el.scrollTop - el.clientHeight < 60;
+      const agora = new Date();
+      let dia = '';
+      const h = [];
+      linhaDoTempo(mensagens, eventos).forEach(x => {
+        const iso = x.tipo === 'msg' ? x.m.criada_em : x.e.em;
+        const d = rotuloDoDia(iso, agora);
+        if (d && d !== dia) { dia = d; h.push('<li class="at-dia">' + esc(d) + '</li>'); }
+        if (x.tipo === 'evento') { h.push('<li class="at-ev">' + esc(textoDoEvento(x.e)) + ' · ' + esc(horaCurta(x.e.em)) + '</li>'); return; }
+        const m = x.m, quem = m.direcao === 'saida' ? nomeDe(m.autor) : m.direcao === 'interna' ? 'Nota de ' + nomeDe(m.autor) : '';
+        const st = m.status === 'erro' ? '<span class="at-msg-erro"> · não foi' + (m.erro ? ': ' + esc(m.erro) : '') + '</span>' : m.status === 'enviando' ? ' · enviando…' : m.status === 'lida' ? ' · lida' : m.status === 'entregue' ? ' · entregue' : '';
+        const corpo = m.texto ? linkificar(esc(m.texto)) : esc(previa(m));
+        h.push('<li class="at-msg ' + esc(m.direcao) + '">' + corpo + '<span class="at-msg-pe">' + (quem ? esc(quem) + ' · ' : '') + esc(horaCurta(m.criada_em)) + st + '</span></li>');
+      });
+      el.innerHTML = h.length ? h.join('') : '<li class="at-ev">Nenhuma mensagem ainda.</li>';
+      if (rolar || noFim) el.scrollTop = el.scrollHeight;
+    }
+    function pintarCaixa(c) {
+      const motivo = porQueNaoResponde(c, eu);
+      $('cCaixa').hidden = !!motivo || !podeResponder(c, eu);
+      $('cNota').hidden = !motivo;
+      $('cNota').textContent = motivo || '';
+    }
+
+    // a resposta: vai pela função whatsapp, com o id da tela (tentar de novo não duplica)
+    async function chamarWhatsapp(corpo) {
+      let data = null, error = null;
+      try { ({ data, error } = await supabase.functions.invoke('whatsapp', { body: corpo })); }
+      catch (e) { return { erro: 'Não consegui falar com o sistema. Confira a internet e tente de novo.' }; }
+      if (!error && data && !data.error) return { data };
+      let texto = data && data.error ? String(data.error) : '';
+      const r = error && error.context;
+      try { if (r && typeof r.json === 'function') { const j = await (typeof r.clone === 'function' ? r.clone() : r).json(); if (j && j.error) texto = String(j.error); } } catch (e) { /* sem corpo */ }
+      if (!texto) texto = r && r.status === 401 ? 'Sua sessão expirou: saia e entre de novo no sistema.' : 'Não consegui agora. Tente de novo em instantes.';
+      return { erro: texto };
+    }
+    $('cCaixa').addEventListener('submit', e => { e.preventDefault(); enviar(); });
+    $('cTexto').addEventListener('keydown', e => { if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); enviar(); } });
+    async function enviar(repetir = null) {
+      const c = conversa(atual);
+      const texto = repetir ? repetir.texto : $('cTexto').value.trim();
+      if (!c || !texto) return;
+      if ([...texto].length > MAX_TEXTO) { $('cErro').textContent = 'A mensagem passou de 4.096 letras, o limite do WhatsApp.'; return; }
+      const id = repetir ? repetir.id : (crypto.randomUUID ? crypto.randomUUID() : String(Date.now()));
+      $('cEnviar').disabled = true; $('cErro').textContent = '';
+      const r = await chamarWhatsapp({ acao: 'responder', conversa_id: c.id, texto, id });
+      $('cEnviar').disabled = false;
+      if (r.erro) {
+        pendente = { id, texto };
+        $('cErro').innerHTML = esc('A mensagem não foi: ' + r.erro) + ' <button class="btn btn-ghost btn-sm" id="cDeNovo">Tentar de novo</button>';
+        $('cDeNovo').addEventListener('click', () => enviar(pendente));
+        if (!repetir) $('cTexto').value = texto;
+        return;
+      }
+      pendente = null;
+      if (!repetir) $('cTexto').value = '';
+      if (!mensagens.some(m => m.id === id)) {
+        const m = { id, conversa_id: c.id, direcao: 'saida', autor: eu, tipo: 'texto', texto, status: 'enviada', criada_em: new Date().toISOString() };
+        mensagens.push(m); guardarUltima(m);
+      }
+      c.ultima_em = new Date().toISOString();
+      render(); pintarTempo(true); $('cTexto').focus();
+    }
+
+    // ---------- ao vivo: o que muda no banco chega na hora; caiu, volta sozinho ----------
+    let canal = null, nCanal = 0, quedas = 0;
+    function ligar() {
+      if (canal) { const velho = canal; canal = null; supabase.removeChannel(velho); }
+      const meu = supabase.channel('atend-db:' + eu + ':' + (++nCanal));
+      canal = meu;
+      meu.on('postgres_changes', { event: '*', schema: 'public', table: 'atend_conversas' }, p => { if (canal === meu) mudouConversa(p); })
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'atend_mensagens' }, p => { if (canal === meu) mudouMensagem(p); })
+        .subscribe(st => {
+          if (canal !== meu) return;
+          if (st === 'SUBSCRIBED') { if (!aoVivo && quedas) recarregar(); aoVivo = true; quedas = 0; }
+          else if (st === 'CLOSED' || st === 'CHANNEL_ERROR' || st === 'TIMED_OUT') {
+            aoVivo = false;
+            setTimeout(() => { if (canal === meu) ligar(); }, esperaParaReligar(quedas++));
+          }
+        });
+    }
+    async function recarregar() {
+      await carregar(); render();
+      if (atual && conversa(atual)) { await Promise.all([carregarMensagens(atual), carregarEventos(atual)]); pintarConversa(); }
+      if (!$('simulador').hidden) pintarSimulador();
+    }
+    setInterval(() => { if (!document.hidden) recarregar(); }, 5 * 60000);
+    setInterval(() => { if (!aoVivo && !document.hidden) recarregar(); }, 60000);
+    document.addEventListener('visibilitychange', () => { if (!document.hidden) recarregar(); });
+
+    function mudouConversa(p) {
+      const n = p && p.new;
+      if (!n || !n.id) return;
+      const i = conversas.findIndex(c => c.id === n.id);
+      const antes = i >= 0 ? { ...conversas[i] } : null;
+      if (i >= 0) Object.assign(conversas[i], n); else conversas.unshift({ ...n });
+      const c = conversa(n.id);
+      if (ehPraMim(c, eu) && !(antes && ehPraMim(antes, eu)) && (document.hidden || atual !== c.id)) avisar(c, 'conversa');
+      if (c.cliente_id && !empresas.has(c.cliente_id)) carregarEmpresas([c.cliente_id]).then(() => { render(); if (atual === c.id) pintarConversa(); });
+      render();
+      if (atual === c.id) carregarEventos(c.id).then(() => pintarConversa());
+      if (!$('simulador').hidden) pintarSimulador();
+    }
+    function mudouMensagem(p) {
+      const m = p && p.new;
+      if (!m || !m.conversa_id) return;
+      guardarUltima(m);
+      if (atual === m.conversa_id) {
+        const j = mensagens.findIndex(x => x.id === m.id);
+        if (j >= 0) mensagens[j] = m; else mensagens.push(m);
+        mensagens.sort((a, b) => tempo(a.criada_em) - tempo(b.criada_em));
+        pintarTempo();
+      }
+      const c = conversa(m.conversa_id);
+      if (!c) { recarregar(); return; }
+      if (p.eventType === 'INSERT' && m.direcao === 'entrada') {
+        c.ultima_em = m.criada_em; c.ultima_do_cliente_em = m.criada_em;
+        if (ehPraMim(c, eu) && (document.hidden || atual !== c.id)) avisar(c, 'mensagem');
+      }
+      render();
+      if (!$('simulador').hidden && simConversa() && simConversa().id === m.conversa_id) pintarSimulador();
+    }
+
+    // o aviso: o bipe do chat da equipe (BIPE, de chat-equipe.js) e o número no título da aba
+    let audio = null;
+    const destravar = () => { try { audio = audio || new (window.AudioContext || window.webkitAudioContext)(); if (audio.state === 'suspended') audio.resume().catch(() => {}); } catch (e) { audio = null; } };
+    ['pointerdown', 'keydown'].forEach(t => document.addEventListener(t, destravar, { once: true, capture: true, passive: true }));
+    function avisar(c, tipo) {
+      window.dispatchEvent(new CustomEvent('mr:atendimento-aviso', { detail: { tipo, conversa: c.id } }));
+      atualizarTitulo();
+      try {
+        if (!audio || audio.state !== 'running') return;
+        const t = audio.currentTime + 0.02;
+        BIPE.notas.forEach(([f, ini, dur]) => {
+          const o = audio.createOscillator(), g = audio.createGain();
+          o.type = BIPE.onda; o.frequency.value = f;
+          g.gain.setValueAtTime(0.0001, t + ini);
+          g.gain.exponentialRampToValueAtTime(BIPE.volume, t + ini + 0.012);
+          g.gain.exponentialRampToValueAtTime(0.0001, t + ini + dur);
+          o.connect(g); g.connect(audio.destination);
+          o.start(t + ini); o.stop(t + ini + dur + 0.03);
+        });
+      } catch (e) { /* sem som */ }
+    }
+
+    // ---------- o simulador ----------
+    function montarSimulador() {
+      $('simQuem').innerHTML = TESTES.map((t, i) => '<option value="' + i + '">' + esc(t.nome + ' · ' + formatarTelefone(t.tel)) + '</option>').join('') + '<option value="outro">Outro número…</option>';
+      $('simSetor').innerHTML = '<option value="">Sem setor (o assistente perguntaria o assunto)</option>' + SETORES.map(s => '<option value="' + esc(s.id) + '">' + esc(s.nome) + '</option>').join('');
+      $('simQuem').addEventListener('change', () => { $('simOutro').hidden = $('simQuem').value !== 'outro'; $('simErro').textContent = ''; pintarSimulador(); });
+      $('simTel').addEventListener('input', () => pintarSimulador());
+    }
+    const simTelefone = () => $('simQuem').value === 'outro' ? normalizarTelefone($('simTel').value) : TESTES[Number($('simQuem').value)].tel;
+    const simNome = () => $('simQuem').value === 'outro' ? $('simNome').value.trim() : TESTES[Number($('simQuem').value)].nome;
+    const simConversa = () => { const t = simTelefone(); return t ? ordenarRecente(conversas.filter(c => c.telefone === t && c.situacao !== 'encerrada'))[0] || null : null; };
+    const ordenarRecente = l => [...l].sort((a, b) => tempo(b.criado_em) - tempo(a.criado_em));
+    let simMsgs = [], simDe = null;
+    async function pintarSimulador() {
+      const c = simConversa(), tela = $('simTela');
+      $('simSetor').disabled = !!c;
+      $('simSetor').title = c ? 'A conversa já está aberta: o setor muda pelo "Passar pra…" da conversa.' : '';
+      if (!c) { simDe = null; simMsgs = []; tela.innerHTML = '<p class="at-sim-vazio">Nenhuma conversa aberta com este número. A primeira mensagem abre uma.</p>'; return; }
+      if (simDe !== c.id) { simDe = c.id; simMsgs = []; }
+      const { data } = await supabase.from('atend_mensagens').select(COLS_MSG).eq('conversa_id', c.id).order('criada_em', { ascending: true });
+      if (simDe !== c.id) return;
+      simMsgs = (data || []).filter(m => m.direcao !== 'interna').sort((a, b) => tempo(a.criada_em) - tempo(b.criada_em));
+      tela.innerHTML = simMsgs.length ? simMsgs.map(m => '<div class="at-msg ' + (m.direcao === 'entrada' ? 'cli' : 'esc') + '">'
+        + (m.direcao === 'saida' ? '<span class="at-sim-quem">' + esc('Macedo & Reis · ' + nomeDe(m.autor)) + '</span>' : '')
+        + linkificar(esc(m.texto || previa(m))) + '<span class="at-msg-pe">' + esc(horaCurta(m.criada_em)) + '</span></div>').join('')
+        : '<p class="at-sim-vazio">Nenhuma mensagem ainda.</p>';
+      tela.scrollTop = tela.scrollHeight;
+    }
+    function abrirSimulador() {
+      $('simulador').hidden = false; document.body.classList.add('at-com-sim'); $('btnSimulador').setAttribute('aria-expanded', 'true'); $('btnSimulador').textContent = 'Fechar o simulador';
+      pintarSimulador(); $('simTexto').focus();
+    }
+    function fecharSimulador() {
+      $('simulador').hidden = true; document.body.classList.remove('at-com-sim'); $('btnSimulador').setAttribute('aria-expanded', 'false'); $('btnSimulador').textContent = 'Abrir o simulador';
+      $('btnSimulador').focus();
+    }
+    $('btnSimulador').addEventListener('click', () => ($('simulador').hidden ? abrirSimulador() : fecharSimulador()));
+    $('simFechar').addEventListener('click', fecharSimulador);
+    $('simForm').addEventListener('submit', e => { e.preventDefault(); simEnviar(); });
+    $('simTexto').addEventListener('keydown', e => { if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); simEnviar(); } });
+    async function simEnviar() {
+      const texto = $('simTexto').value.trim(), tel = simTelefone();
+      $('simErro').textContent = '';
+      if (!tel) { $('simErro').textContent = 'Telefone inválido: use o DDD e o número.'; return; }
+      if (!texto) return;
+      $('simEnviar').disabled = true;
+      const r = await chamarWhatsapp({ acao: 'simular', telefone: tel, nome: simNome() || null, texto, setor: $('simSetor').value || null });
+      $('simEnviar').disabled = false;
+      if (r.erro) { $('simErro').textContent = r.erro; return; }
+      $('simTexto').value = '';
+      if (!conversa(r.data.conversa_id)) await recarregar(); else pintarSimulador();
+      $('simTexto').focus();
+    }
+    document.addEventListener('keydown', e => {
+      if (e.key !== 'Escape') return;
+      if (!$('simulador').hidden && $('simulador').contains(document.activeElement)) { fecharSimulador(); return; }
+      if (painel) { painel = null; pintarConversa(); }
+    });
+  </script>
+</body>
+</html>

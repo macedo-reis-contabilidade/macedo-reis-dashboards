@@ -181,7 +181,8 @@ function q(table){
 // muda nas tabelas do chat chega aos canais, como no Supabase; o teste manda o que "outra pessoa" fez por
 // window.__mockEmitir(tabela, evento, linha) e quem está online por window.__mockOnline(emails)
 const CANAIS = [];
-const TEMPO_REAL = ['chat_mensagens', 'chat_membros', 'chat_conversas'];
+// e o atendimento pelo WhatsApp (atendimento.html, 08/11/2026): a conversa e a mensagem, como na publicação do banco
+const TEMPO_REAL = ['chat_mensagens', 'chat_membros', 'chat_conversas', 'atend_conversas', 'atend_mensagens'];
 function emitir(tabela, evento, linhas) {
   if (!TEMPO_REAL.includes(tabela)) return;
   (Array.isArray(linhas) ? linhas : [linhas]).forEach(l => setTimeout(() => entregar(tabela, evento, copia(l)), 20));
