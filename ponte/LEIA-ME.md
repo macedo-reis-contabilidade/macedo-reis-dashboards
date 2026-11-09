@@ -177,13 +177,25 @@ deixam e 3 passam. O que continua diferente é problema da contabilidade (a nota
 conta, o lançamento manual). De 3,8 a 4,8 segundos por mês (antes, 1,6): a rodada de 14 meses fica uns 40 segundos
 mais longa.
 
+**As jornadas** (a versão 4 do pacote, 09/11/2026, ponte 0.4.0: o fim da escala 6x1, EC 141/2026 — 42 horas e 2 dias
+de repouso a partir de 16/12/2026, 40 horas a partir de 16/12/2027): uma vez por rodada, o `jornadas.sql` (a foto do
+dia, com o dia de hoje e o salário do art. 8º do ano — `TETO_ART8` em `ponte\fonte.py`; ano novo, ponha o valor do
+ano, senão a ponte usa o mais recente e avisa no log) devolve **uma linha por empresa e grupo de empregados** — o grupo
+é a jornada, as horas do contrato (semana e mês), a forma de pagamento, o controle de horário, a categoria do eSocial
+e a unidade do salário —, com a semana (segunda a domingo: T trabalhado, C compensado, F folga), os minutos da semana
+e do dia mais longo, o ciclo da escala e quantos empregados, afastados, com o sábado compensado e com o superior
+completo (e, deles, acima do salário do art. 8º), e a soma dos salários do grupo. Nome, CPF, cargo e o salário de cada
+pessoa ficam no PC. Uns 3 segundos. O que se achou no Domínio e os números do escritório inteiro em
+`docs/FILA-CODE-2026-11-09-JORNADAS-DUVIDAS.md`.
+
 As consultas ficam em `ponte\consultas\` (`empresas.sql`, `folha.sql`, `fiscal.sql`, `contabil.sql`,
 `faturamento.sql`, `compras.sql`, `folha_valores.sql`, `origens.sql`, `cruzamentos.sql`, `saldos.sql`, `andamento.sql`,
-`encerramento.sql`). Enquanto a
+`encerramento.sql`, `jornadas.sql`). Enquanto a
 consulta tiver a linha `-- A CONFERIR`, ela não roda: o bloco vai pro `faltou` do pacote, e sem a de empresas a
 rodada não manda nada. O que cada uma recebe e devolve está no começo de `ponte\fonte_dominio.py` (as do mês recebem
 o primeiro e o último dia do mês, nessa ordem, e devolvem **uma linha por empresa, já contada**; o `andamento.sql`, os
-do mês de hoje; o `encerramento.sql`, o 1º de janeiro e o 31 de dezembro do ano).
+do mês de hoje; o `encerramento.sql`, o 1º de janeiro e o 31 de dezembro do ano; o `jornadas.sql`, o dia de hoje e o
+salário do art. 8º, e uma linha por empresa e grupo).
 
 1. Ache as tabelas com o `dominio tabelas` e entenda os dados com o `dominio sql` (contagens, mínimos e máximos de
    datas, os valores de um campo de situação com `GROUP BY`).

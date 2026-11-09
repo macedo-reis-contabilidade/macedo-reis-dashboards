@@ -11,4 +11,4 @@ contado, e o que vier além dos campos do contrato é descartado antes de montar
 
 Leia ponte/LEIA-ME.md.
 """
-VERSAO = '0.3.2'
+VERSAO = '0.4.0'

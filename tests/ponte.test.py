@@ -21,6 +21,10 @@ Empresas, chaves e senhas são todas inventadas.
   7. conferir com a configuração incompleta diz o que falta sem mostrar valor; completa, faz o ping (404 = função
      ainda não publicada) e não grava nada
   +  --meses, o [rodada] meses do config.ini e a limpeza dos logs de mais de 60 dias
+  +  as jornadas (a versão 4, 09/11/2026: o fim da escala 6x1): uma linha por empresa e grupo, com os campos do
+     contrato; o nome e o CPF que a fonte devolver ficam no PC; a semana fora do formato vira null; o grupo sem
+     empregado não vai; dois com o mesmo grupo (não veio contada) ou a consulta com erro tiram o bloco inteiro; o
+     salário do art. 8º do ano vai no 2º parâmetro, e o ano sem valor usa o mais recente, com aviso
   8. a ligação com o Domínio Web (dominio conexao | tabelas | sql, 29/10/2026), com um banco de mentira: a string de
      conexão montada do que foi digitado (o host:porta colado junto, a senha duas vezes, o que não serve perguntado de
      novo), gravada só no config.ini e testada; a senha nunca na tela nem no log; sem pyodbc, sem driver ou sem janela
@@ -76,6 +80,13 @@ CONTRATO_ANDAMENTO = ['codigo', 'banco_contas', 'banco_ate', 'banco_ultimo', 'ba
                       'conciliado_ate', 'fechamento_em']
 CONTRATO_ENCERRAMENTO = ['codigo', 'ano', 'zerado_em', 'zeramentos', 'zerado_incluido_em', 'lancados_depois',
                          'lancamentos_do_ano']
+# a versão 4 (09/11/2026): as jornadas, uma linha por empresa e grupo (o contrato da seção 3 da fila de 09/11)
+CONTRATO_JORNADAS = ['codigo', 'jornada', 'tipo', 'tipo_escala', 'semana', 'min_semana', 'min_maior_dia', 'ciclo_dias',
+                     'ciclo_trabalho', 'horas_semana', 'horas_mes', 'forma', 'controle', 'categoria', 'unidade',
+                     'empregados', 'afastados', 'compensa_sabado', 'superior', 'superior_teto', 'salarios']
+INTEIROS_JORNADAS = ['jornada', 'tipo', 'tipo_escala', 'min_semana', 'min_maior_dia', 'ciclo_dias', 'ciclo_trabalho',
+                     'forma', 'controle', 'categoria', 'unidade', 'empregados', 'afastados', 'compensa_sabado',
+                     'superior', 'superior_teto']
 
 SEGREDO = 'SEGREDO-DE-TESTE'
 SENHA = 'SENHA-DE-TESTE'
@@ -295,8 +306,9 @@ def caso_pacote():
         return
     texto = saida.read_text(encoding='utf-8')
     p = json.loads(texto)
-    ok(p['versao'] == 3 and set(p) == {'versao', 'rodada', 'empresas', 'mensal', 'andamento', 'encerramento', 'faltou'},
-       'versão 3, só as sete chaves do contrato')
+    ok(p['versao'] == 4 and set(p) == {'versao', 'rodada', 'empresas', 'mensal', 'andamento', 'encerramento', 'jornadas',
+                                       'faltou'},
+       'versão 4, só as oito chaves do contrato (com as jornadas)')
     r = p['rodada']
     ok(set(r) == {'id', 'inicio', 'fim', 'dados_ate', 'maquina', 'ponte'}, 'rodada com id, inicio, fim, dados_ate, maquina, ponte')
     ok(r['dados_ate'] == hoje().isoformat(), f"dados_ate é hoje — o banco do Domínio Web é ao vivo ({r['dados_ate']})")
@@ -304,7 +316,7 @@ def caso_pacote():
     hora_com_fuso = r'\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d[+-]\d\d:\d\d'
     ok(re.fullmatch(hora_com_fuso, r['inicio']) and re.fullmatch(hora_com_fuso, r['fim']) and r['inicio'] <= r['fim'],
        'inicio e fim com o fuso do PC, inicio <= fim')
-    ok(bool(r['maquina']) and r['ponte'] == '0.3.2', 'maquina preenchida, ponte 0.3.2')
+    ok(bool(r['maquina']) and r['ponte'] == '0.4.0', 'maquina preenchida, ponte 0.4.0')
 
     emp = {e['codigo']: e for e in p['empresas']}
     ok(sorted(emp) == [101, 102, 103, 104], 'as 4 empresas inventadas, pelo código')
@@ -397,7 +409,43 @@ def caso_pacote():
     ok(enc[(101, anos[1])]['zerado_em'] == f'{anos[1]}-12-31' and enc[(101, anos[1])]['lancados_depois'] == 12
        and enc[(102, anos[1])]['zerado_em'] is None and enc[(102, anos[1])]['lancados_depois'] is None,
        'a 101 zerou (com 12 lançamentos depois do zeramento); a 102, não (null, nunca 0)')
-    ok(p['faltou'] == [], 'faltou vazio (o Domínio de mentira tem os doze blocos)')
+    jor = p['jornadas']
+    ok(all(list(l) == CONTRATO_JORNADAS for l in jor), 'as jornadas: cada linha com os campos do contrato, nessa ordem')
+    ok(all(l[c] is None or type(l[c]) is int for l in jor for c in INTEIROS_JORNADAS)
+       and all(type(l[c]) is float for l in jor for c in ('horas_semana', 'horas_mes', 'salarios'))
+       and all(l['semana'] is None or re.fullmatch(r'[TCF-]{7}', l['semana']) for l in jor),
+       'tipos: as contagens e os códigos inteiros (ou null), as horas e a soma dos salários número, a semana em 7 letras')
+    por = {(l['codigo'], l['jornada']): l for l in jor}
+    ok(sorted(por, key=lambda k: (k[0], k[1] is None, k[1] or 0)) == [(101, 1), (101, 2), (101, 3), (104, None)],
+       'quatro grupos: três da 101 e o da 104, na ordem do grupo')
+    ok(len(jor) == 4, f'quatro linhas, uma por grupo (vieram {len(jor)})')
+    seis = por.get((101, 1), {})
+    ok(seis.get('semana') == 'TTTTTTF' and seis.get('min_semana') == 2640 and seis.get('horas_semana') == 44.0
+       and seis.get('empregados') == 2 + hoje().month % 3 and seis.get('afastados') == 1
+       and seis.get('salarios') == 2000.0 * (2 + hoje().month % 3),
+       'a 6x1 de 44 horas: seis dias trabalhados e a folga, 2.640 minutos, os empregados, o afastado e a soma dos salários')
+    ok(seis.get('tipo') == 2 and seis.get('tipo_escala') == 0 and seis.get('forma') == 1 and seis.get('controle') == 1
+       and seis.get('categoria') == 101 and seis.get('unidade') == 5 and seis.get('horas_mes') == 220.0
+       and seis.get('min_maior_dia') == 440 and seis.get('superior_teto') == 0,
+       'e o tipo, a escala, a forma, o controle, a categoria, a unidade e as horas do mês com os valores da fonte (não null)')
+    cinco = por.get((101, 2), {})
+    ok(cinco.get('semana') == 'TTTTTCF' and cinco.get('compensa_sabado') == 1 and cinco.get('superior') == 1
+       and cinco.get('superior_teto') == 1 and cinco.get('salarios') == 25000.0 and cinco.get('min_maior_dia') == 528,
+       'a 5x2 com o sábado compensado: o C no sábado, o compensa_sabado e o superior completo acima do salário do art. 8º')
+    doze = por.get((101, 3), {})
+    ok(doze.get('semana') is None and doze.get('tipo_escala') == 1 and doze.get('ciclo_dias') == 2
+       and doze.get('ciclo_trabalho') == 1 and doze.get('min_semana') == 2520 and doze.get('unidade') == 1
+       and doze.get('salarios') == 9.75,
+       'a 12x36: a semana null, o ciclo de 2 dias com 1 trabalhado, a média da semana e o horista (a hora na soma)')
+    sem = por.get((104, None), {})
+    ok(all(sem.get(c) is None for c in ('tipo', 'tipo_escala', 'semana', 'min_semana', 'min_maior_dia'))
+       and sem.get('empregados') == 2,
+       'o grupo sem jornada no Domínio: a jornada e o que vem dela null, com os empregados')
+    ativos = {l['codigo']: l['funcionarios_ativos'] for l in p['mensal'] if l['competencia'] == comps[-1]}
+    ok(all(sum(l['empregados'] for l in jor if l['codigo'] == c) == ativos[c] for c in (101, 104)),
+       'a soma dos empregados das jornadas bate com os funcionários ativos do mês de hoje (a 101 e a 104)')
+    ok('as jornadas de 2 empresa(s) (4 grupo(s)' in out, 'o resumo da tela diz as jornadas')
+    ok(p['faltou'] == [], 'faltou vazio (o Domínio de mentira tem os treze blocos)')
     ok('4 empresa(s)' in out and '12 linha(s)' in out, 'mostra o resumo na tela')
     ok(pendentes(pasta) == [], '--sem-enviar não deixa nada em pendentes')
 
@@ -408,6 +456,8 @@ def caso_pacote():
        'o cliente e o fornecedor que o faturamento e as compras de mentira devolvem também não')
     ok('usuario' not in texto and 'nome_conta' not in texto and 'nome_banco' not in texto and 'SOCIO' not in texto and 'CC 12345' not in texto,
        'nem o usuário que lançou, o nome da conta (com o sócio) e o do banco (com a conta corrente) que a versão 3 de mentira devolve')
+    ok('000.000.000-00' not in texto and not any('nome' in l or 'cpf' in l for l in p['jornadas']),
+       'nem o nome e o CPF da pessoa que as jornadas de mentira devolvem')
     from ponte.fonte_falsa import FonteFalsa
     from ponte import pacote
 
@@ -423,6 +473,50 @@ def caso_pacote():
     t2 = json.dumps(pc, ensure_ascii=False)
     ok('cpf_do_socio' not in t2 and 'SENHA_ERP' not in t2 and 'nome_do_cliente_da_nota' not in t2 and 'CONSUMIDOR' not in t2,
        'colunas a mais em empresas e no fiscal também ficam de fora')
+
+    # as jornadas: a semana fora do formato, o grupo sem empregado, o dia do ano sem o salário do art. 8º
+    passados = []
+
+    class Estranha(FonteFalsa):
+        def jornadas(self, hoje, teto):
+            passados.append((hoje, teto))
+            linhas = super().jornadas(hoje, teto)
+            linhas[0] = dict(linhas[0], semana='SEG-SEX')            # o que a consulta não deveria mandar
+            linhas[1] = dict(linhas[1], semana='tttttcf')            # minúscula: vale
+            linhas.append(dict(linhas[2], jornada=9, empregados=0))  # grupo vazio
+            return linhas
+    reg = Anotador()
+    dia = datetime.date(2026, 11, 9)
+    pc = pacote.montar(Estranha(), 1, reg, dados_ate=dia)
+    jor = {(l['codigo'], l['jornada']): l for l in pc['jornadas']}
+    ok(jor[(101, 1)]['semana'] is None and jor[(101, 2)]['semana'] == 'TTTTTCF',
+       'a semana fora do formato vira null (e a minúscula vale, em maiúscula)')
+    ok((101, 9) not in jor and any('sem empregado' in l for l in reg.linhas), 'o grupo sem empregado não vai (e o log diz)')
+    from decimal import Decimal
+    from ponte.fonte import TETO_ART8
+    ok(passados == [(dia, Decimal('21188.88'))], 'a fonte recebe o dia da rodada e o salário do art. 8º de 2026 (21.188,88)')
+    passados.clear()
+    reg = Anotador()
+    ultimo = max(TETO_ART8)
+    sem_valor = ultimo + 5                      # um ano que ainda não está na tabela (com o valor de cada ano novo, anda junto)
+    pacote.montar(Estranha(), 1, reg, dados_ate=datetime.date(sem_valor, 1, 5))
+    ok(passados and passados[0][1] == TETO_ART8[ultimo]
+       and any('art. 8' in l and str(sem_valor) in l and f'usei o de {ultimo}' in l for l in reg.linhas),
+       f'o ano sem o valor ({sem_valor}) usa o do mais recente ({ultimo}) e avisa no log')
+
+    # a chave do grupo: na mesma empresa e jornada, cada campo do grupo diferente faz outro grupo (nenhum é perdido)
+    class Grupos(FonteFalsa):
+        def jornadas(self, hoje, teto):
+            linhas = super().jornadas(hoje, teto)
+            base = linhas[0]                          # a 6x1 da 101
+            mudam = {'horas_semana': 42, 'horas_mes': 210, 'forma': 2, 'controle': 2, 'categoria': 103, 'unidade': 1}
+            return linhas + [dict(base, empregados=1, **{c: v}) for c, v in mudam.items()]
+    pc = pacote.montar(Grupos(), 1, Anotador(), dados_ate=dia)
+    da_6x1 = [l for l in pc['jornadas'] if (l['codigo'], l['jornada']) == (101, 1)]
+    ok(len(pc['jornadas']) == 10 and len(da_6x1) == 7 and not any(f['bloco'] == 'jornadas' for f in pc['faltou'])
+       and sum(l['empregados'] for l in da_6x1) == 2 + dia.month % 3 + 6,
+       'a mesma jornada com as horas, a forma, o controle, a categoria ou a unidade diferentes: um grupo a mais cada '
+       '(7 da 6x1), sem tirar o bloco')
 
 
 # ---------------------------------------------------------------- 3: consultas a conferir, erro, sem contar
@@ -489,9 +583,11 @@ def caso_a_conferir(sis):
     pc = pacote.montar(fonte, 2, reg, dados_ate=ate)
     fonte.fechar()
     ok(pc['faltou'] == [{'bloco': b, 'motivo': 'consulta a conferir'} for b in ('fiscal', 'faturamento', 'compras', 'folha_valores',
-                                                                                'origens', 'cruzamentos', 'saldos', 'andamento', 'encerramento')],
-       'o fiscal "A CONFERIR" vai pro faltou (e os blocos das versões 2 e 3, que este caso deixa "A CONFERIR")')
-    ok(pc['andamento'] == [] and pc['encerramento'] == [], 'o andamento e o encerramento a conferir saem como listas vazias')
+                                                                                'origens', 'cruzamentos', 'saldos', 'andamento', 'encerramento',
+                                                                                'jornadas')],
+       'o fiscal "A CONFERIR" vai pro faltou (e os blocos das versões 2, 3 e 4, que este caso deixa "A CONFERIR")')
+    ok(pc['andamento'] == [] and pc['encerramento'] == [] and pc['jornadas'] == [],
+       'o andamento, o encerramento e as jornadas a conferir saem como listas vazias')
     ok(all(l['receita_bruta'] is None and l['compras'] is None and l['salarios'] is None for l in pc['mensal']),
        'e os campos dos blocos a conferir saem null')
     ok(all(l['notas_saida'] is None and l['valor_entradas'] is None for l in pc['mensal']), 'e os campos dele saem null')
@@ -519,9 +615,11 @@ def caso_a_conferir(sis):
     respostas2 = dict(respostas)
     respostas2['folha'] = (['codigo', 'funcionarios_ativos'], [(1, 1), (1, 1), (1, 1)])   # uma linha por funcionário
     respostas2['contabil'] = RuntimeError(f'[SQL Anywhere] erro de teste na conexão PWD={SENHA};UID=EXTERNO')
+    respostas2['jornadas'] = RuntimeError('[SQL Anywhere] erro de teste nas jornadas')
     con = ConexaoFalsa(respostas2)
     fonte = FonteDominio(CONEXAO, consultas(p / 'c3', empresas='/*empresas*/ SELECT 1', folha='/*folha*/ SELECT 1',
-                                             contabil='/*contabil*/ SELECT 1'), conectar=lambda s: con)
+                                             contabil='/*contabil*/ SELECT 1', jornadas='/*jornadas*/ SELECT 1'),
+                         conectar=lambda s: con)
     reg = Anotador(segredos=[CONEXAO, SENHA])
     pc = pacote.montar(fonte, 2, reg, dados_ate=ate)
     motivos = {f['bloco']: f['motivo'] for f in pc['faltou']}
@@ -530,6 +628,39 @@ def caso_a_conferir(sis):
     ok(all(l['funcionarios_ativos'] is None and l['lancamentos'] is None for l in pc['mensal']), 'os dois saem null inteiros')
     ok(not any(SENHA in l for l in reg.linhas) and any('erro na consulta' in l or 'deu erro' in l for l in reg.linhas),
        'o erro vai pro log sem a senha que vinha na mensagem do driver')
+    ok(motivos.get('jornadas') == 'erro na consulta' and pc['jornadas'] == [],
+       'as jornadas com erro no banco: a lista vazia e o bloco no faltou')
+    from decimal import Decimal
+    jornadas_prm = [prm for b, prm in con.executados if b == 'jornadas']
+    ok(jornadas_prm == [(ate, Decimal('21188.88'))], 'jornadas.sql recebe pelo ? o dia da rodada e o salário do art. 8º do ano')
+
+    # as jornadas que não vieram contadas: duas linhas com o mesmo grupo tiram o bloco inteiro
+    cols = ['codigo'] + CONTRATO_JORNADAS[1:]
+    linha = (1, 7, 2, 0, 'TTTTTTF', 2640, 440, None, None, Decimal('44.00'), Decimal('220.00'), 1, 1, 101, 5, 1, 0, 0, 0, 0,
+             Decimal('1621.00'))
+    respostas3 = dict(respostas, jornadas=(cols + ['nome'], [linha + ('FULANO (INVENTADO)',), linha + ('BELTRANO (INVENTADO)',)]))
+    con = ConexaoFalsa(respostas3)
+    fonte = FonteDominio(CONEXAO, consultas(p / 'c4', empresas='/*empresas*/ SELECT 1', jornadas='/*jornadas*/ SELECT 1'),
+                         conectar=lambda s: con)
+    pc = pacote.montar(fonte, 1, Anotador(), dados_ate=ate)
+    fonte.fechar()
+    motivos = {f['bloco']: f['motivo'] for f in pc['faltou']}
+    ok(motivos.get('jornadas', '').startswith('mais de uma linha por grupo') and pc['jornadas'] == []
+       and 'FULANO' not in json.dumps(pc, ensure_ascii=False),
+       'jornadas com duas linhas do mesmo grupo (uma por pessoa) ficam de fora inteiras, e o nome não sai')
+    respostas3['jornadas'] = (cols + ['cpf'], [linha + ('000.000.000-00',)])
+    con = ConexaoFalsa(respostas3)
+    fonte = FonteDominio(CONEXAO, consultas(p / 'c5', empresas='/*empresas*/ SELECT 1', jornadas='/*jornadas*/ SELECT 1'),
+                         conectar=lambda s: con)
+    pc = pacote.montar(fonte, 1, Anotador(), dados_ate=ate)
+    fonte.fechar()
+    esperada = {'codigo': 1, 'jornada': 7, 'tipo': 2, 'tipo_escala': 0, 'semana': 'TTTTTTF', 'min_semana': 2640,
+                'min_maior_dia': 440, 'ciclo_dias': None, 'ciclo_trabalho': None, 'horas_semana': 44.0, 'horas_mes': 220.0,
+                'forma': 1, 'controle': 1, 'categoria': 101, 'unidade': 5, 'empregados': 1, 'afastados': 0,
+                'compensa_sabado': 0, 'superior': 0, 'superior_teto': 0, 'salarios': 1621.0}
+    ok(len(pc['jornadas']) == 1 and list(pc['jornadas'][0]) == CONTRATO_JORNADAS and pc['jornadas'][0] == esperada
+       and '000.000.000-00' not in json.dumps(pc),
+       'pelo banco de mentira, a linha do grupo entra inteira, campo a campo, e o CPF que veio junto fica no PC')
 
     pasta = pasta_nova()
     escrever_config(pasta, url=sis.url)
@@ -543,15 +674,17 @@ def caso_a_conferir(sis):
 
     # as consultas do repositório: prontas, cada uma com o comentário no começo, as colunas do contrato (AS) e os
     # parâmetros que a fonte manda (empresas, nenhum; as outras, o primeiro e o último dia do mês, uma vez cada)
-    from ponte.fonte import CAMPOS_ANDAMENTO, CAMPOS_EMPRESA, CAMPOS_ENCERRAMENTO, CAMPOS_MES
+    from ponte.fonte import CAMPOS_ANDAMENTO, CAMPOS_EMPRESA, CAMPOS_ENCERRAMENTO, CAMPOS_JORNADAS, CAMPOS_MES
     from ponte.fonte_dominio import PASTA_CONSULTAS, a_conferir
     for bloco, campos in ((('empresas', CAMPOS_EMPRESA),) + tuple((b, ('codigo',) + c) for b, c in CAMPOS_MES.items())
-                          + (('andamento', ('codigo',) + CAMPOS_ANDAMENTO), ('encerramento', ('codigo',) + CAMPOS_ENCERRAMENTO))):
+                          + (('andamento', ('codigo',) + CAMPOS_ANDAMENTO), ('encerramento', ('codigo',) + CAMPOS_ENCERRAMENTO),
+                             ('jornadas', ('codigo',) + CAMPOS_JORNADAS))):
         texto = (PASTA_CONSULTAS / f'{bloco}.sql').read_text(encoding='utf-8-sig')
         codigo = '\n'.join(l.split('--', 1)[0] for l in texto.splitlines())
+        comentario = '\n'.join(l for l in texto.splitlines() if l.lstrip().startswith('--'))
         faltam = [c for c in campos if not re.search(rf'\bAS\s+{c}\b', codigo, re.I)]
         ok(not a_conferir(texto) and texto.lstrip().startswith('--') and not faltam
-           and codigo.count('?') == (0 if bloco == 'empresas' else 2),
+           and codigo.count('?') == (0 if bloco == 'empresas' else 2) and '?' not in comentario,
            f'{bloco}.sql pronta: o comentário no começo, as colunas do contrato e {"nenhum parâmetro" if bloco == "empresas" else "os 2 parâmetros"}'
            + (f' (faltam: {", ".join(faltam)})' if faltam else ''))
     # as das notas das empresas autorizadas (ponte/notas/fonte.py): o código da empresa e o período, e as colunas que
@@ -594,7 +727,7 @@ def caso_envio(sis):
     ok(cab.get('apikey') == CHAVE_PUBLICA and cab.get('authorization') == f'Bearer {CHAVE_PUBLICA}',
        'apikey e Authorization: Bearer = a chave pública')
     ok(cab.get('content-type', '').startswith('application/json'), 'Content-Type: application/json')
-    ok(sis.recebidos[-1]['corpo']['versao'] == 3 and len(sis.recebidos[-1]['corpo']['empresas']) == 4, 'o corpo é o pacote')
+    ok(sis.recebidos[-1]['corpo']['versao'] == 4 and len(sis.recebidos[-1]['corpo']['empresas']) == 4, 'o corpo é o pacote')
 
     titulo('4. (continuação)')
     sis.zerar(401)

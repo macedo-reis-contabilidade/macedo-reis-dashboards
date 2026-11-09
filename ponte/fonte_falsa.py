@@ -11,6 +11,9 @@ Desde a versão 3 (05/11/2026), o andamento das contabilidades: a 101 com dois b
 banco há anos, com o caixa negativo, uma transitória com saldo e o pró-labore fora da contabilidade; a 103 só na foto,
 sem nada. Os campos a mais que uma consulta mal escrita traria (o usuário que lançou, o nome da conta e o do banco) têm
 que ficar no PC.
+Desde a versão 4 (09/11/2026), as jornadas (a foto do dia): a 101 com uma 6x1 de 44 horas, uma 5x2 com o sábado
+compensado e uma 12x36 de horista (os três grupos somam os funcionários ativos dela no mês de hoje), e a 104 com um
+grupo sem jornada no Domínio. A 6x1 traz também o nome e o CPF de uma pessoa, que não podem sair do PC.
 """
 import calendar
 import datetime
@@ -194,4 +197,34 @@ class FonteFalsa(Fonte):
              'lancamentos_do_ano': 4300},
             {'codigo': 102, 'zerado_em': None, 'zeramentos': 0, 'zerado_incluido_em': None, 'lancados_depois': None,
              'lancamentos_do_ano': 420},
+        ]
+
+    # desde a versão 4 do pacote (09/11/2026): a jornada dos funcionários, por empresa e grupo
+    def jornadas(self, hoje, teto):
+        m = hoje.month
+        return [
+            # 101: a 6x1 de 44 horas (folga no domingo), mensalistas
+            {'codigo': 101, 'jornada': 1, 'tipo': 2, 'tipo_escala': 0, 'semana': 'TTTTTTF', 'min_semana': 2640,
+             'min_maior_dia': 440, 'ciclo_dias': None, 'ciclo_trabalho': None, 'horas_semana': Decimal('44.00'),
+             'horas_mes': Decimal('220.00'), 'forma': 1, 'controle': 1, 'categoria': 101, 'unidade': 5,
+             'empregados': 2 + m % 3, 'afastados': 1, 'compensa_sabado': 0, 'superior': 0, 'superior_teto': 0,
+             'salarios': Decimal('2000.00') * (2 + m % 3),
+             # o que uma consulta mal escrita devolveria — não pode sair deste PC
+             'nome': 'FULANO DE TAL (INVENTADO)', 'cpf': '000.000.000-00'},
+            # 101: a 5x2 com o sábado compensado (8h48 de segunda a sexta)
+            {'codigo': 101, 'jornada': 2, 'tipo': 1, 'tipo_escala': 0, 'semana': 'TTTTTCF', 'min_semana': 2640,
+             'min_maior_dia': 528, 'ciclo_dias': None, 'ciclo_trabalho': None, 'horas_semana': 44,
+             'horas_mes': 220, 'forma': 1, 'controle': 1, 'categoria': 101, 'unidade': 5, 'empregados': 1,
+             'afastados': 0, 'compensa_sabado': 1, 'superior': 1, 'superior_teto': 1, 'salarios': Decimal('25000.00')},
+            # 101: a 12x36 de um horista (o ciclo de 2 dias: 12 horas e 36 de folga)
+            {'codigo': 101, 'jornada': 3, 'tipo': 4, 'tipo_escala': 1, 'semana': None, 'min_semana': 2520,
+             'min_maior_dia': 720, 'ciclo_dias': 2, 'ciclo_trabalho': 1, 'horas_semana': Decimal('36.00'),
+             'horas_mes': Decimal('180.00'), 'forma': 1, 'controle': 1, 'categoria': 101, 'unidade': 1,
+             'empregados': 1, 'afastados': 0, 'compensa_sabado': 0, 'superior': 0, 'superior_teto': 0,
+             'salarios': Decimal('9.75')},
+            # 104: dois empregados sem jornada no Domínio
+            {'codigo': 104, 'jornada': None, 'tipo': None, 'tipo_escala': None, 'semana': None, 'min_semana': None,
+             'min_maior_dia': None, 'ciclo_dias': None, 'ciclo_trabalho': None, 'horas_semana': 44, 'horas_mes': 220,
+             'forma': 1, 'controle': 1, 'categoria': 101, 'unidade': 5, 'empregados': 2, 'afastados': 0,
+             'compensa_sabado': 0, 'superior': 0, 'superior_teto': 0, 'salarios': 4600},
         ]
