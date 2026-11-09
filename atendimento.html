@@ -86,6 +86,19 @@
     .at-modos button { background:none; border:1px solid var(--line); color:var(--text-muted); border-radius:999px; padding:3px 11px; font:inherit; font-size:12.5px; cursor:pointer; }
     .at-modos button[aria-pressed="true"] { color:var(--text); border-color:var(--brand-light); background:rgba(91,130,166,.16); }
     .at-modos button:disabled { opacity:.45; cursor:not-allowed; }
+    .at-clipe { border:1px solid var(--line); background:var(--surface-2); color:var(--text); border-radius:10px; padding:8px 10px; cursor:pointer; font:inherit; line-height:1; }
+    .at-clipe:hover { border-color:var(--accent, #5B82A6); }
+    .at-caixa.nota .at-clipe { display:none; }
+    .at-escolhidos { flex-basis:100%; display:flex; flex-wrap:wrap; gap:6px; margin:0; padding:0; list-style:none; }
+    .at-escolhidos:empty { display:none; }
+    .at-escolhidos li { display:flex; align-items:center; gap:6px; font-size:12.5px; padding:4px 8px; border-radius:8px; background:var(--surface-2); border:1px solid var(--line); }
+    .at-escolhidos button { border:0; background:none; color:var(--text-muted); cursor:pointer; font-size:14px; padding:0 2px; }
+    .at-anexos { display:flex; flex-direction:column; gap:6px; margin:4px 0 2px; }
+    .at-anexo { display:flex; align-items:center; gap:8px; text-align:left; border:1px solid var(--line); background:rgba(0,0,0,.08); color:inherit; border-radius:10px; padding:6px 10px; cursor:pointer; font:inherit; font-size:13px; max-width:100%; }
+    .at-anexo:hover { border-color:var(--accent, #5B82A6); }
+    .at-anexo span { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    .at-anexo small { color:var(--text-muted); flex-shrink:0; }
+    .at-anexo-img { max-width:220px; max-height:160px; border-radius:8px; display:block; }
     .at-caixa.nota textarea { background:rgba(227,179,65,.06); border-color:rgba(227,179,65,.45); }
     .at-caixa.nota .at-modos button[aria-pressed="true"] { border-color:rgba(227,179,65,.7); background:rgba(227,179,65,.14); }
     .at-nota { margin:0; padding:12px 16px 14px; border-top:1px solid var(--line); color:var(--text-muted); font-size:13.5px; }
@@ -194,6 +207,9 @@
                 <button type="button" id="mResposta" aria-pressed="true">Resposta pro cliente</button>
                 <button type="button" id="mNota" aria-pressed="false">Nota interna</button>
               </div>
+              <ul class="at-escolhidos" id="cEscolhidos" aria-label="Arquivos pra mandar"></ul>
+              <button type="button" class="at-clipe" id="cClipe" aria-label="Anexar arquivo" title="Anexar arquivo (até 5, 25 MB cada)">📎</button>
+              <input type="file" id="cArquivo" multiple hidden>
               <textarea id="cTexto" class="input" rows="2" maxlength="4096" placeholder="Escreva a resposta… (Shift+Enter quebra a linha)" aria-label="Resposta pro cliente"></textarea>
               <button class="btn btn-primary" type="submit" id="cEnviar">Enviar</button>
             </form>
@@ -221,6 +237,9 @@
     </div>
     <div class="at-sim-tela" id="simTela" aria-live="polite" aria-label="O que o cliente vê"></div>
     <form id="simForm">
+      <ul class="at-escolhidos" id="simEscolhidos" aria-label="Arquivos do cliente pra mandar"></ul>
+      <button type="button" class="at-clipe" id="simClipe" aria-label="Anexar arquivo como o cliente" title="Anexar arquivo como o cliente (foto, PDF, áudio)">📎</button>
+      <input type="file" id="simArquivo" multiple hidden>
       <textarea id="simTexto" class="input" rows="2" maxlength="4096" placeholder="A mensagem do cliente…" aria-label="Mensagem do cliente"></textarea>
       <button class="btn btn-primary btn-sm" type="submit" id="simEnviar">Enviar como cliente</button>
     </form>
@@ -231,7 +250,8 @@
     import { supabase, getCurrentUser, signOut } from './assets/js/supabase.js';
     import { SETORES, SEM_SETOR, ATENDENTES, MAX_TEXTO, nomeDe, nomeDoSetor, setoresDe, formatarTelefone, normalizarTelefone,
       tituloDaConversa, situacaoDaConversa, ehPraMim, podeAssumir, podeResponder, podeDevolver, podeTransferir, podeEncerrar,
-      podeReabrir, podeNotar, contaComoUltima, porQueNaoResponde, mudancaDe, textoDoEvento, linhaDoTempo, previa, esperaResposta, filtrar, contagens } from './assets/js/atendimento.js';
+      podeReabrir, podeNotar, contaComoUltima, porQueNaoResponde, mudancaDe, textoDoEvento, linhaDoTempo, previa, esperaResposta, filtrar, contagens,
+      caminhoDoAnexo, conferirAnexos, ehImagem, tamanhoDoAnexo } from './assets/js/atendimento.js';
     import { BIPE, horaCurta, horaDaLista, rotuloDoDia, linkificar, esperaParaReligar } from './assets/js/chat-equipe.js';
     import { buscarEmpresas } from './assets/js/tarefas-acoes.js';
 
@@ -255,6 +275,8 @@
     let painel = null;            // a faixa aberta na conversa: 'transferir' | 'vincular' | null
     let modo = 'resposta';       // a caixa que a pessoa escolheu: 'resposta' (pro cliente) ou 'nota' (a nota interna, pra equipe)
     let modoAgora = 'resposta';  // a que vale: sem poder responder, é sempre a nota
+    let escolhidos = [], simEscolhidos = [];   // os arquivos escolhidos pra mandar (na conversa e no simulador)
+    const links = new Map();                    // o link assinado das miniaturas, por caminho (vale 1 hora)
     let pendente = null;          // a resposta que não foi: { id, texto } (o "Tentar de novo" manda o mesmo id)
     let aoVivo = false;
 
@@ -554,12 +576,74 @@
         if (x.tipo === 'evento') { h.push('<li class="at-ev">' + esc(textoDoEvento(x.e)) + ' · ' + esc(horaCurta(x.e.em)) + '</li>'); return; }
         const m = x.m, quem = m.direcao === 'saida' ? nomeDe(m.autor) : m.direcao === 'interna' ? 'Nota de ' + nomeDe(m.autor) : '';
         const st = m.status === 'erro' ? '<span class="at-msg-erro"> · não foi' + (m.erro ? ': ' + esc(m.erro) : '') + '</span>' : m.status === 'enviando' ? ' · enviando…' : m.status === 'lida' ? ' · lida' : m.status === 'entregue' ? ' · entregue' : '';
-        const corpo = m.texto ? linkificar(esc(m.texto)) : esc(previa(m));
+        const anx = htmlDosAnexos(m);
+        const corpo = (anx ? anx : '') + (m.texto ? linkificar(esc(m.texto)) : anx ? '' : esc(previa(m)));
         h.push('<li class="at-msg ' + esc(m.direcao) + '">' + corpo + '<span class="at-msg-pe">' + (quem ? esc(quem) + ' · ' : '') + esc(horaCurta(m.criada_em)) + st + '</span></li>');
       });
       el.innerHTML = h.length ? h.join('') : '<li class="at-ev">Nenhuma mensagem ainda.</li>';
       if (rolar || noFim) el.scrollTop = el.scrollHeight;
+      miniaturas(el);
     }
+
+    // ---------- os arquivos (09/11/2026): a pasta privada "atendimento", em <id da mensagem>/<nome> ----------
+    function htmlDosAnexos(m) {
+      const l = Array.isArray(m && m.anexos) ? m.anexos : [];
+      if (!l.length) return '';
+      return '<div class="at-anexos">' + l.map(a => '<button type="button" class="at-anexo" data-caminho="' + esc(a.caminho) + '" data-nome="' + esc(a.nome) + '"'
+        + ' title="Abrir ' + esc(a.nome) + '">' + (ehImagem(a) ? '<img class="at-anexo-img" alt="' + esc(a.nome) + '" data-mini="' + esc(a.caminho) + '">' : '📄')
+        + '<span>' + esc(a.nome) + '</span><small>' + esc(tamanhoDoAnexo(a.tamanho)) + '</small></button>').join('') + '</div>';
+    }
+    async function miniaturas(el) {
+      const imgs = [...el.querySelectorAll('img[data-mini]')];
+      const faltam = [...new Set(imgs.map(i => i.dataset.mini).filter(c => !links.has(c)))];
+      if (faltam.length) {
+        try {
+          const { data } = await supabase.storage.from('atendimento').createSignedUrls(faltam, 3600);
+          (data || []).forEach(d => { if (d && d.signedUrl) links.set(d.path, d.signedUrl); });
+        } catch (e) { /* fica o nome */ }
+      }
+      imgs.forEach(i => { const u = links.get(i.dataset.mini); if (u && /^(https:|data:image\/)/.test(u)) i.src = u; });
+    }
+    async function abrirAnexo(caminho, nome) {
+      const janela = window.open('', '_blank');
+      try {
+        const { data, error } = await supabase.storage.from('atendimento').createSignedUrl(caminho, 300);
+        if (error || !data || !/^https:/.test(String(data.signedUrl || ''))) throw error || new Error('sem link');
+        if (janela) { janela.opener = null; janela.location.href = data.signedUrl; } else window.location.href = data.signedUrl;
+      } catch (e) {
+        if (janela) janela.close();
+        alert('Não consegui abrir ' + nome + ' agora. Tente de novo em instantes.');
+      }
+    }
+    document.addEventListener('click', e => {
+      const b = e.target.closest && e.target.closest('.at-anexo');
+      if (b && b.dataset.caminho) { e.preventDefault(); abrirAnexo(b.dataset.caminho, b.dataset.nome || 'o arquivo'); }
+    });
+    function pintarEscolhidos(lista, el, erroEl) {
+      el.innerHTML = lista.map((f, i) => '<li>' + esc(f.name) + ' <small>' + esc(tamanhoDoAnexo(f.size)) + '</small><button type="button" data-tirar="' + i + '" aria-label="Tirar ' + esc(f.name) + '">&times;</button></li>').join('');
+      el.querySelectorAll('[data-tirar]').forEach(b => b.addEventListener('click', () => { lista.splice(Number(b.dataset.tirar), 1); pintarEscolhidos(lista, el, erroEl); }));
+    }
+    function escolher(files, lista, el, erroEl) {
+      const { ok, recusados } = conferirAnexos(files, lista.length);
+      lista.push(...ok);
+      erroEl.textContent = recusados.length ? 'Ficou de fora: ' + recusados.map(r => r.nome + ' (' + r.motivo + ')').join(', ') + '.' : '';
+      pintarEscolhidos(lista, el, erroEl);
+    }
+    // sobe os escolhidos na pasta da mensagem; o que já subiu (tentar de novo) não sobe outra vez
+    async function subir(id, lista) {
+      const anexos = [];
+      for (let i = 0; i < lista.length; i++) {
+        const f = lista[i], caminho = caminhoDoAnexo(id, f.name, i);
+        const { error } = await supabase.storage.from('atendimento').upload(caminho, f, { contentType: f.type || 'application/octet-stream', upsert: false, cacheControl: '3600' });
+        if (error && !/exist/i.test(String(error.message || ''))) return { erro: 'Não consegui mandar ' + f.name + '. Confira a internet e tente de novo.' };
+        anexos.push({ caminho, nome: f.name, tamanho: f.size, tipo: f.type || null });
+      }
+      return { anexos };
+    }
+    $('cClipe').addEventListener('click', () => $('cArquivo').click());
+    $('cArquivo').addEventListener('change', () => { escolher($('cArquivo').files, escolhidos, $('cEscolhidos'), $('cErro')); $('cArquivo').value = ''; });
+    $('simClipe').addEventListener('click', () => $('simArquivo').click());
+    $('simArquivo').addEventListener('change', () => { escolher($('simArquivo').files, simEscolhidos, $('simEscolhidos'), $('simErro')); $('simArquivo').value = ''; });
     // a caixa tem dois modos: a resposta pro cliente (só quem está com a conversa, dentro das 24 horas) e a nota interna
     // pra equipe (qualquer um, em qualquer conversa). Sem poder responder, ela fica na nota
     function pintarCaixa(c) {
@@ -602,14 +686,23 @@
       const c = conversa(atual);
       const texto = repetir ? repetir.texto : $('cTexto').value.trim();
       const nota = repetir ? repetir.nota : modoAgora === 'nota';
-      if (!c || !texto) return;
+      const arquivos = nota ? [] : (repetir ? repetir.arquivos || [] : [...escolhidos]);
+      if (!c || (!texto && !arquivos.length)) return;
       if ([...texto].length > MAX_TEXTO) { $('cErro').textContent = nota ? 'A nota passou de 4.096 letras.' : 'A mensagem passou de 4.096 letras, o limite do WhatsApp.'; return; }
       const id = repetir ? repetir.id : (crypto.randomUUID ? crypto.randomUUID() : String(Date.now()));
       $('cEnviar').disabled = true; $('cErro').textContent = '';
-      const r = await chamarWhatsapp({ acao: nota ? 'nota' : 'responder', conversa_id: c.id, texto, id });
+      let anexos = [];
+      if (arquivos.length) {
+        $('cEnviar').textContent = 'Mandando…';
+        const s = await subir(id, arquivos);
+        pintarModo();
+        if (s.erro) { $('cEnviar').disabled = false; pendente = { id, texto, nota, arquivos }; $('cErro').innerHTML = esc(s.erro) + ' <button class="btn btn-ghost btn-sm" id="cDeNovo">Tentar de novo</button>'; $('cDeNovo').addEventListener('click', () => enviar(pendente)); return; }
+        anexos = s.anexos;
+      }
+      const r = await chamarWhatsapp({ acao: nota ? 'nota' : 'responder', conversa_id: c.id, texto, id, anexos });
       $('cEnviar').disabled = false;
       if (r.erro) {
-        pendente = { id, texto, nota };
+        pendente = { id, texto, nota, arquivos };
         $('cErro').innerHTML = esc((nota ? 'A nota não foi: ' : 'A mensagem não foi: ') + r.erro) + ' <button class="btn btn-ghost btn-sm" id="cDeNovo">Tentar de novo</button>';
         $('cDeNovo').addEventListener('click', () => enviar(pendente));
         if (!repetir) $('cTexto').value = texto;
@@ -617,8 +710,9 @@
       }
       pendente = null;
       if (!repetir) $('cTexto').value = '';
+      if (arquivos.length) { escolhidos = []; pintarEscolhidos(escolhidos, $('cEscolhidos'), $('cErro')); }
       if (!mensagens.some(m => m.id === id)) {
-        const m = { id, conversa_id: c.id, direcao: nota ? 'interna' : 'saida', autor: eu, tipo: 'texto', texto, status: nota ? null : 'enviada', criada_em: new Date().toISOString() };
+        const m = { id, conversa_id: c.id, direcao: nota ? 'interna' : 'saida', autor: eu, tipo: anexos.length ? (ehImagem(anexos[0]) ? 'imagem' : 'documento') : 'texto', texto: texto || null, anexos, status: nota ? null : 'enviada', criada_em: new Date().toISOString() };
         mensagens.push(m); guardarUltima(m);
       }
       if (!nota) c.ultima_em = new Date().toISOString();
@@ -729,9 +823,10 @@
       simMsgs = (data || []).filter(m => m.direcao !== 'interna').sort((a, b) => tempo(a.criada_em) - tempo(b.criada_em));
       tela.innerHTML = simMsgs.length ? simMsgs.map(m => '<div class="at-msg ' + (m.direcao === 'entrada' ? 'cli' : 'esc') + '">'
         + (m.direcao === 'saida' ? '<span class="at-sim-quem">' + esc('Macedo & Reis · ' + nomeDe(m.autor)) + '</span>' : '')
-        + linkificar(esc(m.texto || previa(m))) + '<span class="at-msg-pe">' + esc(horaCurta(m.criada_em)) + '</span></div>').join('')
+        + htmlDosAnexos(m) + (m.texto ? linkificar(esc(m.texto)) : (m.anexos || []).length ? '' : esc(previa(m))) + '<span class="at-msg-pe">' + esc(horaCurta(m.criada_em)) + '</span></div>').join('')
         : '<p class="at-sim-vazio">Nenhuma mensagem ainda.</p>';
       tela.scrollTop = tela.scrollHeight;
+      miniaturas(tela);
     }
     function abrirSimulador() {
       $('simulador').hidden = false; document.body.classList.add('at-com-sim'); $('btnSimulador').setAttribute('aria-expanded', 'true'); $('btnSimulador').textContent = 'Fechar o simulador';
@@ -749,12 +844,20 @@
       const texto = $('simTexto').value.trim(), tel = simTelefone();
       $('simErro').textContent = '';
       if (!tel) { $('simErro').textContent = 'Telefone inválido: use o DDD e o número.'; return; }
-      if (!texto) return;
+      if (!texto && !simEscolhidos.length) return;
       $('simEnviar').disabled = true;
-      const r = await chamarWhatsapp({ acao: 'simular', telefone: tel, nome: simNome() || null, texto, setor: $('simSetor').value || null });
+      const id = crypto.randomUUID ? crypto.randomUUID() : String(Date.now());
+      let anexos = [];
+      if (simEscolhidos.length) {
+        const s = await subir(id, simEscolhidos);
+        if (s.erro) { $('simEnviar').disabled = false; $('simErro').textContent = s.erro; return; }
+        anexos = s.anexos;
+      }
+      const r = await chamarWhatsapp({ acao: 'simular', telefone: tel, nome: simNome() || null, texto, setor: $('simSetor').value || null, id, anexos });
       $('simEnviar').disabled = false;
       if (r.erro) { $('simErro').textContent = r.erro; return; }
       $('simTexto').value = '';
+      simEscolhidos = []; pintarEscolhidos(simEscolhidos, $('simEscolhidos'), $('simErro'));
       if (!conversa(r.data.conversa_id)) await recarregar(); else pintarSimulador();
       $('simTexto').focus();
     }

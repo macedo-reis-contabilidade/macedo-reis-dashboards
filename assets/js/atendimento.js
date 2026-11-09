@@ -215,3 +215,61 @@ export function contagens(lista, eu, filtro = 'meus') {
   ABAS.forEach(a => { n[a] = (lista || []).filter(c => naAba(c, a, eu, filtro)).length; });
   return n;
 }
+
+// ---------- os arquivos da conversa (09/11/2026) ----------
+// a pasta privada "atendimento" do Storage (a migração atendimento_pasta_arquivos, 08/11): só o e-mail do escritório lê e
+// envia, ninguém apaga, até 25 MB por arquivo, e o caminho começa pelo id da mensagem (um uuid, que a tela gera). O nome
+// de verdade vai em atend_mensagens.anexos ({ caminho, nome, tamanho, tipo }); a função whatsapp confere o caminho e que
+// o arquivo está na pasta (a mesma regra, copiada lá: tests/atendimento.test.mjs confere)
+export const MAX_ANEXOS = 5;
+export const MAX_ARQUIVO = 25 * 1024 * 1024;
+const semAcentoArq = s => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '');
+export function nomeDoAnexo(nome) {
+  const s = semAcentoArq(nome || 'arquivo').replace(/[\/\\]+/g, '_').replace(/[^A-Za-z0-9._ ()-]+/g, '_').replace(/\s+/g, ' ').trim();
+  const ponto = s.lastIndexOf('.');
+  const ext = ponto > 0 && s.length - ponto <= 12 ? s.slice(ponto) : '';
+  const base = (ext ? s.slice(0, ponto) : s).replace(/^[.\s]+/, '').slice(0, 100) || 'arquivo';
+  return base + ext;
+}
+export const caminhoDoAnexo = (mensagemId, nome, i = 0) => mensagemId + '/' + (i ? (i + 1) + '-' : '') + nomeDoAnexo(nome);
+// os escolhidos: até 25 MB cada e no máximo 5 por mensagem (com os que já estão esperando)
+export function conferirAnexos(novos, jaTem = 0) {
+  const ok = [], recusados = [];
+  [...(novos || [])].forEach(f => {
+    if (!f) return;
+    if (!(f.size > 0)) recusados.push({ nome: f.name, motivo: 'está vazio' });
+    else if (f.size > MAX_ARQUIVO) recusados.push({ nome: f.name, motivo: 'passa de 25 MB' });
+    else if (jaTem + ok.length >= MAX_ANEXOS) recusados.push({ nome: f.name, motivo: 'passa de 5 arquivos por mensagem' });
+    else ok.push(f);
+  });
+  return { ok, recusados };
+}
+// o tipo da mensagem pelo primeiro arquivo (o check do banco): sem arquivo, texto
+export function tipoDaMensagem(anexos) {
+  const t = String(((anexos || [])[0] || {}).tipo || '');
+  if (!(anexos || []).length) return 'texto';
+  return t.startsWith('image/') ? 'imagem' : t.startsWith('audio/') ? 'audio' : t.startsWith('video/') ? 'video' : 'documento';
+}
+export const ehImagem = a => /^image\/(png|jpe?g|gif|webp)$/i.test(String((a && a.tipo) || ''));
+export function tamanhoDoAnexo(n) {
+  const v = Number(n);
+  if (!Number.isFinite(v) || v < 0) return '';
+  if (v < 1024) return v + ' bytes';
+  if (v < 1024 * 1024) return Math.max(1, Math.round(v / 1024)) + ' KB';
+  return (v / 1024 / 1024).toLocaleString('pt-BR', { maximumFractionDigits: 1 }) + ' MB';
+}
+// o que a função aceita (a cópia dela tem de seguir igual): o caminho na pasta da mensagem, o nome, o tamanho e o tipo
+export function anexosValidos(lista, mensagemId) {
+  if (lista == null) return [];
+  if (!Array.isArray(lista) || lista.length > MAX_ANEXOS) return null;
+  const out = [];
+  for (const a of lista) {
+    if (!a || typeof a !== 'object') return null;
+    const caminho = String(a.caminho || ''), nome = String(a.nome || '').trim().slice(0, 200), tamanho = Number(a.tamanho), tipo = String(a.tipo || '').slice(0, 120);
+    if (!caminho.startsWith(mensagemId + '/') || !/^[A-Za-z0-9._ ()-]{1,140}$/.test(caminho.slice(mensagemId.length + 1))) return null;
+    if (!nome || !Number.isFinite(tamanho) || tamanho <= 0 || tamanho > MAX_ARQUIVO) return null;
+    if (tipo && !/^[a-z0-9.+-]+\/[a-z0-9.+-]+$/i.test(tipo)) return null;
+    out.push({ caminho, nome, tamanho, tipo: tipo || null });
+  }
+  return out;
+}

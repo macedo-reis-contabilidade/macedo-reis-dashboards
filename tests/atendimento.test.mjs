@@ -131,5 +131,23 @@ chk('a resposta só na conversa de teste, enquanto o número de verdade não est
 chk('a nota grava direcao interna, com quem anotou, sem mexer na conversa', /acao === "nota"/.test(fn) && /direcao: "interna", autor: quem/.test(fn));
 chk('a mensagem nasce com o id da tela (tentar de novo não duplica: 23505 é "já entrou")', /insert\(\{ id, conversa_id/.test(fn) && /e2\.code !== "23505"/.test(fn));
 
+chk('os mesmos arquivos aceitos (o caminho na pasta da mensagem, até 5, 25 MB)', sem(corpo(fn, 'anexosValidos')).replace(':Anexo[]', '') === sem(corpo(modulo, 'anexosValidos')) && /MAX_ANEXOS = 5/.test(fn) && /MAX_ARQUIVO = 25 \* 1024 \* 1024/.test(fn));
+chk('o mesmo tipo da mensagem pelo arquivo', sem(corpo(fn, 'tipoDaMensagem')) === sem(corpo(modulo, 'tipoDaMensagem')));
+chk('o arquivo tem de estar na pasta antes de gravar', /storage\.from\("atendimento"\)\.list\(id/.test(fn) && /arquivosNaPasta\(\)/.test(fn));
+
+console.log('Os arquivos:');
+const ID = '0b6e4f3a-1c2d-4e5f-8a9b-0c1d2e3f4a5b';
+chk('o nome na pasta, sem acento nem barra', A.caminhoDoAnexo(ID, 'Guia/DAS ção.pdf') === ID + '/Guia_DAS cao.pdf' && A.caminhoDoAnexo(ID, 'x.pdf', 2) === ID + '/3-x.pdf');
+const f = (name, size) => ({ name, size });
+const cf = A.conferirAnexos([f('a.pdf', 10), f('vazio.txt', 0), f('grande.mp4', 26 * 1024 * 1024), f('b', 1), f('c', 1), f('d', 1), f('e', 1)], 0);
+chk('até 5 por mensagem, nem vazio nem acima de 25 MB', cf.ok.length === 5 && cf.recusados.map(r => r.nome).join(',') === 'vazio.txt,grande.mp4', cf);
+chk('o tipo pela primeira', A.tipoDaMensagem([]) === 'texto' && A.tipoDaMensagem([{ tipo: 'image/jpeg' }]) === 'imagem' && A.tipoDaMensagem([{ tipo: 'audio/ogg' }]) === 'audio' && A.tipoDaMensagem([{ tipo: 'application/pdf' }]) === 'documento');
+const ok = { caminho: ID + '/a.pdf', nome: 'a.pdf', tamanho: 10, tipo: 'application/pdf' };
+chk('aceita o arquivo na pasta da mensagem', JSON.stringify(A.anexosValidos([ok], ID)) === JSON.stringify([ok]) && A.anexosValidos(undefined, ID).length === 0);
+chk('recusa outra pasta, subpasta, ../, tamanho ruim, tipo esquisito e mais de 5',
+  A.anexosValidos([{ ...ok, caminho: 'outra/a.pdf' }], ID) === null && A.anexosValidos([{ ...ok, caminho: ID + '/x/a.pdf' }], ID) === null
+  && A.anexosValidos([{ ...ok, caminho: ID + '/../a.pdf' }], ID) === null && A.anexosValidos([{ ...ok, tamanho: 0 }], ID) === null
+  && A.anexosValidos([{ ...ok, tipo: 'text/html"><b>' }], ID) === null && A.anexosValidos(Array(6).fill(ok), ID) === null);
+
 console.log(falhas ? '\n' + falhas + ' falha(s).' : '\nTudo certo.');
 process.exit(falhas ? 1 : 0);

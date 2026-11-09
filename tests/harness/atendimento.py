@@ -69,7 +69,7 @@ SEMEAR = """
       if (window.__falharUmaVez) { window.__falharUmaVez = false;
         return { data: null, error: { message: 'Edge Function returned a non-2xx status code', context: { status: 500, json: async () => ({ error: 'O servidor caiu.' }) } } }; }
       if (db.atend_mensagens.some(m => m.id === b.id)) return { data: { ok: true, id: b.id, repetida: true }, error: null };
-      const m = { id: b.id, conversa_id: b.conversa_id, direcao: 'saida', autor: window.__mockEmail, tipo: 'texto', texto: b.texto, transcricao: null, anexos: [], status: 'enviada', erro: null, criada_em: agoraIso };
+      const m = { id: b.id, conversa_id: b.conversa_id, direcao: 'saida', autor: window.__mockEmail, tipo: (b.anexos || []).length ? 'documento' : 'texto', texto: b.texto || null, transcricao: null, anexos: b.anexos || [], status: 'enviada', erro: null, criada_em: agoraIso };
       db.atend_mensagens.push(m); setTimeout(() => window.__mockEmitir('atend_mensagens', 'INSERT', m), 30);
       return { data: { ok: true, id: b.id }, error: null };
     }
@@ -82,7 +82,7 @@ SEMEAR = """
         db.atend_conversas.push(c); nova = true; window.__mockEmitir('atend_conversas', 'INSERT', c);
         db.atend_eventos.push({ id: Date.now(), conversa_id: c.id, tipo: 'abriu', setor: b.setor, para: null, por: null, observacao: 'simulador', em: agoraIso });
       }
-      const m = { id: 'msg-' + Math.random().toString(36).slice(2), conversa_id: c.id, direcao: 'entrada', autor: 'cliente', tipo: 'texto', texto: b.texto, transcricao: null, anexos: [], status: null, erro: null, criada_em: agoraIso };
+      const m = { id: b.id || ('msg-' + Math.random().toString(36).slice(2)), conversa_id: c.id, direcao: 'entrada', autor: 'cliente', tipo: (b.anexos || []).length ? 'imagem' : 'texto', texto: b.texto || null, transcricao: null, anexos: b.anexos || [], status: null, erro: null, criada_em: agoraIso };
       db.atend_mensagens.push(m); window.__mockEmitir('atend_mensagens', 'INSERT', m);
       return { data: { ok: true, conversa_id: c.id, nova, mensagem_id: m.id }, error: null };
     }
@@ -231,6 +231,31 @@ def main():
         p.fill('#simTexto', 'Obrigado!'); p.press('#simTexto', 'Enter')
         p.wait_for_function("() => document.getElementById('cTempo').innerText.includes('Obrigado!')")
         ok(len([c for c in db(p, 'atend_conversas') if c['telefone'] == '5551900000002']) == 1, 'a segunda mensagem do cliente segue na mesma conversa')
+        # os arquivos (09/11/2026): o cliente manda uma foto, com o nome que é HTML; o escritório responde com um PDF
+        png = bytes.fromhex('89504e470d0a1a0a0000000d4948445200000001000000010806000000') + b'\x00' * 40
+        p.set_input_files('#simArquivo', files=[{'name': 'foto <b>nota</b>.png', 'mimeType': 'image/png', 'buffer': png}])
+        ok('foto <b>nota</b>.png' in p.inner_text('#simEscolhidos'), 'o arquivo escolhido aparece no simulador, o nome como texto')
+        p.click('#simEnviar')
+        p.wait_for_function("() => document.querySelectorAll('#cTempo .at-anexo').length === 1")
+        arqs = p.evaluate('() => Object.keys(window.__mockDb.__arquivos || {})')
+        chamada = [x[1] for x in p.evaluate('() => window.__log') if x[0] == 'whatsapp' and x[1].get('acao') == 'simular'][-1]
+        an = (chamada.get('anexos') or [{}])[0]
+        ok(len(arqs) == 1 and arqs[0].startswith('atendimento/' + chamada['id'] + '/') and an.get('caminho') == arqs[0][len('atendimento/'):] and an.get('tipo') == 'image/png',
+           f'a foto sobe na pasta atendimento, em <id da mensagem>/<nome>, e vai pra função com o caminho ({arqs})')
+        ok(p.locator('#cTempo .at-anexo b').count() == 0 and 'foto <b>nota</b>.png' in p.inner_text('#cTempo .at-anexo') and p.locator('#cTempo img.at-anexo-img[src]').count() == 1,
+           'na conversa, a foto com a miniatura e o nome escapado')
+        ok(p.inner_text('#simEscolhidos') == '', 'mandou, a lista do simulador esvazia')
+        p.set_input_files('#cArquivo', files=[{'name': 'guia DAS.pdf', 'mimeType': 'application/pdf', 'buffer': b'%PDF-1.4 teste'}])
+        p.click('#cEnviar')
+        p.wait_for_function("() => document.querySelectorAll('#cTempo .at-msg.saida .at-anexo').length === 1")
+        p.wait_for_function("() => document.getElementById('simTela').innerText.includes('guia DAS.pdf')")
+        resp = [x[1] for x in p.evaluate('() => window.__log') if x[0] == 'whatsapp' and x[1].get('acao') == 'responder'][-1]
+        ok(resp.get('texto') == '' and len(resp.get('anexos') or []) == 1 and resp['anexos'][0]['caminho'] == resp['id'] + '/guia DAS.pdf',
+           'a resposta só com o PDF vai com o caminho na pasta da mensagem, sem texto, e chega no "celular"')
+        p.evaluate("() => { window.__abertos = []; window.open = () => { const j = { opener: 1, close() {}, location: {} }; window.__abertos.push(j); return j; }; }")
+        p.click('#cTempo .at-msg.saida .at-anexo'); p.wait_for_timeout(200)
+        ab = p.evaluate('() => window.__abertos.map(j => [j.location.href, j.opener])')
+        ok(len(ab) == 1 and 'arquivos.teste/atendimento/' in (ab[0][0] or '') and ab[0][1] is None, f'clicar abre o arquivo pelo link assinado, numa aba sem volta pra tela ({ab})')
         p.screenshot(path=str(FOTOS / 'atendimento-simulador.png'))
         p.click('#simFechar'); p.wait_for_selector('#simulador', state='hidden')
 

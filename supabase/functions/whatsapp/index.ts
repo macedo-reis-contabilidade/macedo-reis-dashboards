@@ -3,13 +3,17 @@
 // whatsapp/fase1.md)
 // A porta das mensagens do atendimento: a mensagem (atend_mensagens) só esta função grava — a tela não tem insert nela.
 // Por enquanto, só o simulador da tela de atendimento (atendimento.html), com o login do escritório:
-//   { acao: 'simular', telefone, nome?, texto, setor? }  o cliente de mentira escreve: a conversa de teste nasce (na fila
+//   { acao: 'simular', telefone, nome?, texto, setor?, id?, anexos? }  o cliente de mentira escreve: a conversa de teste nasce (na fila
 //                                                        do setor que o simulador escolheu, no lugar do assistente, que é a
 //                                                        etapa 4) ou segue a que está aberta pro número
 //   { acao: 'responder', conversa_id, texto, id? }       quem está com a conversa responde; o id é o da tela (tentar de novo
 //                                                        não duplica). No simulador, a resposta só fica gravada
 //   { acao: 'nota', conversa_id, texto, id? }            a nota interna (09/11/2026): qualquer um do escritório, em
 //                                                        qualquer conversa; o cliente nunca vê
+// Os arquivos (09/11/2026): a tela sobe cada um na pasta privada "atendimento" do Storage, em <id da mensagem>/<nome>, e
+// manda em anexos [{ caminho, nome, tamanho, tipo }] (até 5, 25 MB cada) junto com o id; a função confere o caminho e
+// que o arquivo está lá antes de gravar (com arquivo, o texto é opcional). A regra é cópia da anexosValidos e da
+// tipoDaMensagem de assets/js/atendimento.js (tests/atendimento.test.mjs confere).
 // O número de verdade (a Meta, com a assinatura X-Hub-Signature-256 como trava) entra na etapa 3: aí o verify_jwt
 // desliga, a função vai pra lista ABERTAS do tests/funcoes-login.test.mjs e a conversa de verdade responde pela API.
 // Os setores e a conta do telefone são cópia dos de assets/js/atendimento.js (tests/atendimento.test.mjs confere).
@@ -60,6 +64,29 @@ function normalizarTelefone(s: unknown): string | null {
   return /^[0-9]{12,15}$/.test(d) || (bruto.startsWith("+") && /^[0-9]{10,15}$/.test(d)) ? d : null;
 }
 
+// ---------- os arquivos (cópia de assets/js/atendimento.js) ----------
+const MAX_ANEXOS = 5;
+const MAX_ARQUIVO = 25 * 1024 * 1024;
+type Anexo = { caminho: string; nome: string; tamanho: number; tipo: string | null };
+function anexosValidos(lista: unknown, mensagemId: string): Anexo[] | null {
+  if (lista == null) return [];
+  if (!Array.isArray(lista) || lista.length > MAX_ANEXOS) return null;
+  const out: Anexo[] = [];
+  for (const a of lista) {
+    if (!a || typeof a !== "object") return null;
+    const caminho = String(a.caminho || ""), nome = String(a.nome || "").trim().slice(0, 200), tamanho = Number(a.tamanho), tipo = String(a.tipo || "").slice(0, 120);
+    if (!caminho.startsWith(mensagemId + "/") || !/^[A-Za-z0-9._ ()-]{1,140}$/.test(caminho.slice(mensagemId.length + 1))) return null;
+    if (!nome || !Number.isFinite(tamanho) || tamanho <= 0 || tamanho > MAX_ARQUIVO) return null;
+    if (tipo && !/^[a-z0-9.+-]+\/[a-z0-9.+-]+$/i.test(tipo)) return null;
+    out.push({ caminho, nome, tamanho, tipo: tipo || null });
+  }
+  return out;
+}
+function tipoDaMensagem(anexos: Anexo[]): string {
+  const t = String(((anexos || [])[0] || {}).tipo || "");
+  if (!(anexos || []).length) return "texto";
+  return t.startsWith("image/") ? "imagem" : t.startsWith("audio/") ? "audio" : t.startsWith("video/") ? "video" : "documento";
+}
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const letras = (s: string) => [...s].length;
 
@@ -80,12 +107,26 @@ Deno.serve(async (req) => {
   const agora = new Date();
   const janela = new Date(agora.getTime() + JANELA_MS).toISOString();
 
+  // os arquivos: o id da mensagem é o da tela (é a pasta deles); cada um tem de estar na pasta antes de gravar
+  const id = UUID.test(String(body.id || "")) ? String(body.id) : crypto.randomUUID();
+  const anexos = anexosValidos(body.anexos, id);
+  if (anexos === null) return responder({ error: "Os arquivos vieram num formato que eu não aceito: escolha de novo." }, 400);
+  async function arquivosNaPasta(): Promise<boolean> {
+    if (!anexos || !anexos.length) return true;
+    const { data, error } = await sb.storage.from("atendimento").list(id, { limit: 100 });
+    if (error) throw error;
+    const tem = new Set((data || []).map((o: { name: string }) => id + "/" + o.name));
+    return anexos.every(a => tem.has(a.caminho));
+  }
+  const tipo = tipoDaMensagem(anexos || []);
+
   try {
     if (body.acao === "simular") {
       const tel = normalizarTelefone(body.telefone);
       if (!tel) return responder({ error: "Telefone inválido: use o DDD e o número." }, 400);
-      if (!texto) return responder({ error: "Escreva a mensagem." }, 400);
+      if (!texto && !anexos.length) return responder({ error: "Escreva a mensagem." }, 400);
       if (letras(texto) > MAX_TEXTO) return responder({ error: "A mensagem passou de 4.096 letras, o limite do WhatsApp." }, 400);
+      if (!(await arquivosNaPasta())) return responder({ error: "Algum arquivo não chegou na pasta: mande de novo." }, 409);
       const nome = String(body.nome == null ? "" : body.nome).trim().slice(0, 120) || null;
       const setor = body.setor == null || body.setor === "" ? null : String(body.setor);
       if (setor && !SETORES.includes(setor)) return responder({ error: "Setor desconhecido." }, 400);
@@ -111,7 +152,8 @@ Deno.serve(async (req) => {
         if (e4) throw e4;
       }
       const { data: msg, error: e5 } = await sb.from("atend_mensagens")
-        .insert({ conversa_id: conversa.id, direcao: "entrada", autor: "cliente", tipo: "texto", texto }).select("id, criada_em").single();
+        .insert({ id, conversa_id: conversa.id, direcao: "entrada", autor: "cliente", tipo, texto: texto || null, anexos }).select("id, criada_em").single();
+      if (e5 && e5.code === "23505") return responder({ ok: true, conversa_id: conversa.id, nova, mensagem_id: id, repetida: true });
       if (e5) throw e5;
       if (!nova) {
         const mudar: Record<string, unknown> = { ultima_em: msg.criada_em, ultima_do_cliente_em: msg.criada_em, janela_ate: janela };
@@ -124,9 +166,8 @@ Deno.serve(async (req) => {
 
     if (body.acao === "responder") {
       if (!UUID.test(String(body.conversa_id || ""))) return responder({ error: "Conversa inválida." }, 400);
-      if (!texto) return responder({ error: "Escreva a mensagem." }, 400);
+      if (!texto && !anexos.length) return responder({ error: "Escreva a mensagem." }, 400);
       if (letras(texto) > MAX_TEXTO) return responder({ error: "A mensagem passou de 4.096 letras, o limite do WhatsApp." }, 400);
-      const id = UUID.test(String(body.id || "")) ? String(body.id) : crypto.randomUUID();
       const { data: c, error: e1 } = await sb.from("atend_conversas").select("id, situacao, responsavel, teste, janela_ate").eq("id", body.conversa_id).maybeSingle();
       if (e1) throw e1;
       if (!c) return responder({ error: "A conversa não existe mais." }, 404);
@@ -138,7 +179,8 @@ Deno.serve(async (req) => {
         return responder({ error: "Passaram 24 horas da última mensagem do cliente: o WhatsApp só deixa escrever com um modelo aprovado." }, 409);
       }
       if (!c.teste) return responder({ error: "O envio pelo WhatsApp de verdade ainda não está ligado: por enquanto só as conversas do simulador respondem." }, 409);
-      const { error: e2 } = await sb.from("atend_mensagens").insert({ id, conversa_id: c.id, direcao: "saida", autor: quem, tipo: "texto", texto, status: "enviada" });
+      if (!(await arquivosNaPasta())) return responder({ error: "Algum arquivo não chegou na pasta: mande de novo." }, 409);
+      const { error: e2 } = await sb.from("atend_mensagens").insert({ id, conversa_id: c.id, direcao: "saida", autor: quem, tipo, texto: texto || null, anexos, status: "enviada" });
       if (e2 && e2.code !== "23505") throw e2;
       const { error: e3 } = await sb.from("atend_conversas").update({ ultima_em: agora.toISOString() }).eq("id", c.id);
       if (e3) throw e3;
@@ -151,7 +193,6 @@ Deno.serve(async (req) => {
       if (!UUID.test(String(body.conversa_id || ""))) return responder({ error: "Conversa inválida." }, 400);
       if (!texto) return responder({ error: "Escreva a nota." }, 400);
       if (letras(texto) > MAX_TEXTO) return responder({ error: "A nota passou de 4.096 letras." }, 400);
-      const id = UUID.test(String(body.id || "")) ? String(body.id) : crypto.randomUUID();
       const { data: c, error: e1 } = await sb.from("atend_conversas").select("id").eq("id", body.conversa_id).maybeSingle();
       if (e1) throw e1;
       if (!c) return responder({ error: "A conversa não existe mais." }, 404);
