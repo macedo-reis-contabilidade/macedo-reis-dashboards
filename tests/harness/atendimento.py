@@ -7,7 +7,8 @@ Dados inventados — nada de cliente.
 Confere:
   1. a lista, entrando como a Thalia: abre na Fila (nada com ela), com o fiscal e o sem setor (as filas dela); as contagens;
      o nome e a mensagem que são HTML aparecem como texto (nada roda); o filtro de setor;
-  2. a conversa: as mensagens e o evento, o número que já falou por uma empresa, a nota "Assuma pra responder";
+  2. a conversa: as mensagens e o evento, o número que já falou por uma empresa, o aviso "Assuma pra responder" com a caixa
+     só na nota interna; a nota vai pela função, aparece uma vez, escapada, e não tira a conversa de "esperando";
   3. Assumir grava a situação e o responsável e o evento; a caixa aparece; responder chama a função com o id da tela, e a
      mensagem aparece uma vez só; a que não foi mostra "Tentar de novo", que manda o mesmo id;
   4. ligar o número à empresa (o que já falou por ela): a conversa ganha a empresa, o número fica confirmado, o evento;
@@ -85,6 +86,12 @@ SEMEAR = """
       db.atend_mensagens.push(m); window.__mockEmitir('atend_mensagens', 'INSERT', m);
       return { data: { ok: true, conversa_id: c.id, nova, mensagem_id: m.id }, error: null };
     }
+    if (b.acao === 'nota') {
+      if (db.atend_mensagens.some(m => m.id === b.id)) return { data: { ok: true, id: b.id, repetida: true }, error: null };
+      const m = { id: b.id, conversa_id: b.conversa_id, direcao: 'interna', autor: window.__mockEmail, tipo: 'texto', texto: b.texto, transcricao: null, anexos: [], status: null, erro: null, criada_em: agoraIso };
+      db.atend_mensagens.push(m); setTimeout(() => window.__mockEmitir('atend_mensagens', 'INSERT', m), 30);
+      return { data: { ok: true, id: b.id }, error: null };
+    }
     return { data: null, error: { message: 'ação ' + b.acao } };
   };
 })();
@@ -142,12 +149,25 @@ def main():
         ok('A conversa começou, na fila do Fiscal' in p.inner_text('#cTempo'), 'o evento de quando a conversa começou')
         ok('Sem empresa' in p.inner_text('#cMeta') and '(51) 98888-7777' in p.inner_text('#cMeta'), 'o telefone formatado e "Sem empresa"')
         ok('EMPRESA EXEMPLO LTDA (a confirmar)' in p.inner_text('#cFaixas'), 'o número já falou pela EMPRESA EXEMPLO (a confirmar)')
-        ok(not p.is_visible('#cCaixa') and 'Assuma a conversa pra responder.' in p.inner_text('#cNota'), 'sem assumir, a nota no lugar da caixa')
+        ok('Assuma a conversa pra responder.' in p.inner_text('#cNota') and p.is_visible('#cCaixa') and p.is_disabled('#mResposta')
+           and p.get_attribute('#mNota', 'aria-pressed') == 'true' and p.inner_text('#cEnviar') == 'Anotar', 'sem assumir, o aviso e a caixa só na nota interna')
+        p.fill('#cTexto', 'Ligar pro contador antes <i>dela</i>'); p.press('#cTexto', 'Enter')
+        p.wait_for_function("() => document.querySelectorAll('#cTempo .at-msg.interna').length === 1")
+        p.wait_for_timeout(250)
+        notas = [x[1] for x in p.evaluate('() => window.__log') if x[0] == 'whatsapp' and x[1].get('acao') == 'nota']
+        ok(len(notas) == 1 and notas[0]['conversa_id'] == 'k1' and len(notas[0].get('id', '')) == 36, 'a nota vai pela função, com a conversa e o id da tela')
+        nota_txt = p.inner_text('#cTempo .at-msg.interna')
+        ok('<i>dela</i>' in nota_txt and 'Nota de Thalia' in nota_txt and p.locator('#cTempo .at-msg.interna i').count() == 0 and p.locator('#cTempo .at-msg.interna').count() == 1,
+           'a nota aparece uma vez, com quem anotou, e o HTML como texto')
+        ok(p.locator('.at-item[data-id="k1"].espera').count() == 1 and 'Ligar pro contador' not in p.inner_text('.at-item[data-id="k1"]'),
+           'a nota não tira a conversa de "esperando resposta" nem vira a prévia da lista')
+        ok(not [m for m in db(p, 'atend_conversas') if m['id'] == 'k1' and m['ultima_em'] != conversa(p, 'k1')['ultima_em']], 'a nota não mexe na conversa')
         ok('c=k1' in p.url, 'o endereço guarda a conversa aberta')
 
         print('3. Assumir e responder')
         p.click('#cAcoes button[data-acao="assumir"]')
-        p.wait_for_function("() => !document.getElementById('cCaixa').hidden")
+        p.wait_for_function("() => !document.getElementById('mResposta').disabled")
+        ok(p.get_attribute('#mResposta', 'aria-pressed') == 'true' and p.inner_text('#cEnviar') == 'Enviar', 'assumida, a caixa volta pra resposta')
         k1 = conversa(p, 'k1')
         ok(k1['situacao'] == 'atendendo' and k1['responsavel'] == THALIA, 'Assumir: atendendo, com a Thalia')
         ev = [e for e in db(p, 'atend_eventos') if e['conversa_id'] == 'k1' and e['tipo'] == 'assumiu']
@@ -186,8 +206,8 @@ def main():
         ok(k1['situacao'] == 'fila' and k1['setor'] == 'dp' and k1['responsavel'] is None, 'a fila do DP, sem ninguém')
         ev = [e for e in db(p, 'atend_eventos') if e['conversa_id'] == 'k1' and e['tipo'] == 'transferiu']
         ok(len(ev) == 1 and ev[0]['setor'] == 'dp' and ev[0]['observacao'] == 'é sobre férias', 'o evento transferiu, com o recado')
-        ok('Thalia passou pro DP: “é sobre férias”' in p.inner_text('#cTempo') and p.inner_text('#nMinhas') == '0' and not p.is_visible('#cCaixa'),
-           'o recado no histórico, saiu das minhas e a caixa some')
+        ok('Thalia passou pro DP: “é sobre férias”' in p.inner_text('#cTempo') and p.inner_text('#nMinhas') == '0' and p.is_disabled('#mResposta'),
+           'o recado no histórico, saiu das minhas e a caixa fica só na nota')
 
         print('6. O simulador')
         p.click('#btnSimulador'); p.wait_for_selector('#simulador:not([hidden])')

@@ -81,6 +81,13 @@
     .at-msg-erro { color:var(--err); }
     .at-caixa { display:flex; gap:8px; align-items:flex-end; padding:12px 16px 14px; border-top:1px solid var(--line); }
     .at-caixa textarea { flex:1; resize:vertical; min-height:44px; max-height:220px; font:inherit; }
+    .at-caixa { flex-wrap:wrap; }
+    .at-modos { flex-basis:100%; display:flex; gap:6px; }
+    .at-modos button { background:none; border:1px solid var(--line); color:var(--text-muted); border-radius:999px; padding:3px 11px; font:inherit; font-size:12.5px; cursor:pointer; }
+    .at-modos button[aria-pressed="true"] { color:var(--text); border-color:var(--brand-light); background:rgba(91,130,166,.16); }
+    .at-modos button:disabled { opacity:.45; cursor:not-allowed; }
+    .at-caixa.nota textarea { background:rgba(227,179,65,.06); border-color:rgba(227,179,65,.45); }
+    .at-caixa.nota .at-modos button[aria-pressed="true"] { border-color:rgba(227,179,65,.7); background:rgba(227,179,65,.14); }
     .at-nota { margin:0; padding:12px 16px 14px; border-top:1px solid var(--line); color:var(--text-muted); font-size:13.5px; }
     .at-erro { color:var(--err); font-size:13px; padding:0 16px 10px; }
     .at-erro:empty { display:none; }
@@ -183,6 +190,10 @@
             <div id="cFaixas"></div>
             <ol class="at-tempo" id="cTempo" aria-label="Mensagens da conversa"></ol>
             <form class="at-caixa" id="cCaixa" hidden>
+              <div class="at-modos" role="group" aria-label="O que escrever">
+                <button type="button" id="mResposta" aria-pressed="true">Resposta pro cliente</button>
+                <button type="button" id="mNota" aria-pressed="false">Nota interna</button>
+              </div>
               <textarea id="cTexto" class="input" rows="2" maxlength="4096" placeholder="Escreva a resposta… (Shift+Enter quebra a linha)" aria-label="Resposta pro cliente"></textarea>
               <button class="btn btn-primary" type="submit" id="cEnviar">Enviar</button>
             </form>
@@ -220,7 +231,7 @@
     import { supabase, getCurrentUser, signOut } from './assets/js/supabase.js';
     import { SETORES, SEM_SETOR, ATENDENTES, MAX_TEXTO, nomeDe, nomeDoSetor, setoresDe, formatarTelefone, normalizarTelefone,
       tituloDaConversa, situacaoDaConversa, ehPraMim, podeAssumir, podeResponder, podeDevolver, podeTransferir, podeEncerrar,
-      podeReabrir, porQueNaoResponde, mudancaDe, textoDoEvento, linhaDoTempo, previa, esperaResposta, filtrar, contagens } from './assets/js/atendimento.js';
+      podeReabrir, podeNotar, contaComoUltima, porQueNaoResponde, mudancaDe, textoDoEvento, linhaDoTempo, previa, esperaResposta, filtrar, contagens } from './assets/js/atendimento.js';
     import { BIPE, horaCurta, horaDaLista, rotuloDoDia, linkificar, esperaParaReligar } from './assets/js/chat-equipe.js';
     import { buscarEmpresas } from './assets/js/tarefas-acoes.js';
 
@@ -242,6 +253,8 @@
     let conversas = [], ultimas = new Map(), empresas = new Map();
     let mensagens = [], eventos = [], numeros = [], numerosTodos = [];
     let painel = null;            // a faixa aberta na conversa: 'transferir' | 'vincular' | null
+    let modo = 'resposta';       // a caixa que a pessoa escolheu: 'resposta' (pro cliente) ou 'nota' (a nota interna, pra equipe)
+    let modoAgora = 'resposta';  // a que vale: sem poder responder, é sempre a nota
     let pendente = null;          // a resposta que não foi: { id, texto } (o "Tentar de novo" manda o mesmo id)
     let aoVivo = false;
 
@@ -280,6 +293,7 @@
       (data || []).forEach(guardarUltima);
     }
     function guardarUltima(m) {
+      if (!contaComoUltima(m)) return;
       const u = ultimas.get(m.conversa_id);
       if (!u || tempo(m.criada_em) >= tempo(u.criada_em)) ultimas.set(m.conversa_id, m);
     }
@@ -349,7 +363,7 @@
         conversas.push(data[0]); await carregarEmpresas([data[0].cliente_id]);
       }
       const c = conversa(id);
-      atual = id; painel = null; pendente = null;
+      atual = id; painel = null; pendente = null; modo = 'resposta';
       $('nada').hidden = true; $('aberta').hidden = false; $('grade').classList.add('tem-aberta');
       $('cErro').textContent = ''; $('cTexto').value = '';
       render();
@@ -546,12 +560,29 @@
       el.innerHTML = h.length ? h.join('') : '<li class="at-ev">Nenhuma mensagem ainda.</li>';
       if (rolar || noFim) el.scrollTop = el.scrollHeight;
     }
+    // a caixa tem dois modos: a resposta pro cliente (só quem está com a conversa, dentro das 24 horas) e a nota interna
+    // pra equipe (qualquer um, em qualquer conversa). Sem poder responder, ela fica na nota
     function pintarCaixa(c) {
-      const motivo = porQueNaoResponde(c, eu);
-      $('cCaixa').hidden = !!motivo || !podeResponder(c, eu);
+      const motivo = porQueNaoResponde(c, eu), responde = !motivo && podeResponder(c, eu), nota = podeNotar(c);
+      modoAgora = responde ? modo : 'nota';
+      $('cCaixa').hidden = !responde && !nota;
       $('cNota').hidden = !motivo;
-      $('cNota').textContent = motivo || '';
+      $('cNota').textContent = motivo ? motivo + (nota ? ' Uma nota pra equipe dá pra deixar aqui embaixo.' : '') : '';
+      $('mResposta').disabled = !responde;
+      $('mResposta').title = responde ? '' : (motivo || '');
+      pintarModo();
     }
+    function pintarModo() {
+      const n = modoAgora === 'nota';
+      $('cCaixa').classList.toggle('nota', n);
+      $('mResposta').setAttribute('aria-pressed', String(!n));
+      $('mNota').setAttribute('aria-pressed', String(n));
+      $('cTexto').placeholder = n ? 'Nota pra equipe: o cliente não vê… (Shift+Enter quebra a linha)' : 'Escreva a resposta… (Shift+Enter quebra a linha)';
+      $('cTexto').setAttribute('aria-label', n ? 'Nota interna pra equipe' : 'Resposta pro cliente');
+      $('cEnviar').textContent = n ? 'Anotar' : 'Enviar';
+    }
+    $('mResposta').addEventListener('click', () => { if ($('mResposta').disabled) return; modo = modoAgora = 'resposta'; pintarModo(); $('cTexto').focus(); });
+    $('mNota').addEventListener('click', () => { modo = modoAgora = 'nota'; pintarModo(); $('cTexto').focus(); });
 
     // a resposta: vai pela função whatsapp, com o id da tela (tentar de novo não duplica)
     async function chamarWhatsapp(corpo) {
@@ -570,15 +601,16 @@
     async function enviar(repetir = null) {
       const c = conversa(atual);
       const texto = repetir ? repetir.texto : $('cTexto').value.trim();
+      const nota = repetir ? repetir.nota : modoAgora === 'nota';
       if (!c || !texto) return;
-      if ([...texto].length > MAX_TEXTO) { $('cErro').textContent = 'A mensagem passou de 4.096 letras, o limite do WhatsApp.'; return; }
+      if ([...texto].length > MAX_TEXTO) { $('cErro').textContent = nota ? 'A nota passou de 4.096 letras.' : 'A mensagem passou de 4.096 letras, o limite do WhatsApp.'; return; }
       const id = repetir ? repetir.id : (crypto.randomUUID ? crypto.randomUUID() : String(Date.now()));
       $('cEnviar').disabled = true; $('cErro').textContent = '';
-      const r = await chamarWhatsapp({ acao: 'responder', conversa_id: c.id, texto, id });
+      const r = await chamarWhatsapp({ acao: nota ? 'nota' : 'responder', conversa_id: c.id, texto, id });
       $('cEnviar').disabled = false;
       if (r.erro) {
-        pendente = { id, texto };
-        $('cErro').innerHTML = esc('A mensagem não foi: ' + r.erro) + ' <button class="btn btn-ghost btn-sm" id="cDeNovo">Tentar de novo</button>';
+        pendente = { id, texto, nota };
+        $('cErro').innerHTML = esc((nota ? 'A nota não foi: ' : 'A mensagem não foi: ') + r.erro) + ' <button class="btn btn-ghost btn-sm" id="cDeNovo">Tentar de novo</button>';
         $('cDeNovo').addEventListener('click', () => enviar(pendente));
         if (!repetir) $('cTexto').value = texto;
         return;
@@ -586,10 +618,10 @@
       pendente = null;
       if (!repetir) $('cTexto').value = '';
       if (!mensagens.some(m => m.id === id)) {
-        const m = { id, conversa_id: c.id, direcao: 'saida', autor: eu, tipo: 'texto', texto, status: 'enviada', criada_em: new Date().toISOString() };
+        const m = { id, conversa_id: c.id, direcao: nota ? 'interna' : 'saida', autor: eu, tipo: 'texto', texto, status: nota ? null : 'enviada', criada_em: new Date().toISOString() };
         mensagens.push(m); guardarUltima(m);
       }
-      c.ultima_em = new Date().toISOString();
+      if (!nota) c.ultima_em = new Date().toISOString();
       render(); pintarTempo(true); $('cTexto').focus();
     }
 

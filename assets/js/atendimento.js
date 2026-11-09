@@ -108,6 +108,12 @@ export const podeDevolver = (c, eu) => !!c && c.situacao === 'atendendo' && minh
 export const podeTransferir = (c, eu) => estaAberta(c) && (semDono(c) || minha(c, eu) || ehSocio(eu));
 export const podeEncerrar = (c, eu) => estaAberta(c) && (semDono(c) || minha(c, eu) || ehSocio(eu));
 export const podeReabrir = c => !!c && c.situacao === 'encerrada';
+// a nota interna (09/11/2026): o recado pra equipe dentro da conversa, que o cliente nunca vê. Qualquer um do escritório
+// anota em qualquer conversa, aberta ou encerrada, com ou sem a conversa, e mesmo depois das 24 horas: não sai pro WhatsApp
+export const podeNotar = c => !!c && SITUACOES.includes(c.situacao);
+// a última mensagem que conta pra lista (a prévia e o "esperando resposta"): a nota não conta, senão a anotação de alguém
+// tiraria a conversa de "esperando"
+export const contaComoUltima = m => !!m && m.direcao !== 'interna';
 // por que não dá pra responder (a nota no lugar da caixa) — null quando dá
 export function porQueNaoResponde(c, eu, agora = new Date()) {
   if (!c) return null;

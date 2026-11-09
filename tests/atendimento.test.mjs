@@ -113,6 +113,11 @@ chk('quem não tem setor ("meus") vê todos', A.filtrar(LISTA, 'fila', DIEGO, 'm
 chk('abertas e encerradas', A.filtrar(LISTA, 'todas', DIEGO, 'todos').length === 7 && ids(A.filtrar(LISTA, 'encerradas', THALIA, 'todos')) === 'e1');
 chk('as contagens das abas', JSON.stringify(A.contagens(LISTA, THALIA, 'meus')) === JSON.stringify({ minhas: 2, fila: 3, todas: 3, encerradas: 1 }), A.contagens(LISTA, THALIA, 'meus'));
 
+console.log('A nota interna:');
+chk('anota em qualquer conversa, aberta ou encerrada', ['robo', 'fila', 'atendendo', 'encerrada'].every(sit => A.podeNotar({ situacao: sit })) && !A.podeNotar(null));
+chk('a nota não conta como a última da lista', !A.contaComoUltima({ direcao: 'interna' }) && A.contaComoUltima({ direcao: 'entrada' }) && A.contaComoUltima({ direcao: 'saida' }));
+chk('a conversa com a nota depois do cliente segue esperando (a lista guarda a do cliente)', A.esperaResposta({ situacao: 'fila' }, [{ direcao: 'entrada' }, { direcao: 'interna' }].filter(A.contaComoUltima).pop()));
+
 console.log('A Edge Function whatsapp leva a mesma regra:');
 const fn = readFileSync(raiz + 'supabase/functions/whatsapp/index.ts', 'utf8');
 const setoresFn = /const SETORES = \[([^\]]*)\]/.exec(fn);
@@ -123,6 +128,7 @@ const sem = s => s.replace(/\s+/g, '').replace(/"/g, "'");
 chk('a mesma conta do telefone', sem(corpo(fn, 'normalizarTelefone')) === sem(corpo(modulo, 'normalizarTelefone')));
 chk('o mesmo limite do texto', /MAX_TEXTO = 4096/.test(fn) && A.MAX_TEXTO === 4096);
 chk('a resposta só na conversa de teste, enquanto o número de verdade não está ligado', /if \(!c\.teste\)/.test(fn));
+chk('a nota grava direcao interna, com quem anotou, sem mexer na conversa', /acao === "nota"/.test(fn) && /direcao: "interna", autor: quem/.test(fn));
 chk('a mensagem nasce com o id da tela (tentar de novo não duplica: 23505 é "já entrou")', /insert\(\{ id, conversa_id/.test(fn) && /e2\.code !== "23505"/.test(fn));
 
 console.log(falhas ? '\n' + falhas + ' falha(s).' : '\nTudo certo.');

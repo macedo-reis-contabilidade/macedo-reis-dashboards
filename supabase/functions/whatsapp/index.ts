@@ -8,6 +8,8 @@
 //                                                        etapa 4) ou segue a que está aberta pro número
 //   { acao: 'responder', conversa_id, texto, id? }       quem está com a conversa responde; o id é o da tela (tentar de novo
 //                                                        não duplica). No simulador, a resposta só fica gravada
+//   { acao: 'nota', conversa_id, texto, id? }            a nota interna (09/11/2026): qualquer um do escritório, em
+//                                                        qualquer conversa; o cliente nunca vê
 // O número de verdade (a Meta, com a assinatura X-Hub-Signature-256 como trava) entra na etapa 3: aí o verify_jwt
 // desliga, a função vai pra lista ABERTAS do tests/funcoes-login.test.mjs e a conversa de verdade responde pela API.
 // Os setores e a conta do telefone são cópia dos de assets/js/atendimento.js (tests/atendimento.test.mjs confere).
@@ -140,6 +142,21 @@ Deno.serve(async (req) => {
       if (e2 && e2.code !== "23505") throw e2;
       const { error: e3 } = await sb.from("atend_conversas").update({ ultima_em: agora.toISOString() }).eq("id", c.id);
       if (e3) throw e3;
+      return responder({ ok: true, id, repetida: !!e2 });
+    }
+
+    if (body.acao === "nota") {
+      // a nota interna: o recado pra equipe dentro da conversa (direcao 'interna'). Qualquer um do escritório anota em
+      // qualquer conversa, com ou sem ela, aberta ou encerrada; não sai pro WhatsApp e não mexe na ordem da lista
+      if (!UUID.test(String(body.conversa_id || ""))) return responder({ error: "Conversa inválida." }, 400);
+      if (!texto) return responder({ error: "Escreva a nota." }, 400);
+      if (letras(texto) > MAX_TEXTO) return responder({ error: "A nota passou de 4.096 letras." }, 400);
+      const id = UUID.test(String(body.id || "")) ? String(body.id) : crypto.randomUUID();
+      const { data: c, error: e1 } = await sb.from("atend_conversas").select("id").eq("id", body.conversa_id).maybeSingle();
+      if (e1) throw e1;
+      if (!c) return responder({ error: "A conversa não existe mais." }, 404);
+      const { error: e2 } = await sb.from("atend_mensagens").insert({ id, conversa_id: c.id, direcao: "interna", autor: quem, tipo: "texto", texto });
+      if (e2 && e2.code !== "23505") throw e2;
       return responder({ ok: true, id, repetida: !!e2 });
     }
 
