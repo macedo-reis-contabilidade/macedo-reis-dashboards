@@ -1,6 +1,6 @@
-"""Monta o pacote — o contrato com o sistema (versão 3, desde 05/11/2026).
+"""Monta o pacote — o contrato com o sistema (versão 4, desde 09/11/2026).
 
-    { "versao": 3,
+    { "versao": 4,
       "rodada":   { id, inicio, fim, dados_ate, maquina, ponte },
       "empresas": [ { codigo, documento, nome, ativa } ],
       "mensal":   [ { codigo, competencia 'AAAA-MM', funcionarios_ativos, admissoes, desligamentos, afastados,
@@ -22,19 +22,28 @@
                           conciliado_ate, fechamento_em } ],                 (a foto do dia)
       "encerramento": [ { codigo, ano, zerado_em, zeramentos, zerado_incluido_em, lancados_depois,
                           lancamentos_do_ano } ],                            (os dois anos antes do de hoje)
+      "jornadas":     [ { codigo, jornada, tipo, tipo_escala, semana, min_semana, min_maior_dia, ciclo_dias,
+                          ciclo_trabalho, horas_semana, horas_mes, forma, controle, categoria, unidade, empregados,
+                          afastados, compensa_sabado, superior, superior_teto, salarios } ],
+                                                     (a foto do dia: uma linha por empresa e grupo de empregados)
       "faltou":   [ { bloco, motivo } ] }
 
 A versão 1 (até 04/11/2026) não tinha o faturamento, as compras e a folha em reais; a 2 (05/11/2026), o andamento das
-contabilidades (origens, cruzamentos, saldos, andamento e encerramento). A versão diz ao sistema quais blocos foram
-lidos: o que uma versão antiga não tem, ele não mexe no que já tinha.
+contabilidades (origens, cruzamentos, saldos, andamento e encerramento); a 3 (05/11/2026), as jornadas (o fim da escala
+6x1, 09/11/2026). A versão diz ao sistema quais blocos foram lidos: o que uma versão antiga não tem, ele não mexe no
+que já tinha.
 
 Regras:
   - Só esses campos saem. O que a fonte devolver a mais é descartado aqui (a trava do dado pessoal).
   - `mensal`: uma linha por empresa e competência; campo que não veio sai null, nunca um 0 inventado.
   - Um bloco entra inteiro ou fica de fora inteiro: se a consulta está a conferir, deu erro, ou devolveu mais de uma
     linha pra mesma empresa no mês (sinal de que não veio contada), os campos dele ficam null em todas as linhas e
-    o bloco vai pro `faltou`. No `andamento` e no `encerramento`, o mesmo: a lista sai vazia e o bloco vai pro
-    `faltou` (o sistema não mexe no que tinha deles).
+    o bloco vai pro `faltou`. No `andamento`, no `encerramento` e nas `jornadas`, o mesmo: a lista sai vazia e o
+    bloco vai pro `faltou` (o sistema não mexe no que tinha deles).
+  - `jornadas`: uma linha por empresa e grupo (codigo, jornada, horas_semana, horas_mes, forma, controle, categoria,
+    unidade); dois com o mesmo grupo = não veio contada (o bloco fica de fora); o grupo sem empregado não vai. A
+    `semana` são sete caracteres (T, C, F ou -, de segunda a domingo); outra coisa vira null. O nome, o CPF, o cargo e
+    o salário de cada pessoa nunca saem: só os campos do contrato, somados.
   - `dados_ate` é o dia da rodada: o banco do Domínio Web é o de produção, ao vivo (02/11/2026 — o plano era uma
     cópia do dia anterior, e a ponte usava ontem); as horas, com o fuso do PC.
 """
@@ -46,9 +55,10 @@ from decimal import Decimal, InvalidOperation
 
 from . import VERSAO
 from .fonte import (ANOS_ENCERRAMENTO, BLOCOS, CAMPOS_ANDAMENTO, CAMPOS_DATA, CAMPOS_ENCERRAMENTO, CAMPOS_INTEIROS,
-                    CAMPOS_MES, CAMPOS_VALOR, ConsultaAConferir)
+                    CAMPOS_JORNADAS, CAMPOS_MES, CAMPOS_NUMERO, CAMPOS_SEMANA, CAMPOS_VALOR, GRUPO_JORNADAS,
+                    ConsultaAConferir, teto_art8)
 
-VERSAO_PACOTE = 3
+VERSAO_PACOTE = 4
 ORDEM_MENSAL = ('codigo', 'competencia') + tuple(c for b in BLOCOS for c in CAMPOS_MES[b])
 
 
@@ -118,6 +128,17 @@ def _data(v):
         return None
 
 
+_SEMANA = re.compile(r'[TCF-]{7}')
+
+
+def _semana(v):
+    """Os sete dias, de segunda a domingo: T trabalhado, C compensado, F folga, - sem horário. Outra coisa: null."""
+    if v is None:
+        return None
+    s = str(v).strip().upper()
+    return s if _SEMANA.fullmatch(s) else None
+
+
 def _documento(v):
     """Sem pontuação. Fica só dígito — e letra maiúscula, por causa do CNPJ alfanumérico (julho/2026)."""
     if v is None:
@@ -144,8 +165,10 @@ def _ativa(v):
 def _converter(campo, v):
     if campo in CAMPOS_INTEIROS:
         return _inteiro(v)
-    if campo in CAMPOS_VALOR:
+    if campo in CAMPOS_VALOR or campo in CAMPOS_NUMERO:
         return _valor(v)
+    if campo in CAMPOS_SEMANA:
+        return _semana(v)
     if campo in CAMPOS_DATA:
         return _data(v)
     return None
@@ -244,30 +267,39 @@ def ler(fonte, comps, registro):
     return empresas, [{c: l[c] for c in ORDEM_MENSAL} for l in ordenadas], faltou
 
 
-def _ler_lista(fonte, bloco, chamadas, campos, codigos, registro):
-    """Um bloco que não é do mês (a foto do dia, o encerramento): `chamadas` é a lista de (argumento, extra) — o
-    argumento vai pra fonte e o extra (ex.: {'ano': 2025}) entra em cada linha. Devolve (linhas, motivo): com motivo,
-    o bloco fica de fora inteiro."""
+def _ordem(v):
+    return (v is None, v if v is not None else 0)
+
+
+def _ler_lista(fonte, bloco, chamadas, campos, codigos, registro, grupo=None):
+    """Um bloco que não é do mês (a foto do dia, o encerramento, as jornadas): `chamadas` é a lista de (argumentos,
+    extra) — os argumentos vão pra fonte e o extra (ex.: {'ano': 2025}) entra em cada linha. Sem `grupo`, uma linha por
+    empresa (e extra); com `grupo` (os campos que fazem a chave, já convertidos), uma por grupo, e o grupo sem
+    empregado fica de fora. Devolve (linhas, motivo): com motivo, o bloco fica de fora inteiro."""
     linhas, vistas = [], set()
-    sem_empresa = estranhos = 0
+    sem_empresa = estranhos = vazios = 0
     try:
-        for arg, extra in chamadas:
-            for bruta in getattr(fonte, bloco)(arg):
+        for args, extra in chamadas:
+            for bruta in getattr(fonte, bloco)(*args):
                 linha = _minusculas(bruta)
                 codigo = _inteiro(linha.get('codigo'))
                 if codigo not in codigos:
                     sem_empresa += 1
                     continue
-                chave = (codigo,) + tuple(extra.values())
-                if chave in vistas:
-                    return [], 'mais de uma linha por empresa (a consulta não veio contada)'
-                vistas.add(chave)
                 saida = {'codigo': codigo, **extra}
                 for c in campos:
                     v = linha.get(c)
                     saida[c] = _converter(c, v)
                     if saida[c] is None and v is not None:
                         estranhos += 1
+                if grupo and not (saida.get('empregados') or 0) > 0:
+                    vazios += 1
+                    continue
+                chave = tuple(saida[c] for c in grupo) if grupo else (codigo,) + tuple(extra.values())
+                if chave in vistas:
+                    return [], ('mais de uma linha por grupo (a consulta não veio contada)' if grupo
+                                else 'mais de uma linha por empresa (a consulta não veio contada)')
+                vistas.add(chave)
                 linhas.append(saida)
     except ConsultaAConferir:
         return [], 'consulta a conferir'
@@ -278,28 +310,44 @@ def _ler_lista(fonte, bloco, chamadas, campos, codigos, registro):
         registro(f'bloco {bloco}: {sem_empresa} linha(s) de empresa que não está na lista de empresas ficaram de fora', 'aviso')
     if estranhos:
         registro(f'bloco {bloco}: {estranhos} valor(es) que não deu pra entender foram em branco (null)', 'aviso')
-    linhas.sort(key=lambda l: (l.get('ano', 0), l['codigo']))
+    if vazios:
+        registro(f'bloco {bloco}: {vazios} grupo(s) sem empregado ficaram de fora', 'aviso')
+    if grupo:
+        linhas.sort(key=lambda l: tuple(_ordem(l[c]) for c in grupo))
+    else:
+        linhas.sort(key=lambda l: (l.get('ano', 0), l['codigo']))
     return linhas, None
 
 
 def ler_fotos(fonte, dados_ate, codigos, registro):
-    """A foto do dia (o mês de hoje) e o encerramento dos ANOS_ENCERRAMENTO anos antes do de hoje.
-    Devolve (andamento, encerramento, faltou)."""
+    """A foto do dia (o mês de hoje), o encerramento dos ANOS_ENCERRAMENTO anos antes do de hoje e as jornadas de hoje.
+    Devolve (andamento, encerramento, jornadas, faltou)."""
     faltou = []
     mes = f'{dados_ate.year:04d}-{dados_ate.month:02d}'
-    andamento, motivo = _ler_lista(fonte, 'andamento', [(mes, {})], CAMPOS_ANDAMENTO, codigos, registro)
+    andamento, motivo = _ler_lista(fonte, 'andamento', [((mes,), {})], CAMPOS_ANDAMENTO, codigos, registro)
     if motivo:
         faltou.append({'bloco': 'andamento', 'motivo': motivo})
         if motivo != 'consulta a conferir':
             registro(f'bloco andamento ficou de fora: {motivo}', 'aviso')
     anos = [dados_ate.year - n for n in range(ANOS_ENCERRAMENTO, 0, -1)]
-    encerramento, motivo = _ler_lista(fonte, 'encerramento', [(a, {'ano': a}) for a in anos], CAMPOS_ENCERRAMENTO,
+    encerramento, motivo = _ler_lista(fonte, 'encerramento', [((a,), {'ano': a}) for a in anos], CAMPOS_ENCERRAMENTO,
                                       codigos, registro)
     if motivo:
         faltou.append({'bloco': 'encerramento', 'motivo': motivo})
         if motivo != 'consulta a conferir':
             registro(f'bloco encerramento ficou de fora: {motivo}', 'aviso')
-    return andamento, encerramento, faltou
+    # a versão 4 (09/11/2026): as jornadas de hoje, com o salário do art. 8º da EC 141 do ano
+    teto, ano_teto = teto_art8(dados_ate.year)
+    if ano_teto != dados_ate.year:
+        registro(f'jornadas: o salário do art. 8º da EC 141 de {dados_ate.year} não está na ponte (TETO_ART8, em '
+                 f'ponte/fonte.py) — usei o de {ano_teto}; ponha o do ano', 'aviso')
+    jornadas, motivo = _ler_lista(fonte, 'jornadas', [((dados_ate, teto), {})], CAMPOS_JORNADAS, codigos, registro,
+                                  grupo=GRUPO_JORNADAS)
+    if motivo:
+        faltou.append({'bloco': 'jornadas', 'motivo': motivo})
+        if motivo != 'consulta a conferir':
+            registro(f'bloco jornadas ficou de fora: {motivo}', 'aviso')
+    return andamento, encerramento, jornadas, faltou
 
 
 def montar(fonte, meses, registro, inicio=None, dados_ate=None):
@@ -308,7 +356,8 @@ def montar(fonte, meses, registro, inicio=None, dados_ate=None):
     dados_ate = dados_ate or hoje()
     comps = competencias(dados_ate, meses)
     empresas, mensal, faltou = ler(fonte, comps, registro)
-    andamento, encerramento, faltou_fotos = ler_fotos(fonte, dados_ate, {e['codigo'] for e in empresas}, registro)
+    andamento, encerramento, jornadas, faltou_fotos = ler_fotos(fonte, dados_ate, {e['codigo'] for e in empresas},
+                                                                registro)
     faltou = faltou + faltou_fotos
     return {
         'versao': VERSAO_PACOTE,
@@ -324,6 +373,7 @@ def montar(fonte, meses, registro, inicio=None, dados_ate=None):
         'mensal': mensal,
         'andamento': andamento,
         'encerramento': encerramento,
+        'jornadas': jornadas,
         'faltou': faltou,
     }
 
@@ -340,6 +390,10 @@ def resumo(pacote):
     anos = sorted({l['ano'] for l in pacote.get('encerramento') or []})
     if anos:
         texto += f"; o encerramento de {' e '.join(str(a) for a in anos)}"
+    jor = pacote.get('jornadas') or []
+    if jor:
+        texto += (f"; as jornadas de {len({l['codigo'] for l in jor})} empresa(s) ({len(jor)} grupo(s), "
+                  f"{sum(l['empregados'] for l in jor)} empregado(s))")
     if pacote['faltou']:
         texto += '; faltou: ' + ', '.join(f"{f['bloco']} ({f['motivo']})" for f in pacote['faltou'])
     return texto

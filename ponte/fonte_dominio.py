@@ -2,7 +2,8 @@
 
 Cada bloco tem a sua consulta num arquivo em ponte/consultas/ — empresas.sql, folha.sql, fiscal.sql, contabil.sql,
 desde a versão 2 do pacote (05/11/2026) faturamento.sql, compras.sql e folha_valores.sql e, desde a versão 3 (também
-05/11/2026), origens.sql, cruzamentos.sql, saldos.sql, andamento.sql e encerramento.sql.
+05/11/2026), origens.sql, cruzamentos.sql, saldos.sql, andamento.sql e encerramento.sql e, desde a versão 4
+(09/11/2026), jornadas.sql.
 Consulta que ainda tem a linha "-- A CONFERIR" não roda: o bloco fica de fora da rodada (vai pro `faltou` do
 pacote) e o resto segue. Sem a de empresas, a rodada não manda nada.
 
@@ -14,6 +15,8 @@ O que cada consulta recebe e devolve (o contrato está em fonte.py):
     faturamento.sql, compras.sql, folha_valores.sql, origens.sql, cruzamentos.sql, saldos.sql: o mesmo
     andamento.sql  o primeiro e o último dia do mês de hoje (a foto do dia, uma vez por rodada)
     encerramento.sql  ? = 1º de janeiro, ? = 31 de dezembro do ano (uma vez por ano lido)
+    jornadas.sql   ? = hoje (date), ? = o salário do art. 8º da EC 141 (numeric) -> uma linha por empresa e GRUPO de
+                   empregados (o grupo do contrato, fonte.GRUPO_JORNADAS), já contada (a foto do dia, uma vez por rodada)
 Se a consulta precisar das datas mais de uma vez, use um WITH no começo que as receba uma vez só.
 Os nomes das colunas do resultado têm que ser os do contrato (use AS); maiúscula ou minúscula tanto faz.
 
@@ -141,6 +144,10 @@ class FonteDominio(Fonte):
 
     def encerramento(self, ano):
         return self._consultar('encerramento', (datetime.date(int(ano), 1, 1), datetime.date(int(ano), 12, 31)))
+
+    # a versão 4 (09/11/2026): a jornada dos funcionários
+    def jornadas(self, hoje, teto):
+        return self._consultar('jornadas', (hoje, teto))
 
     def fechar(self):
         if self._con is not None:
