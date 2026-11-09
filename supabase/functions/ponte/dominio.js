@@ -21,10 +21,14 @@
 // até onde o banco, o extrato e o caixa estão lançados e a data do fechamento) e `encerramento` (o zeramento de cada
 // empresa nos anos lidos). Um item delas fora do contrato fica de fora sozinho (volta em `recusadas`); o bloco que veio
 // no `faltou` não mexe no que o banco tinha.
+// A versão 4 (09/11/2026, a escala 6x1): a lista `jornadas`, outra foto do dia — a jornada dos funcionários somada por
+// empresa e grupo de jornada (decisão do Samuel: quantos, as horas e a soma dos salários de cada grupo; nome e CPF
+// ficam no PC). Montada de novo só com os campos do contrato (o nome ou o CPF que viesse fica de fora); o grupo fora do
+// contrato fica de fora sozinho. Quem grava é a dominio_gravar_jornadas, depois das partes (servidor.js).
 // Sem import: testes no node em tests/ponte-funcao.test.mjs.
 // ============================================================
 
-export const LIMITES_DOMINIO = { empresas: 5000, mensal: 60000, andamento: 5000, encerramento: 20000, anos: 5, faltou: 20, meses: 36, recusadas: 50 };
+export const LIMITES_DOMINIO = { empresas: 5000, mensal: 60000, andamento: 5000, encerramento: 20000, jornadas: 20000, anos: 5, faltou: 20, meses: 36, recusadas: 50 };
 export const BLOCOS_DOMINIO = {
   folha: ['funcionarios_ativos', 'admissoes', 'desligamentos', 'afastados', 'pro_labore'],
   fiscal: ['notas_saida', 'valor_saidas', 'notas_entrada', 'valor_entradas'],
@@ -45,13 +49,20 @@ export const BLOCOS_DOMINIO = {
 export const CAMPOS_ANDAMENTO = ['banco_contas', 'banco_ate', 'banco_ultimo', 'banco_ultimo_geral', 'caixa_ate',
   'caixa_contador_ate', 'extrato_contas', 'extrato_ate', 'extrato_pendentes', 'conciliadas', 'conciliado_ate', 'fechamento_em'];
 export const CAMPOS_ENCERRAMENTO = ['zerado_em', 'zeramentos', 'zerado_incluido_em', 'lancados_depois', 'lancamentos_do_ano'];
-const BLOCOS_FOTO = ['andamento', 'encerramento'];
+// a jornada (a versão 4): o grupo é (codigo, jornada, horas_semana, horas_mes, forma, controle, categoria, unidade)
+export const CAMPOS_JORNADA = ['jornada', 'tipo', 'tipo_escala', 'semana', 'min_semana', 'min_maior_dia', 'ciclo_dias',
+  'ciclo_trabalho', 'horas_semana', 'horas_mes', 'forma', 'controle', 'categoria', 'unidade', 'empregados', 'afastados',
+  'compensa_sabado', 'superior', 'superior_teto', 'salarios'];
+const CHAVE_DO_GRUPO = ['codigo', 'jornada', 'horas_semana', 'horas_mes', 'forma', 'controle', 'categoria', 'unidade'];
+const BLOCOS_FOTO = ['andamento', 'encerramento', 'jornadas'];
 // os blocos de cada versão do pacote
 export const BLOCOS_DA_VERSAO = {
   1: ['folha', 'fiscal', 'contabil'],
   2: ['folha', 'fiscal', 'contabil', 'faturamento', 'compras', 'folha_valores'],
-  3: [...Object.keys(BLOCOS_DOMINIO), ...BLOCOS_FOTO]
+  3: [...Object.keys(BLOCOS_DOMINIO), 'andamento', 'encerramento'],
+  4: [...Object.keys(BLOCOS_DOMINIO), 'andamento', 'encerramento', 'jornadas']
 };
+const VERSOES = Object.keys(BLOCOS_DA_VERSAO).map(Number);
 const TODOS_OS_BLOCOS = [...Object.keys(BLOCOS_DOMINIO), ...BLOCOS_FOTO];
 const INTEIROS = new Set(['funcionarios_ativos', 'admissoes', 'desligamentos', 'afastados', 'pro_labore', 'notas_saida', 'notas_entrada', 'lancamentos', 'meses_rbt12',
   'lanc_normais', 'lanc_extrato', 'lanc_fiscal', 'lanc_folha', 'lanc_apuracao', 'lanc_outros',
@@ -181,14 +192,59 @@ function itemDoEncerramento(z, onde, dadosAte) {
   if (saida.zerado_em && saida.zerado_em.slice(0, 4) !== String(z.ano)) recusar(onde + '.zerado_em', 'zeramento fora do ano do item');
   return saida;
 }
+// um grupo da jornada (a versão 4): só os campos do contrato, cada um na faixa dele
+const inteiroNaFaixa = (v, campo, min, max, porque) => {
+  if (v == null) return null;
+  if (typeof v !== 'number' || !Number.isInteger(v) || v < min || v > max) recusar(campo, porque);
+  return v;
+};
+const horasDe = (v, campo, max) => {
+  if (v == null) return null;
+  if (typeof v !== 'number' || !Number.isFinite(v) || v < 0 || v > max) recusar(campo, 'horas fora de 0 a ' + max);
+  return Math.round(v * 100) / 100;
+};
+const SEMANA = /^[TCF-]{7}$/;
+function itemDaJornada(j, onde) {
+  objeto(j, onde);
+  if (typeof j.codigo !== 'number' || !Number.isInteger(j.codigo) || j.codigo <= 0) recusar(onde + '.codigo', 'código que não é um inteiro positivo');
+  const s = { codigo: j.codigo };
+  s.jornada = inteiroNaFaixa(j.jornada, onde + '.jornada', 0, 1e9, 'jornada que não é um inteiro');
+  s.tipo = inteiroNaFaixa(j.tipo, onde + '.tipo', 0, 99, 'tipo que não é um inteiro de 0 a 99');
+  s.tipo_escala = inteiroNaFaixa(j.tipo_escala, onde + '.tipo_escala', 0, 99, 'tipo de escala que não é um inteiro de 0 a 99');
+  if (j.semana != null && (typeof j.semana !== 'string' || !SEMANA.test(j.semana))) recusar(onde + '.semana', 'semana que não são 7 letras T, C, F ou -');
+  s.semana = j.semana == null ? null : j.semana;
+  s.min_semana = inteiroNaFaixa(j.min_semana, onde + '.min_semana', 0, 7 * 24 * 60, 'minutos na semana fora de 0 a 10.080');
+  s.min_maior_dia = inteiroNaFaixa(j.min_maior_dia, onde + '.min_maior_dia', 0, 24 * 60, 'minutos no dia fora de 0 a 1.440');
+  s.ciclo_dias = inteiroNaFaixa(j.ciclo_dias, onde + '.ciclo_dias', 1, 400, 'ciclo fora de 1 a 400 dias');
+  s.ciclo_trabalho = inteiroNaFaixa(j.ciclo_trabalho, onde + '.ciclo_trabalho', 0, 400, 'dias trabalhados no ciclo fora de 0 a 400');
+  if (s.ciclo_trabalho != null && s.ciclo_dias != null && s.ciclo_trabalho > s.ciclo_dias) recusar(onde + '.ciclo_trabalho', 'mais dias trabalhados que os dias do ciclo');
+  s.horas_semana = horasDe(j.horas_semana, onde + '.horas_semana', 168);
+  s.horas_mes = horasDe(j.horas_mes, onde + '.horas_mes', 744);
+  s.forma = inteiroNaFaixa(j.forma, onde + '.forma', 0, 99, 'forma de cálculo que não é um inteiro de 0 a 99');
+  s.controle = inteiroNaFaixa(j.controle, onde + '.controle', 0, 99, 'tipo de horário que não é um inteiro de 0 a 99');
+  s.categoria = inteiroNaFaixa(j.categoria, onde + '.categoria', 101, 111, 'categoria que não é de empregado (101 a 111)');
+  if (s.categoria == null) recusar(onde + '.categoria', 'falta a categoria');
+  s.unidade = inteiroNaFaixa(j.unidade, onde + '.unidade', 1, 7, 'unidade do salário fora de 1 a 7');
+  s.empregados = inteiroNaFaixa(j.empregados, onde + '.empregados', 1, 1e6, 'grupo sem empregados');
+  if (s.empregados == null) recusar(onde + '.empregados', 'grupo sem empregados');
+  for (const c of ['afastados', 'compensa_sabado', 'superior', 'superior_teto']) {
+    const v = inteiroNaFaixa(j[c], onde + '.' + c, 0, s.empregados, 'mais que os empregados do grupo');
+    s[c] = v == null ? 0 : v;
+  }
+  if (s.superior_teto > s.superior) recusar(onde + '.superior_teto', 'mais que os com o superior completo');
+  s.salarios = valorDe(j.salarios, onde + '.salarios');
+  if (s.salarios != null && s.salarios < 0) recusar(onde + '.salarios', 'soma dos salários negativa');
+  return s;
+}
 
 // validarPacoteDominio(corpo) → { ok: true, pacote, recusadas } | { ok: false, erro, campo }
-// pacote = { versao, rodada, empresas, mensal, andamento, encerramento, faltou, blocos_ok } — o que vai pra dominio_gravar
+// pacote = { versao, rodada, empresas, mensal, andamento, encerramento, jornadas, faltou, blocos_ok } — o que vai pra
+// dominio_gravar (a jornada vai à parte, pra dominio_gravar_jornadas)
 // (blocos_ok com todos os blocos: o que a versão do pacote não tem vai falso, e o banco não mexe nele)
 export function validarPacoteDominio(corpo) {
   try {
     objeto(corpo, 'pacote');
-    if (![1, 2, 3].includes(corpo.versao)) recusar('versao', 'versão desconhecida (esta função lê a 1, a 2 e a 3)');
+    if (!VERSOES.includes(corpo.versao)) recusar('versao', 'versão desconhecida (esta função lê da 1 à ' + Math.max(...VERSOES) + ')');
     const blocos = BLOCOS_DA_VERSAO[corpo.versao];
     const r = objeto(corpo.rodada, 'rodada');
     const id = String(r.id || '');
@@ -274,10 +330,12 @@ export function validarPacoteDominio(corpo) {
     };
     const andamento = lerLista('andamento', it => it.codigo, itemDoAndamento);
     const encerramento = lerLista('encerramento', it => it.codigo + '|' + it.ano, itemDoEncerramento);
+    // a jornada (a versão 4): o grupo repetido (a mesma chave) fica de fora, como o item repetido das outras fotos
+    const jornadas = lerLista('jornadas', it => CHAVE_DO_GRUPO.map(c => it[c]).join('|'), itemDaJornada);
 
     return {
       ok: true,
-      pacote: { versao: corpo.versao, rodada, empresas, mensal, andamento, encerramento, faltou, blocos_ok: blocosOk },
+      pacote: { versao: corpo.versao, rodada, empresas, mensal, andamento, encerramento, jornadas, faltou, blocos_ok: blocosOk },
       recusadas, linhas_recusadas: foraDaLista
     };
   } catch (e) {

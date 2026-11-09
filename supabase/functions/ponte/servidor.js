@@ -195,14 +195,18 @@ async function guardarRelatorio(db, drive, r, agora) {
 // total de linhas. Uma parte que falha devolve o erro (5xx: a ponte manda de novo, e o banco troca pelos mesmos números).
 // A foto do dia e o encerramento (a versão 3) vão só na primeira parte; nas outras, as listas vazias e as marcas deles
 // falsas — o banco apaga da foto a empresa que não veio, e uma parte sem a foto não pode parecer uma foto vazia.
+// A jornada (a versão 4, 09/11/2026) não vai nas partes: depois delas (as empresas já gravadas, que a ligam ao cadastro
+// pelo código), a foto inteira vai pra dominio_gravar_jornadas — só com a lista lida inteira e com algum grupo. Um erro
+// nela não derruba a rodada: os números do mês já foram, e a foto da jornada é do dia (a de amanhã vem de novo).
 export const LINHAS_POR_PARTE = 800;
 export async function gravarDominio(db, p) {
-  const total = { empresas: 0, ligadas: 0, sem_cadastro: 0, linhas: 0, andamento: 0, encerramento: 0 };
+  const { jornadas = [], ...resto } = p;
+  const total = { empresas: 0, ligadas: 0, sem_cadastro: 0, linhas: 0, andamento: 0, encerramento: 0, jornadas: 0 };
   const n = Math.max(1, Math.ceil(p.mensal.length / LINHAS_POR_PARTE));
   for (let i = 0; i < n; i++) {
     const primeira = i === 0;
     const parte = {
-      ...p,
+      ...resto,
       empresas: primeira ? p.empresas : [],
       andamento: primeira ? (p.andamento || []) : [],
       encerramento: primeira ? (p.encerramento || []) : [],
@@ -218,6 +222,11 @@ export async function gravarDominio(db, p) {
   if (n > 1) {
     const { error } = await db.from('dominio_rodadas').update({ linhas: total.linhas }).eq('id', p.rodada.id);
     if (error) console.error('ponte: o total de linhas da rodada', error);
+  }
+  if (p.blocos_ok && p.blocos_ok.jornadas === true && jornadas.length) {
+    const { data, error } = await db.rpc('dominio_gravar_jornadas', { p: { rodada: p.rodada, jornadas } });
+    if (error) { console.error('ponte: a jornada', error); total.jornadas_erro = 'Não gravei a jornada agora; fica a da rodada anterior.'; }
+    else total.jornadas = (data && Number.isInteger(data.jornadas)) ? data.jornadas : jornadas.length;
   }
   return { ...total, partes: n };
 }
@@ -241,10 +250,10 @@ export function criarServidor({ criarDb, agora = () => Date.now(), enviar = (url
     let corpo;
     try { corpo = JSON.parse(bruto); } catch { return resposta({ erro: 'O corpo não é um JSON.' }, 400); }
     if (!corpo || typeof corpo !== 'object' || Array.isArray(corpo)) return resposta({ erro: 'O corpo não é um objeto.' }, 400);
-    // as versões 2 e 3 são só do pacote do Domínio (05/11/2026: o faturamento, as compras e a folha em reais; o
-    // andamento das contabilidades); o resto lê a 1
+    // as versões 2 a 4 são só do pacote do Domínio (05/11/2026: o faturamento, as compras e a folha em reais; o
+    // andamento das contabilidades; 09/11/2026: a jornada dos funcionários); o resto lê a 1
     const doDominio = corpo.tipo == null && Array.isArray(corpo.mensal);
-    if (corpo.versao !== 1 && !(doDominio && (corpo.versao === 2 || corpo.versao === 3))) return resposta({ erro: 'Versão do pacote desconhecida (esta função lê a 1; o pacote do Domínio, também a 2 e a 3).' }, 422);
+    if (corpo.versao !== 1 && !(doDominio && [2, 3, 4].includes(corpo.versao))) return resposta({ erro: 'Versão do pacote desconhecida (esta função lê a 1; o pacote do Domínio, da 1 à 4).' }, 422);
     try {
       if (corpo.ping === true) return resposta({ ok: true, ponte: 'ok' });
       if (corpo.tipo === 'receita' && corpo.pedir === 'empresas') {

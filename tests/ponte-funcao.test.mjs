@@ -9,7 +9,7 @@ import { posix } from 'node:path';
 import { createHash } from 'node:crypto';
 import { validarPacote, empresasDaCarteira, documento, hojeEmBrasilia, sha256Hex, iguais, LIMITES } from '../supabase/functions/ponte/receita.js';
 import { criarServidor } from '../supabase/functions/ponte/servidor.js';
-import { validarPacoteDominio, LIMITES_DOMINIO } from '../supabase/functions/ponte/dominio.js';
+import { validarPacoteDominio, LIMITES_DOMINIO, BLOCOS_DA_VERSAO } from '../supabase/functions/ponte/dominio.js';
 import { validarPacoteNotas, empresasAutorizadas, destinosDaConfig, dvDaChave, pareceCpf, semCpf, LIMITES_NOTAS, SEM_DESTINO, SEM_AUTORIZACAO, DESTINO_FORA } from '../supabase/functions/ponte/notas.js';
 
 let falhas = 0;
@@ -255,7 +255,7 @@ chk('a folha em reais vazia: 0 na empresa ativa, null na inativa (como a folha)'
     && r2.pacote.mensal.every(l => l.receita_bruta === null && l.compras === null && l.salarios === null), r2);
 }
 chk('na versão 1, bloco novo no faltou recusa o pacote (ela não tem esse bloco)', !!recusaD(p => { p.faltou = [{ bloco: 'compras', motivo: 'x' }]; }, 'faltou[0].bloco'));
-chk('versão 4 recusa o pacote', !!recusaD(p => { p.versao = 4; }, 'versao'));
+chk('versão 5 recusa o pacote', !!recusaD(p => { p.versao = 5; }, 'versao'));
 {
   const p = DOMINIO2();
   p.mensal.push({ codigo: 12, competencia: '2026-09', meses_rbt12: 2.5 });
@@ -353,6 +353,65 @@ chk('o encerramento por empresa e ano; sem zeramento, null (nunca 0)',
 }
 chk('na versão 2, bloco da versão 3 no faltou recusa o pacote', !!recusaD(p => { p.versao = 2; p.faltou = [{ bloco: 'andamento', motivo: 'x' }]; }, 'faltou[0].bloco'));
 chk('a foto que não é lista recusa o pacote', !!recusaD(p => { p.versao = 3; p.andamento = {}; }, 'andamento'));
+
+console.log('O pacote do Domínio, versão 4 (09/11/2026: a jornada dos funcionários, somada por empresa e jornada):');
+// a versão 4: a 10 com uma 6x1 de 44 h (2 grupos: mensalista e horista), uma 5x2 com o sábado compensado e uma 12x36;
+// a 12 com um grupo sem jornada no Domínio
+function DOMINIO4() {
+  const p = DOMINIO3();
+  p.versao = 4;
+  const g = (x) => ({ tipo: 1, tipo_escala: 0, semana: 'TTTTTTF', min_semana: 2640, min_maior_dia: 440, ciclo_dias: null, ciclo_trabalho: null,
+    horas_semana: 44, horas_mes: 220, forma: 1, controle: 1, categoria: 101, unidade: 5, empregados: 3, afastados: 0, compensa_sabado: 0,
+    superior: 0, superior_teto: 0, salarios: 6300, ...x });
+  p.jornadas = [
+    g({ codigo: 10, jornada: 7, nome: 'FULANO DE TAL', cpf: '12345678909' }),
+    g({ codigo: 10, jornada: 7, unidade: 1, empregados: 1, salarios: 9.5, forma: 2 }),
+    g({ codigo: 10, jornada: 8, semana: 'TTTTTCF', compensa_sabado: 4, empregados: 4, salarios: 8800.004 }),
+    g({ codigo: 10, jornada: 9, tipo: 2, tipo_escala: 1, semana: null, ciclo_dias: 2, ciclo_trabalho: 1, min_semana: 2520, min_maior_dia: 660, horas_semana: 36, horas_mes: 180, empregados: 2, afastados: 1, salarios: 4400 }),
+    g({ codigo: 12, jornada: null, tipo: null, tipo_escala: null, semana: null, min_semana: null, min_maior_dia: null, empregados: 1, salarios: 1700 })
+  ];
+  return p;
+}
+const v4 = validarPacoteDominio(DOMINIO4());
+chk('o pacote da versão 4 passa, com a jornada marcada como lida', v4.ok && v4.pacote.versao === 4 && v4.pacote.blocos_ok.jornadas === true && v4.pacote.jornadas.length === 5, v4.ok ? v4.pacote.blocos_ok : v4);
+const j4 = v4.ok && v4.pacote.jornadas;
+chk('o grupo sai só com os campos do contrato: o nome e o CPF que a fonte devolvesse ficam de fora',
+  j4 && !('nome' in j4[0]) && !('cpf' in j4[0]) && Object.keys(j4[0]).length === 21 && j4[0].semana === 'TTTTTTF' && j4[0].empregados === 3);
+chk('o mesmo código de jornada com outra unidade do salário é outro grupo; o dinheiro com centavos; a escala sem a semana',
+  j4 && j4[1].unidade === 1 && j4[1].salarios === 9.5 && j4[2].salarios === 8800 && j4[3].semana === null && j4[3].ciclo_dias === 2 && j4[3].afastados === 1);
+chk('o grupo sem jornada no Domínio entra (a jornada nula)', j4 && j4[4].codigo === 12 && j4[4].jornada === null && j4[4].min_semana === null);
+chk('na versão 3, a jornada não foi lida: a lista vai vazia e a marca falsa, mesmo que venha',
+  v3.ok && v3.pacote.blocos_ok.jornadas === false && v3.pacote.jornadas.length === 0
+  && (() => { const p = DOMINIO4(); p.versao = 3; const r2 = validarPacoteDominio(p); return r2.ok && r2.pacote.jornadas.length === 0 && r2.pacote.blocos_ok.jornadas === false; })());
+{
+  const p = DOMINIO4(); p.faltou = [{ bloco: 'jornadas', motivo: 'consulta a conferir' }];
+  const r2 = validarPacoteDominio(p);
+  chk('a jornada no faltou: a lista vazia e a marca falsa (o banco fica com a foto que tinha); o resto entra',
+    r2.ok && r2.pacote.blocos_ok.jornadas === false && r2.pacote.jornadas.length === 0 && r2.pacote.blocos_ok.andamento === true, r2);
+}
+chk('na versão 3, a jornada no faltou recusa o pacote (ela não tem esse bloco)', !!recusaD(p => { p.versao = 3; p.faltou = [{ bloco: 'jornadas', motivo: 'x' }]; }, 'faltou[0].bloco'));
+{
+  const p = DOMINIO4();
+  const base = p.jornadas[0];
+  p.jornadas.push({ ...base });                                          // o mesmo grupo de novo
+  p.jornadas.push({ ...base, codigo: 99 });                              // empresa fora da lista
+  p.jornadas.push({ ...base, jornada: 20, semana: 'TTTTTT' });           // semana que não são 7 dias
+  p.jornadas.push({ ...base, jornada: 21, semana: 'TTTXTTF' });          // letra fora do contrato
+  p.jornadas.push({ ...base, jornada: 22, empregados: 0 });              // grupo sem empregados
+  p.jornadas.push({ ...base, jornada: 23, afastados: 4 });               // mais afastados que empregados
+  p.jornadas.push({ ...base, jornada: 24, categoria: 701 });             // contribuinte individual, não é empregado
+  p.jornadas.push({ ...base, jornada: 25, superior: 1, superior_teto: 2 });
+  p.jornadas.push({ ...base, jornada: 26, min_semana: 20000 });
+  p.jornadas.push({ ...base, jornada: 27, ciclo_dias: 2, ciclo_trabalho: 3 });
+  p.jornadas.push({ ...base, jornada: 28, salarios: -1 });
+  p.jornadas.push({ ...base, jornada: 29, horas_semana: '44' });
+  const r2 = validarPacoteDominio(p);
+  // 13 = os 12 daqui e a linha do mês da empresa 99 que o pacote de base já traz
+  chk('o grupo fora do contrato fica de fora sozinho (repetido, fora da lista, semana errada, sem empregados, contagens acima do grupo, categoria, minutos, ciclo, salário negativo, horas em texto)',
+    r2.ok && r2.pacote.jornadas.length === 5 && r2.linhas_recusadas === 13 && r2.recusadas.some(x => x.campo === 'jornadas[7].semana')
+    && r2.recusadas.some(x => x.campo === 'jornadas[11].categoria') && r2.recusadas.some(x => x.campo === 'jornadas[16].horas_semana'), r2);
+}
+chk('a jornada que não é lista recusa o pacote', !!recusaD(p => { Object.assign(p, DOMINIO4()); p.jornadas = {}; }, 'jornadas'));
 {
   // os dois lados do contrato juntos: o pacote que a ponte do PC monta (ponte/pacote.py, com o Domínio de mentira e os
   // 14 meses da tarefa) passa aqui inteiro, sem nenhuma linha nem item recusado
@@ -362,9 +421,10 @@ chk('a foto que não é lista recusa o pacote', !!recusaD(p => { p.versao = 3; p
   const doPc = JSON.parse(execFileSync(py, args, { encoding: 'utf8' }));
   const vp = validarPacoteDominio(doPc);
   chk('o pacote da ponte do PC (a versão ' + doPc.versao + ', 14 meses do Domínio de mentira) passa inteiro: nenhuma linha nem item recusado',
-    vp.ok && vp.pacote.versao === 3 && vp.linhas_recusadas === 0 && vp.pacote.mensal.length === doPc.mensal.length
+    vp.ok && vp.pacote.versao === doPc.versao && vp.linhas_recusadas === 0 && vp.pacote.mensal.length === doPc.mensal.length
     && vp.pacote.andamento.length === doPc.andamento.length && vp.pacote.encerramento.length === doPc.encerramento.length
-    && Object.values(vp.pacote.blocos_ok).every(Boolean), vp.ok ? { recusadas: vp.recusadas, blocos_ok: vp.pacote.blocos_ok } : vp);
+    && vp.pacote.jornadas.length === (doPc.jornadas || []).length
+    && BLOCOS_DA_VERSAO[doPc.versao].every(b => vp.pacote.blocos_ok[b] === true), vp.ok ? { recusadas: vp.recusadas, blocos_ok: vp.pacote.blocos_ok } : vp);
 }
 
 console.log('A porta de entrada:');
@@ -490,6 +550,34 @@ chk('o limite do corpo: 16 MB (o pacote do Domínio da versão 2 passou dos 5 em
     && c3[0].args.p.encerramento.length === 10 && c3.slice(1).every(c => c.args.p.andamento.length === 0 && c.args.p.encerramento.length === 0
       && c.args.p.blocos_ok.andamento === false && c.args.p.blocos_ok.encerramento === false && c.args.p.blocos_ok.saldos === true)
     && r3.corpo.andamento === 150 && r3.corpo.encerramento === 10, { status: r3.status, corpo: r3.corpo });
+  chk('a versão 3 não chama a gravação da jornada', !db3.chamadas.some(c => c.nome === 'dominio_gravar_jornadas'));
+  // a versão 4: a jornada não vai nas partes; depois delas, a foto inteira vai pra dominio_gravar_jornadas
+  p.versao = 4;
+  p.jornadas = p.empresas.slice(0, 40).map((e, i) => ({ codigo: e.codigo, jornada: i + 1, tipo: 1, tipo_escala: 0, semana: 'TTTTTTF', min_semana: 2640,
+    min_maior_dia: 440, horas_semana: 44, horas_mes: 220, forma: 1, controle: 1, categoria: 101, unidade: 5, empregados: 2, afastados: 0,
+    compensa_sabado: 0, superior: 0, superior_teto: 0, salarios: 3600 }));
+  const db4 = fakeDb();
+  db4.rpc = async (nome, args) => { db4.chamadas.push({ nome, args }); return nome === 'dominio_gravar_jornadas' ? { data: { jornadas: args.p.jornadas.length, ligadas: 30 }, error: null } : { data: { empresas: args.p.empresas.length, linhas: args.p.mensal.length }, error: null }; };
+  const r4 = await pedir(db4, p);
+  const nomes4 = db4.chamadas.filter(c => !c.nome.startsWith('update:')).map(c => c.nome);
+  const gj = db4.chamadas.find(c => c.nome === 'dominio_gravar_jornadas');
+  chk('a versão 4: as 3 partes sem a jornada; depois, a foto inteira numa chamada só, com a rodada; a resposta diz quantos grupos',
+    r4.status === 200 && nomes4.join(',') === 'dominio_gravar,dominio_gravar,dominio_gravar,dominio_gravar_jornadas'
+    && db4.chamadas.filter(c => c.nome === 'dominio_gravar').every(c => !('jornadas' in c.args.p))
+    && gj.args.p.jornadas.length === 40 && gj.args.p.rodada.dados_ate === p.rodada.dados_ate && !('empresas' in gj.args.p) && r4.corpo.jornadas === 40,
+    { status: r4.status, corpo: r4.corpo, nomes4 });
+  const dbJ = fakeDb();
+  dbJ.rpc = async (nome, args) => nome === 'dominio_gravar_jornadas' ? { data: null, error: { message: 'a função não existe' } } : { data: { empresas: args.p.empresas.length, linhas: args.p.mensal.length }, error: null };
+  const rJ = await pedir(dbJ, p);
+  chk('a jornada que não grava não derruba a rodada: 200, os números do mês gravados, o aviso na resposta',
+    rJ.status === 200 && rJ.corpo.gravado === true && rJ.corpo.linhas === 1800 && /jornada/.test(rJ.corpo.jornadas_erro || ''), rJ);
+  const p4v = { ...p, jornadas: [] };
+  const db4v = fakeDb();
+  db4v.rpc = async (nome, args) => { db4v.chamadas.push({ nome, args }); return { data: { empresas: args.p.empresas.length, linhas: args.p.mensal.length }, error: null }; };
+  await pedir(db4v, p4v);
+  const p4f = { ...p, faltou: [{ bloco: 'jornadas', motivo: 'erro na consulta' }] };
+  await pedir(db4v, p4f);
+  chk('a jornada vazia, ou no faltou, não troca a foto (a função da jornada nem é chamada)', !db4v.chamadas.some(c => c.nome === 'dominio_gravar_jornadas'));
 }
 
 console.log('As notas de entrada das empresas autorizadas (03/11/2026):');
