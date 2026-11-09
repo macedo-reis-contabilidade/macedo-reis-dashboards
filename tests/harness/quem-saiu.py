@@ -81,7 +81,7 @@ def main():
         ok(p.input_value('#vincResp') == '', 'e não vem com ela escolhida: falta dizer quem assume')
 
         print('3. As Tarefas recorrentes do Fiscal')
-        p.goto(base + 'fiscal-regras.html'); p.wait_for_timeout(1500)
+        p.goto(base + 'fiscal-tarefas.html?aba=recorrentes'); p.wait_for_selector('#ovResp', state='attached'); p.wait_for_timeout(500)
         resp = p.evaluate("() => [...document.querySelectorAll('#ovResp option')].map(o => o.value).filter(Boolean)")
         ok(resp and 'Deize' not in resp, f'"+ Vincular empresas" lista só a equipe ({resp})')
         p.close()

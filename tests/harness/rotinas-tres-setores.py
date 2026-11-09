@@ -32,7 +32,7 @@ SETORES = [
     ('societario', 'Societário', 'societario.html', 'rm5', 'RENOVAÇÃO DE ALVARÁ (TESTE)',        'Adaini', 'c1', 'com', 25, 'Samuel',  'ATUALIZAÇÃO DE CONTRATO SOCIAL (TESTE)'),
 ]
 # o card do Fiscal avisa que obrigação continua em Obrigações; os outros dois usam o texto do Contábil
-CARD_FISCAL = 'As obrigações continuam em Obrigações.'
+CARD_FISCAL = 'as obrigações continuam em Obrigações.'
 
 falhas = 0
 def ok(cond, msg):
@@ -70,8 +70,12 @@ def main():
         b = pw.chromium.launch()
         for tema in ('escuro', 'claro'):
             for setor, nome, hub, modelo, rotina, primeiro, cliente, busca, dia, resp, nova_rotina in SETORES:
-                print(f'[{tema}] {nome} — {setor}-regras.html')
+                print(f'[{tema}] {nome} — {setor}-regras.html (desde 09/11/2026, a aba Recorrentes da tela de Tarefas)')
                 p, _ = abrir(b, base, tema, f'{setor}-regras.html', erros, respostas=[nova_rotina])
+                p.wait_for_selector('.rv-item', timeout=8000)
+                ok(p.url.endswith(f'{setor}-tarefas.html?aba=recorrentes'), f'0. o {setor}-regras.html leva pra aba Recorrentes das Tarefas')
+                ok(p.get_attribute('#taAbaRecorrentes', 'aria-selected') == 'true' and p.is_hidden('#tarefasApp')
+                   and p.is_visible('#rvRaiz'), '0. a aba Recorrentes aberta, a das tarefas escondida')
                 itens = p.locator('.rv-item').all_inner_texts()
                 ok(any(rotina in t for t in itens), f'1. a rotina do {nome} aparece na lista')
                 outras = p.evaluate(f"() => window.__mockDb.rotinas_modelo.filter(r => r.setor !== '{setor}').map(r => r.nome)")
@@ -91,13 +95,21 @@ def main():
                 ok(bool(novo) and novo['setor'] == setor and novo['titulo'] == rotina and novo['dia_vencimento'] == dia
                    and novo['responsavel'] == resp and novo['origem'] == 'rotina',
                    f"6. vínculo gravado: setor {setor}, a rotina, dia {dia}, {resp}")
+                p.click('#taAbaTarefas'); p.wait_for_timeout(300)
+                ok(p.is_visible('#tarefasApp') and p.is_hidden('#rvRaiz') and 'aba=' not in p.url,
+                   '8. a aba Tarefas volta, e o endereço fica o de sempre')
+                p.click('#taAbaRecorrentes'); p.wait_for_timeout(300)
+                ok(p.url.endswith('?aba=recorrentes') and p.locator('#rvRaiz .rv').count() == 1
+                   and p.locator('.rv-item').count() >= len(itens) and p.is_visible('#rvRaiz'),
+                   '8. e a Recorrentes volta como estava, sem montar duas vezes')
                 p.close()
 
             for setor, nome, hub, *_ in SETORES:
                 print(f'[{tema}] hub do {nome}')
                 p, _ = abrir(b, base, tema, hub, erros)
-                card = p.locator(f'a.dashboard-card[href="{setor}-regras.html"]')
-                ok(card.count() == 1 and 'Tarefas recorrentes' in card.inner_text(), f'7. card "Tarefas recorrentes" no hub do {nome}')
+                ok(p.locator(f'a.dashboard-card[href="{setor}-regras.html"]').count() == 0, f'7. sem o card "Tarefas recorrentes" no hub do {nome}')
+                card = p.locator(f'a.dashboard-card[href="{setor}-tarefas.html"]')
+                ok(card.count() == 1 and 'aba Recorrentes' in card.inner_text(), f'7. o card Tarefas do {nome} fala da aba Recorrentes')
                 if setor == 'fiscal':
                     ok(CARD_FISCAL in card.inner_text(), '7. no Fiscal, o card manda as obrigações pra Obrigações')
                 p.screenshot(path=str(FOTOS / f'tres-setores-hub-{setor}-{tema}.png'))

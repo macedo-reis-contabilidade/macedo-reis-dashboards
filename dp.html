@@ -15,7 +15,6 @@
     a[href="dp-tarefas.html"] .dashboard-card-icon { background: rgba(138,174,200,.16); color:#8AAEC8; }
     a[href="dp-admissoes.html"] .dashboard-card-icon { background: rgba(251,146,60,.16); color:#FB923C; }
     a[href="dp-rescisoes.html"] .dashboard-card-icon { background: rgba(239,112,96,.16); color:#EF7060; }
-    a[href="dp-regras.html"] .dashboard-card-icon { background: rgba(63,176,122,.16); color:#3FB07A; }
     a[href="dp-relatorios.html"] .dashboard-card-icon { background: rgba(133,151,224,.16); color:#8597E0; }
     a[href="dp-sugestoes.html"] .dashboard-card-icon { background: rgba(164,143,224,.16); color:#A48FE0; }
     a[href="dp-convencoes.html"] .dashboard-card-icon { background: rgba(227,179,65,.16); color:#E3B341; }
@@ -32,6 +31,7 @@
     .card-status.st-open  { background:rgba(138,174,200,.14); border:1px solid rgba(138,174,200,.38); color:var(--text-2); }
     .card-status.st-clear { background:rgba(63,176,122,.14);  border:1px solid rgba(63,176,122,.4);  color:var(--ok); }
     .card-status.st-load  { background:var(--fill-2); border:1px solid var(--fill-3); color:var(--text-muted); }
+    a[href="dp-jornada.html"] .dashboard-card-icon { background: rgba(230,102,102,.14); color:#E66666; }
   </style>
 </head>
 <body>
@@ -69,7 +69,7 @@
             <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
           </div>
           <h3>Tarefas</h3>
-          <p>Tarefas do dia a dia do setor, com faixa de foco por vencimento.</p>
+          <p>Tarefas do dia a dia do setor, com faixa de foco por vencimento. Na aba Recorrentes, as rotinas que fazem as tarefas nascerem sozinhas.</p>
           <div class="dashboard-card-footer"><span>Acessar →</span><span class="badge card-status st-load" data-mod="dp-tarefas.html">·</span></div>
         </a>
 
@@ -100,6 +100,15 @@
           <div class="dashboard-card-footer"><span>Acessar →</span><span class="badge card-status st-load" data-mod="dp-folha.html">·</span></div>
         </a>
 
+        <a href="dp-jornada.html" class="dashboard-card">
+          <div class="dashboard-card-icon">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/><path d="M8 15h2M14 15h2"/></svg>
+          </div>
+          <h3>Escala 6x1</h3>
+          <p>O fim da 6x1 (EC 141/2026: 42 h e 2 folgas em 16/12/2026, 40 h em 16/12/2027): a jornada de cada empresa pelo Domínio, o que muda, o simulador e o plano combinado, com o relatório pra empresa.</p>
+          <div class="dashboard-card-footer"><span>Acessar →</span><span class="badge card-status st-load" data-mod="dp-jornada.html">·</span></div>
+        </a>
+
         <a href="fator-r.html" class="dashboard-card">
           <div class="dashboard-card-icon">
             <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="5" x2="5" y2="19"/><circle cx="6.5" cy="6.5" r="2.5"/><circle cx="17.5" cy="17.5" r="2.5"/></svg>
@@ -107,14 +116,6 @@
           <h3>Fator R</h3>
           <p>Folha ÷ receita dos últimos 12 meses: o anexo de cada empresa, simulador do pró-labore e lançamentos por competência.</p>
           <div class="dashboard-card-footer"><span>Acessar →</span></div>
-        </a>
-        <a href="dp-regras.html" class="dashboard-card">
-          <div class="dashboard-card-icon">
-            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>
-          </div>
-          <h3>Tarefas recorrentes</h3>
-          <p>Rotinas do setor: vincule várias empresas de uma vez, cada uma com sua data e periodicidade; as tarefas nascem na agenda.</p>
-          <div class="dashboard-card-footer"><span>Acessar →</span><span class="badge card-status st-load" data-mod="dp-regras.html">·</span></div>
         </a>
 
         <a href="dp-relatorios.html" class="dashboard-card">
@@ -223,7 +224,16 @@
           if (eFs) setBadge('dp-folha.html', '—');
           else { const n = (fs || []).filter(f => !f.saida || f.saida >= hojeLocal()).length; setBadge('dp-folha.html', n + (n === 1 ? ' funcionário' : ' funcionários')); }
         }
-        ["dp-regras.html", "dp-relatorios.html", "dp-sugestoes.html", "dp-convencoes.html", "dp-custo.html", "dp-pareceres.html"].forEach(h => setBadge(h, '—'));
+        {
+          // a Escala 6x1: as empresas com gente em 6 dias por semana no Domínio (o plano ainda não aplicado)
+          const { data: js, error: eJs } = await supabase.from('dominio_jornadas').select('cliente_id, semana, empregados');
+          if (eJs || !(js || []).length) setBadge('dp-jornada.html', 'até 16/12');
+          else {
+            const seis = new Set((js || []).filter(j => j.cliente_id && /^[TCF-]{7}$/.test(j.semana || '') && (j.semana.match(/T/g) || []).length === 6).map(j => j.cliente_id));
+            setBadge('dp-jornada.html', seis.size + (seis.size === 1 ? ' empresa em 6x1' : ' empresas em 6x1'));
+          }
+        }
+        ["dp-relatorios.html", "dp-sugestoes.html", "dp-convencoes.html", "dp-custo.html", "dp-pareceres.html"].forEach(h => setBadge(h, '—'));
       } catch (e) { console.error(e); }
     }
     pintar();

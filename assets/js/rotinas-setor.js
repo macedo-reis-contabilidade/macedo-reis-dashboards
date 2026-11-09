@@ -80,7 +80,12 @@ export function initRotinasSetor(cfg) {
   if (!document.getElementById('rvCss')) {
     const st = document.createElement('style'); st.id = 'rvCss'; st.textContent = CSS; document.head.appendChild(st);
   }
-  $(C.raiz).innerHTML = `
+  // embutido (09/11/2026): a aba "Recorrentes" da tela de Tarefas do setor (tarefas-abas.js) — sem o cabeçalho da
+  // página, que já é o da tela de Tarefas, e sem o "Sair" e o nome no alto, que a tela de Tarefas já liga.
+  const explica = 'A rotina é só o nome. Em cada uma, vincule as empresas — várias de uma vez — com a periodicidade, a data e o responsável de cada vínculo. As tarefas nascem sozinhas na agenda do responsável, na data certa.';
+  $(C.raiz).innerHTML = (C.embutido
+    ? `<p style="margin:0 0 14px;color:var(--text-muted);font-size:13.5px;max-width:860px;">${esc(explica)} A criada pelo botão "Nova tarefa", no tipo "Tarefa recorrente", aparece aqui como avulsa.</p>`
+    : `
       <div class="page-header">
         <div class="breadcrumb">
           <a href="index.html">Painel central</a><span class="breadcrumb-sep">/</span>
@@ -89,8 +94,9 @@ export function initRotinasSetor(cfg) {
         </div>
         <div class="eyebrow">Recorrência</div>
         <h1>Tarefas recorrentes</h1>
-        <p>A rotina é só o nome. Em cada uma, vincule as empresas — várias de uma vez — com a periodicidade, a data e o responsável de cada vínculo. As tarefas nascem sozinhas na agenda do responsável, na data certa.</p>
+        <p>${esc(explica)}</p>
       </div>
+`) + `
 
       <div class="rv">
         <div class="rv-lista">
@@ -139,9 +145,9 @@ export function initRotinasSetor(cfg) {
     </div>`;
   document.body.appendChild(ov);
 
-  const btnSair = $('btnLogout'); if (btnSair) btnSair.addEventListener('click', signOut);
+  const btnSair = $('btnLogout'); if (btnSair && !C.embutido) btnSair.addEventListener('click', signOut);
   (async () => {
-    const u = await getCurrentUser();
+    const u = C.embutido ? null : await getCurrentUser();
     if (u && $('userName')) { const n = u.user_metadata?.full_name || u.email?.split('@')[0] || 'Usuário'; $('userName').textContent = n; if ($('userAvatar')) $('userAvatar').textContent = n.charAt(0).toUpperCase(); }
     $('ovResp').innerHTML = '<option value="">— escolha —</option>' + EQUIPE.map(n => `<option>${esc(n)}</option>`).join('');
     await carregar();

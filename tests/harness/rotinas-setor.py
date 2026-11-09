@@ -5,7 +5,7 @@ Teste do módulo único de tarefas recorrentes por setor (assets/js/rotinas-seto
     python tests/harness/rotinas-setor.py
 
 Confere, nos temas escuro e claro:
-  Contábil (contabil-regras.html)
+  Contábil (contabil-regras.html, que desde 09/11/2026 leva pra aba Recorrentes de contabil-tarefas.html)
     1. lista só as rotinas do Contábil (a do DP não aparece) + a avulsa "criada pela Nova tarefa";
     2. caminho da página aponta pro Contábil;
     3. vincular empresa grava em tarefas_recorrentes com setor 'contabil', a rotina, o título, dia e responsável;
@@ -19,11 +19,12 @@ Confere, nos temas escuro e claro:
        com a data deste mês pela conta de dias-uteis.js; grava dia_util_n sem o dia do mês, a lista mostra "5º dia útil
        de cada mês", editar abre pelos dias úteis e voltar pro dia do mês limpa o dia útil.
   Hub (contabil.html)
-    7. tem o card "Tarefas recorrentes" apontando pra contabil-regras.html.
+    7. não tem mais o card "Tarefas recorrentes" (09/11/2026: as recorrentes viraram a aba das Tarefas), e o card
+       Tarefas fala da aba Recorrentes.
   Financeiro (financeiro-regras.html e financeiro.html)
     8. caminho aponta pro Financeiro; não mostra rotinas de outros setores; "+ Rotina" cria no setor 'financeiro';
        a lista de responsável começa pelo Samuel;
-    9. o hub do Financeiro tem o card "Tarefas recorrentes".
+    9. o hub do Financeiro também: sem o card "Tarefas recorrentes", o card Tarefas fala da aba Recorrentes.
   Fiscal (fiscal-regras.html, com regras sem rotina semeadas só aqui)
    10. grupo em que todas as regras vieram da Análise fiscal (origem 'analise') sai "· da Análise fiscal"; o grupo
        misturado (Análise + Nova tarefa) continua "· criada pela Nova tarefa".
@@ -142,8 +143,9 @@ def main():
 
             print(f'[{tema}] Hub do Contábil')
             p, _ = abrir(b, base, tema, 'contabil.html', erros)
-            card = p.locator('a.dashboard-card[href="contabil-regras.html"]')
-            ok(card.count() == 1 and 'Tarefas recorrentes' in card.inner_text(), '7. card "Tarefas recorrentes" no hub do Contábil')
+            ok(p.locator('a.dashboard-card[href="contabil-regras.html"]').count() == 0, '7. sem o card "Tarefas recorrentes" no hub do Contábil')
+            card = p.locator('a.dashboard-card[href="contabil-tarefas.html"]')
+            ok(card.count() == 1 and 'aba Recorrentes' in card.inner_text(), '7. o card Tarefas do Contábil fala da aba Recorrentes')
             p.screenshot(path=str(FOTOS / f'hub-contabil-{tema}.png'))
             p.close()
 
@@ -158,8 +160,9 @@ def main():
             ok(bool(nova) and nova['setor'] == 'financeiro', '8. "+ Rotina" cria no setor financeiro')
             p.close()
             p, _ = abrir(b, base, tema, 'financeiro.html', erros)
-            card = p.locator('a.dashboard-card[href="financeiro-regras.html"]')
-            ok(card.count() == 1 and 'Tarefas recorrentes' in card.inner_text(), '9. card "Tarefas recorrentes" no hub do Financeiro')
+            ok(p.locator('a.dashboard-card[href="financeiro-regras.html"]').count() == 0, '9. sem o card "Tarefas recorrentes" no hub do Financeiro')
+            card = p.locator('a.dashboard-card[href="financeiro-tarefas.html"]')
+            ok(card.count() == 1 and 'aba Recorrentes' in card.inner_text(), '9. o card Tarefas do Financeiro fala da aba Recorrentes')
             p.screenshot(path=str(FOTOS / f'hub-financeiro-{tema}.png'))
             p.close()
 

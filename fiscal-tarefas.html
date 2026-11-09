@@ -41,12 +41,15 @@
 
   <script type="module">
     import { initTarefas } from './assets/js/tarefas-engine.js';
+    import { montarAbasTarefas } from './assets/js/tarefas-abas.js';
     initTarefas({
       setor: 'fiscal',
       filtroObrigacaoNull: true,
       tituloPlaceholder: 'Ex.: Apurar DAS de maio',
       andamentoPlaceholder: 'Ex.: Guia gerada e enviada ao cliente; aguardando pagamento…'
     });
+    // as recorrentes (antes, a tela fiscal-regras.html) viraram a aba Recorrentes desta tela (09/11/2026)
+    montarAbasTarefas({ setor: 'fiscal', nomeSetor: 'Fiscal', hub: 'fiscal.html', equipe: ['Thalia', 'Adaini', 'Vitória', 'Samuel', 'Diego', 'Edna'] });
   </script>
 </body>
 </html>

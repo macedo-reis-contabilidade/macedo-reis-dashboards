@@ -51,7 +51,7 @@ def main():
                 else: d.accept()
             p.on('dialog', trata)
             p.add_init_script(f"localStorage.setItem('mr_tema', '{tema}'); (() => {{ const g = Storage.prototype.getItem; Storage.prototype.getItem = function (k) {{ return String(k).startsWith('mr_tour_') ? 'ok' : g.call(this, k); }}; }})()")
-            p.goto(base + 'contabil-regras.html'); p.wait_for_timeout(1500)
+            p.goto(base + 'contabil-tarefas.html?aba=recorrentes'); p.wait_for_selector('.rv-item'); p.wait_for_timeout(300)
 
             p.locator('.rv-item', has_text='CONCILIAÇÃO BANCÁRIA (TESTE)').click(); p.wait_for_timeout(300)
             p.click('#rvDel'); p.wait_for_timeout(400)

@@ -41,6 +41,7 @@
 
   <script type="module">
     import { initTarefas } from './assets/js/tarefas-engine.js';
+    import { montarAbasTarefas } from './assets/js/tarefas-abas.js';
     initTarefas({
       setor: 'dp',
       gerarMes: true,
@@ -49,6 +50,8 @@
       andamentoPlaceholder: 'Ex.: Folha processada e enviada ao cliente; aguardando conferência…',
       emptyDica: 'Crie uma tarefa avulsa ou gere as recorrentes do mês.'
     });
+    // as recorrentes (antes, a tela dp-regras.html) viraram a aba Recorrentes desta tela (09/11/2026)
+    montarAbasTarefas({ setor: 'dp', nomeSetor: 'Departamento Pessoal', hub: 'dp.html', equipe: ['Vitória', 'Adaini', 'Thalia', 'Samuel', 'Diego', 'Edna'], dicaObs: '— opcional; vai na descrição da tarefa (ex.: segmento/sindicato do dissídio)' });
   </script>
 </body>
 </html>

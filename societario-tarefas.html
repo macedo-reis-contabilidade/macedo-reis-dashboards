@@ -41,6 +41,7 @@
 
   <script type="module">
     import { initTarefas } from './assets/js/tarefas-engine.js';
+    import { montarAbasTarefas } from './assets/js/tarefas-abas.js';
     initTarefas({
       setor: 'societario',
       item: 'processo',
@@ -62,6 +63,8 @@
       emptyTitulo: 'Nenhum processo ainda',
       emptyDica: 'Crie um processo no botão Novo processo.'
     });
+    // as recorrentes (antes, a tela societario-regras.html) viraram a aba Recorrentes desta tela (09/11/2026)
+    montarAbasTarefas({ setor: 'societario', nomeSetor: 'Societário', hub: 'societario.html', equipe: ['Adaini', 'Samuel', 'Thalia', 'Vitória', 'Diego', 'Edna'] });
   </script>
 </body>
 </html>

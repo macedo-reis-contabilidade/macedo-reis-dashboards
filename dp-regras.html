@@ -5,35 +5,15 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Tarefas recorrentes · Departamento Pessoal — Macedo & Reis</title>
   <link rel="icon" href="assets/favicon.ico">
-  <link rel="stylesheet" href="assets/css/style.css">
-  <script type="module" src="assets/js/auth-guard.js"></script>
+  <meta http-equiv="refresh" content="2; url=dp-tarefas.html?aba=recorrentes">
+  <!-- As Tarefas recorrentes viraram a aba "Recorrentes" da tela de Tarefas do setor (09/11/2026, pedido do Samuel).
+       Este endereço fica pros links antigos (o do vigia, os favoritos) e leva pra lá com o resto do endereço. -->
+  <script type="module">
+    import { destinoDasRegras } from './assets/js/tarefas-abas.js';
+    location.replace(destinoDasRegras('dp', location.search, location.hash));
+  </script>
 </head>
 <body>
-  <div class="app-shell">
-    <header class="topbar">
-      <div class="topbar-brand">
-        <div class="topbar-logo"><img src="assets/logo-mr.png" alt="Macedo & Reis" width="32" height="32" style="display:block;object-fit:contain;"></div>
-        <div class="topbar-name">Macedo <span>&</span> Reis</div>
-      </div>
-      <div class="topbar-actions">
-        <div class="user-chip"><div class="user-avatar" id="userAvatar">—</div><span id="userName">Carregando…</span></div>
-        <button class="btn btn-ghost btn-sm" id="btnLogout">Sair</button>
-      </div>
-    </header>
-
-    <!-- conteúdo montado pelo módulo único de tarefas recorrentes (assets/js/rotinas-setor.js) -->
-    <main class="content" id="rvRaiz"></main>
-  </div>
-
-  <script type="module">
-    import { initRotinasSetor } from './assets/js/rotinas-setor.js';
-    initRotinasSetor({
-      setor: 'dp',
-      nomeSetor: 'Departamento Pessoal',
-      hub: 'dp.html',
-      equipe: ['Vitória', 'Adaini', 'Thalia', 'Samuel', 'Diego', 'Edna'],
-      dicaObs: '— opcional; vai na descrição da tarefa (ex.: segmento/sindicato do dissídio)'
-    });
-  </script>
+  <p style="font-family:sans-serif;padding:24px;"><a href="dp-tarefas.html?aba=recorrentes">As tarefas recorrentes agora ficam na aba Recorrentes da tela de Tarefas.</a></p>
 </body>
 </html>

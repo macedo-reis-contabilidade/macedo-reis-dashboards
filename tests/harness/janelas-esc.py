@@ -12,7 +12,7 @@ Confere, nos temas escuro e claro, numa tela baixa (1280x480 — celular deitado
     5. Esc fecha também o detalhe da tarefa;
     6. sem janela aberta, Esc não faz nada.
   Os outros formatos de janela do sistema, um de cada:
-    7. "Vincular empresas" das tarefas recorrentes (dp-regras.html, #rvOv com classe 'on');
+    7. "Vincular empresas" das tarefas recorrentes (a aba Recorrentes de dp-tarefas.html, #rvOv com classe 'on');
     8. "Nova tarefa" (agenda.html, #ntOverlay com classe 'is-open', fecha pelo ×);
     9. "Importar clientes do Taskdo" (clientes/index.html, .imp-overlay com classe 'is-open');
    10. "Adicionar empresa ao mês" (financeiro-boletos.html, #ov com classe 'open', fecha pelo "Fechar").
@@ -95,7 +95,7 @@ def main():
             p.close()
 
             print(f'[{tema}] os outros formatos de janela')
-            p = abrir(b, base, tema, 'dp-regras.html', erros)
+            p = abrir(b, base, tema, 'dp-tarefas.html?aba=recorrentes', erros)
             p.wait_for_timeout(1400)
             p.locator('.rv-item', has_text='FOLHA DE PAGAMENTO (TESTE)').click(); p.wait_for_timeout(300)
             p.click('#rvVinc'); p.wait_for_timeout(400)

@@ -41,6 +41,7 @@
 
   <script type="module">
     import { initTarefas } from './assets/js/tarefas-engine.js';
+    import { montarAbasTarefas } from './assets/js/tarefas-abas.js';
     initTarefas({
       setor: 'contabil',
       gerarMes: true,
@@ -49,6 +50,8 @@
       andamentoPlaceholder: 'Ex.: Conciliação enviada ao cliente; aguardando retorno…',
       emptyDica: 'Crie uma tarefa avulsa ou gere as recorrentes do mês.'
     });
+    // as recorrentes (antes, a tela contabil-regras.html) viraram a aba Recorrentes desta tela (09/11/2026)
+    montarAbasTarefas({ setor: 'contabil', nomeSetor: 'Contábil', hub: 'contabil.html', equipe: ['Adaini', 'Vitória', 'Thalia', 'Samuel', 'Diego', 'Edna'] });
   </script>
 </body>
 </html>
