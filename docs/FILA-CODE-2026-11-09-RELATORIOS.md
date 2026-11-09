@@ -71,6 +71,9 @@ Anote quantos relatórios há de cada dia (o nome do grupo é o dia) e se o `rel
    sem CNPJ, e **pare aqui**: registro e push.
 2. Rode de novo: `py -3 -m ponte receita relatorios`. Tem de dizer "nenhum relatório de situação fiscal a mandar"
    (ou mandar só os "sem a pasta do Drive no cadastro", que voltam sempre) e sair com 0. Anote.
+   O que esperar: o sistema conferiu em teste (09/11, sem gravar nada) as 87 empresas com o relatório — 85 têm a pasta
+   do Drive e vão; 2 não têm a pasta no cadastro e voltam em toda rodada até alguém pôr a pasta. Número muito
+   diferente disso (muitas "sem a pasta", ou recusas): anote só os números e siga.
 3. `(Get-Content C:\ponte-dominio\receita\relatorios.json -Raw | ConvertFrom-Json).PSObject.Properties | Measure-Object`
    — anote só o `Count` (quantas empresas já foram).
 
