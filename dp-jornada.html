@@ -42,6 +42,7 @@
     .j6-passo.is-agora { border-color:var(--brand-primary); background:rgba(91,130,166,.10); }
     @media (max-width:800px){ .j6-passos { grid-template-columns:1fr; } }
     .j6-tab { width:100%; border-collapse:collapse; font-size:13px; }
+    .j6-rola { overflow-x:auto; -webkit-overflow-scrolling:touch; }
     .j6-tab th { text-align:left; font-size:11px; font-weight:600; text-transform:uppercase; letter-spacing:.05em; color:var(--text-muted); padding:6px 8px; border-bottom:1px solid var(--line); }
     .j6-tab td { padding:7px 8px; border-bottom:1px solid var(--line); color:var(--text); vertical-align:top; }
     .j6-etapas { display:grid; grid-template-columns:1fr 1fr; gap:14px; }
@@ -107,7 +108,7 @@
         <input class="input input-search" id="busca" type="search" placeholder="Buscar empresa" aria-label="Buscar empresa" style="max-width:360px;">
       </div>
 
-      <div class="table-wrap">
+      <div class="table-wrap" style="overflow-x:auto;">
         <table class="table">
           <thead><tr><th>Empresa</th><th class="j6-num">Funcionários</th><th>Jornadas hoje</th><th>Em 16/12/2026</th><th>Plano</th></tr></thead>
           <tbody id="lista"><tr><td colspan="5" class="j6-dim">Carregando…</td></tr></tbody>
@@ -312,7 +313,7 @@
         </div></div>
 
         <div class="j6-sec"><h3>O retrato de hoje <small>${e.doDominio ? 'do Domínio' + (dadosAte ? ', em ' + esc(fmtData(dadosAte)) : '') : 'digitado aqui'}</small></h3>
-          <table class="j6-tab"><thead><tr><th>Jornada</th><th class="j6-num">Pessoas</th><th class="j6-num">Contrato</th><th class="j6-num">Dias/semana</th><th>Domingo</th><th class="j6-num">Salário médio</th><th></th></tr></thead><tbody>${linhasGrupos}</tbody></table>
+          <div class="j6-rola"><table class="j6-tab"><thead><tr><th>Jornada</th><th class="j6-num">Pessoas</th><th class="j6-num">Contrato</th><th class="j6-num">Dias/semana</th><th>Domingo</th><th class="j6-num">Salário médio</th><th></th></tr></thead><tbody>${linhasGrupos}</tbody></table></div>
           ${e.doDominio ? '' : `<div class="j6-campos" style="margin-top:12px;">
             <label>Escala<select class="select" id="gEscala">${['6x1', '5x2', '5x2c', '12x36'].map(k => '<option value="' + k + '">' + esc(ROTULOS[k]) + '</option>').join('')}<option value="4x3">4x3</option></select></label>
             <label>Horas no contrato<input class="input" id="gHoras" type="number" min="1" max="60" step="0.5" value="44"></label>
@@ -329,7 +330,7 @@
         <div class="j6-sec"><h3>O simulador <small>estimativa por mês</small></h3>
           <div class="j6-campos">
             <label>A data<select class="select" id="sEtapa"><option value="e42" ${estado.etapa === 'e42' ? 'selected' : ''}>16/12/2026 (42 h)</option><option value="e40" ${estado.etapa === 'e40' ? 'selected' : ''}>16/12/2027 (40 h)</option></select></label>
-            <label>Salário de referência (R$)<input class="input" id="sSalario" type="number" min="0" step="0.01" value="${salRef != null ? esc(salRef) : ''}" placeholder="a média dos que mudam"></label>
+            <label>Salário de referência (R$)<input class="input" id="sSalario" type="number" min="0" step="0.01" value="${salRef != null ? esc(Number(salRef).toFixed(2)) : ''}" placeholder="a média dos que mudam"></label>
             <label>Encargos<span style="color:var(--text);font-size:13px;padding-top:6px;">${esc(enc.rotulo)}</span></label>
             <label>&nbsp;<span><input type="checkbox" id="sAnexo" ${estado.anexoIV ? 'checked' : ''}> Simples no Anexo IV</span></label>
           </div>
