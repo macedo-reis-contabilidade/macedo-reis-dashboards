@@ -7,8 +7,11 @@
                             da situação fiscal (o calendário "a partir do dia")
     chamadas-AAAA-MM.json   quantas chamadas ao Serpro no mês, por serviço — o teto_mes
     pdfs\\                   os PDFs da declaração e da situação fiscal (apagados depois de 30 dias)
+    relatorios.json         o dia do último relatório de situação fiscal de cada empresa que foi pro Drive
+                            (relatorios.py, 09/11/2026)
 
-Nada disso sai do PC nem entra no repositório.
+Nada disso entra no repositório. Do PC, sai só o PDF do relatório de situação fiscal, pra pasta da empresa no Drive
+(relatorios.py); o resto fica aqui.
 """
 import datetime
 import json

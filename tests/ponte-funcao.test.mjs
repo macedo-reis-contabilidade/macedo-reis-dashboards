@@ -702,6 +702,192 @@ console.log('As notas de entrada das empresas autorizadas (03/11/2026):');
     && rn.corpo.recusadas[0].erro === 'sem itens que comparar' && dbn.envios[0].recusadas.length === 1, rn);
 }
 
+console.log('O relatório de situação fiscal no Drive (09/11/2026):');
+{
+  const { validarRelatorio, nomeDoRelatorio, pastaFiscal, pastaSituacao, idDaPasta, nomeNormal, LIMITES_RELATORIO, SEM_PASTA, SEM_CADASTRO,
+    SEM_DRIVE, DRIVE_FORA } = await import('../supabase/functions/ponte/relatorio.js');
+  const { criarDrive, ErroDrive } = await import('../supabase/functions/ponte/drive.js');
+  const PDF = '%PDF-1.4\n1 0 obj << >> endobj\n%%EOF\n';
+  const b64 = s => Buffer.from(s, 'latin1').toString('base64');
+  const REL = (extra = {}) => ({ versao: 1, tipo: 'receita', relatorio: 'situacao_fiscal', documento: '11.222.333/0001-00', emitido_em: '2026-11-03',
+    ambiente: 'producao', pdf: b64(PDF), ...extra });
+  const HOJE = '2026-11-09';
+  const vr = validarRelatorio(REL(), HOJE);
+  chk('o pedido do relatório passa: o CNPJ só com dígitos, o PDF em bytes', vr.ok && vr.relatorio.documento === '11222333000100'
+    && vr.relatorio.bytes instanceof Uint8Array && Buffer.from(vr.relatorio.bytes).toString('latin1') === PDF && vr.relatorio.teste === false, vr);
+  const recusaR = (extra, campo) => { const r = validarRelatorio(REL(extra), HOJE); return !r.ok && r.campo === campo ? r : null; };
+  chk('versão, tipo e relatório desconhecidos recusam', !!recusaR({ versao: 2 }, 'versao') && !!recusaR({ tipo: 'dominio' }, 'tipo') && !!recusaR({ relatorio: 'declaracao' }, 'relatorio'));
+  chk('o relatório é de um CNPJ (o CPF e o documento torto recusam)', !!recusaR({ documento: '12345678909' }, 'documento') && !!recusaR({ documento: '123' }, 'documento'));
+  chk('o dia: de verdade, não depois de hoje, até 400 dias atrás', !!recusaR({ emitido_em: '2026-02-30' }, 'emitido_em') && !!recusaR({ emitido_em: '03/11/2026' }, 'emitido_em')
+    && !!recusaR({ emitido_em: '2026-11-10' }, 'emitido_em') && !!recusaR({ emitido_em: '2025-09-01' }, 'emitido_em') && validarRelatorio(REL({ emitido_em: HOJE }), HOJE).ok);
+  chk('sem o ambiente, recusa', !!recusaR({ ambiente: '' }, 'ambiente'));
+  chk('o PDF: em base64 e começando com %PDF- (o resto recusa)', !!recusaR({ pdf: 'não é base64!' }, 'pdf') && !!recusaR({ pdf: b64('<html>oi</html>') }, 'pdf')
+    && !!recusaR({ pdf: null }, 'pdf') && !!recusaR({ pdf: '' }, 'pdf') && validarRelatorio(REL({ pdf: b64(PDF).replace(/=+$/, '') }), HOJE).ok);
+  chk('PDF de mais de 10 MB recusa (antes de decodificar)', !!recusaR({ pdf: 'A'.repeat(Math.ceil(LIMITES_RELATORIO.pdf / 3) * 4 + 8) }, 'pdf'));
+  chk('o teste: true passa adiante', validarRelatorio(REL({ teste: true }), HOJE).relatorio.teste === true);
+  chk('o nome do arquivo leva o dia na ordem do nome', nomeDoRelatorio('2026-11-03') === 'Relatório de situação fiscal 2026-11-03.pdf');
+  const F = (id, name) => ({ id: id.padEnd(12, '0'), name });
+  chk('a pasta do fiscal: FISCAL de nome exato primeiro (sem maiúscula vale), depois a numerada ou a SETOR FISCAL; FISCAL ANTIGO, não',
+    pastaFiscal([F('a', 'SETOR FISCAL'), F('b', 'fiscal')]).name === 'fiscal' && pastaFiscal([F('a', '01 - Fiscal'), F('b', 'CONTÁBIL')]).name === '01 - Fiscal'
+    && pastaFiscal([F('a', 'Setor Fiscal')]).name === 'Setor Fiscal' && pastaFiscal([F('a', 'FISCAL ANTIGO'), F('b', 'DOCUMENTOS FISCAIS')]) === null
+    && pastaFiscal([{ id: "x' or name contains '", name: 'FISCAL' }]) === null && pastaFiscal(null) === null);
+  chk('a pasta dos relatórios: SITUAÇÃO FISCAL, com ou sem acento', pastaSituacao([F('a', 'Situacao fiscal')]).name === 'Situacao fiscal'
+    && pastaSituacao([F('a', 'RELATÓRIOS DE SITUAÇÃO FISCAL')]) !== null && pastaSituacao([F('a', 'SITUAÇÃO')]) === null && nomeNormal(' Situação  Fiscal ') === 'SITUACAO FISCAL');
+  chk('a pasta da empresa: o id do cadastro, senão o do endereço', idDaPasta({ drive_folder_id: 'PASTA1234567' }) === 'PASTA1234567'
+    && idDaPasta({ drive_folder_id: '', drive_folder_url: 'https://drive.google.com/drive/folders/PASTA7654321?usp=sharing' }) === 'PASTA7654321'
+    && idDaPasta({ drive_folder_url: 'https://drive.google.com/' }) === null && idDaPasta(null) === null);
+
+  // um Google de mentira: o token, os metadados, a lista das pastas, criar pasta e subir arquivo
+  function googleFalso({ falhas = {} } = {}) {
+    const g = { itens: new Map(), pedidos: [], tokens: 0, subidos: [], criadas: [], seq: 0 };
+    g.add = (id, name, pai, pasta = true, trashed = false) => { g.itens.set(id, { id, name, parents: pai ? [pai] : [], mimeType: pasta ? 'application/vnd.google-apps.folder' : 'application/pdf', trashed }); return id; };
+    const novoId = p => p + String(++g.seq).padStart(9, '0');
+    const json = (x, status = 200) => new Response(JSON.stringify(x), { status, headers: { 'Content-Type': 'application/json' } });
+    g.fetch = async (url, init = {}) => {
+      const u = new URL(url), metodo = init.method || 'GET';
+      const tipo = u.host === 'oauth2.googleapis.com' ? 'token' : u.pathname.startsWith('/upload/') ? 'subir' : metodo === 'POST' ? 'criar' : /\/files\/[^/]+$/.test(u.pathname) ? 'meta' : 'listar';
+      g.pedidos.push({ tipo, url, init });
+      if (falhas[tipo] && falhas[tipo].length) { const st = falhas[tipo].shift(); if (st === 'rede') throw new TypeError('fetch failed'); return json({ error: 'x' }, st); }
+      if (tipo === 'token') { g.tokens++; return json({ access_token: 'tok-' + g.tokens, expires_in: 3600 }); }
+      if (tipo !== 'token' && (init.headers || {}).Authorization !== 'Bearer tok-' + g.tokens) return json({ error: 'sem token' }, 401);
+      if (tipo === 'meta') { const it = g.itens.get(u.pathname.split('/').pop()); return it ? json({ id: it.id, mimeType: it.mimeType, trashed: it.trashed }) : json({ error: 'nf' }, 404); }
+      if (tipo === 'listar') {
+        const q = u.searchParams.get('q'), pai = /^'([^']+)' in parents/.exec(q)[1], pastas = / mimeType = /.test(q);
+        return json({ files: [...g.itens.values()].filter(i => i.parents.includes(pai) && !i.trashed && (i.mimeType === 'application/vnd.google-apps.folder') === pastas).map(i => ({ id: i.id, name: i.name })) });
+      }
+      if (tipo === 'criar') { const b = JSON.parse(init.body); const id = g.add(novoId('PASTA'), b.name, b.parents[0]); g.criadas.push(b.name); return json({ id }); }
+      const corpo = Buffer.from(init.body).toString('latin1');
+      const meta = JSON.parse(/\r\n\r\n(\{[^\r]*\})\r\n/.exec(Buffer.from(init.body).toString('utf8'))[1]);
+      const conteudo = corpo.split('Content-Type: application/pdf\r\n\r\n')[1].split('\r\n--')[0];
+      const id = g.add(novoId('ARQ'), meta.name, meta.parents[0], false);
+      g.subidos.push({ id, nome: meta.name, pai: meta.parents[0], conteudo, tipo: init.headers['Content-Type'] });
+      return json({ id });
+    };
+    return g;
+  }
+  const ENV = { GOOGLE_OAUTH_CLIENT_ID: 'id-teste', GOOGLE_OAUTH_CLIENT_SECRET: 'segredo-teste', GOOGLE_OAUTH_REFRESH_TOKEN: 'refresh-teste' };
+  const nada = async () => {};
+  {
+    const g = googleFalso({ falhas: { listar: [503] } });
+    const raizG = g.add('RAIZ00000001', 'EMPRESA TESTE', null);
+    g.add('FISC00000001', 'FISCAL', raizG); g.add('LIXO00000001', 'SITUAÇÃO FISCAL', 'FISC00000001', true, true);
+    g.add('ARQV00000001', 'um arquivo.pdf', null, false); g.add('APAG00000001', 'APAGADA', null, true, true);
+    const d = criarDrive({ fetch: g.fetch, env: k => ENV[k], esperar: nada });
+    chk('o Drive configurado só com os três segredos', d.configurado() && !criarDrive({ env: () => null }).configurado());
+    const g403 = googleFalso({ falhas: { meta: [403] } }); g403.add('RAIZ00000009', 'DE OUTRO DONO', null);
+    chk('a pasta que abre; a que não existe, a de outro dono (403), a da lixeira, o arquivo e o id torto, não', await d.pastaAbre(raizG)
+      && !(await d.pastaAbre('NAOEXISTE001')) && !(await d.pastaAbre('ARQV00000001')) && !(await d.pastaAbre('APAG00000001')) && !(await d.pastaAbre("x' or 1=1"))
+      && !(await criarDrive({ fetch: g403.fetch, env: k => ENV[k], esperar: nada }).pastaAbre('RAIZ00000009')));
+    const filhas = await d.filhas(raizG);
+    chk('as subpastas, com o 503 passageiro tentado de novo', filhas.length === 1 && filhas[0].name === 'FISCAL' && g.pedidos.filter(p => p.tipo === 'listar').length === 2, filhas);
+    chk('a pasta na lixeira não conta', (await d.filhas('FISC00000001')).length === 0);
+    chk('o token é pedido uma vez só (vale uma hora)', g.tokens === 1);
+    const idP = await d.criarPasta('SITUAÇÃO FISCAL', 'FISC00000001');
+    const idA = await d.subir(idP, 'Relatório de situação fiscal 2026-11-03.pdf', new Uint8Array(Buffer.from(PDF, 'latin1')));
+    chk('cria a pasta e sobe o PDF nela, com o nome e o conteúdo', g.criadas[0] === 'SITUAÇÃO FISCAL' && g.subidos.length === 1 && g.subidos[0].id === idA
+      && g.subidos[0].pai === idP && g.subidos[0].nome === 'Relatório de situação fiscal 2026-11-03.pdf' && g.subidos[0].conteudo === PDF
+      && /^multipart\/related; boundary=/.test(g.subidos[0].tipo), g.subidos);
+    chk('os arquivos de uma pasta (não as subpastas)', (await d.arquivos(idP)).map(a => a.id).join() === idA && (await d.arquivos(raizG)).length === 0);
+    let erro = null;
+    try { await d.filhas("FISC' or name contains 'x"); } catch (e) { erro = e; }
+    chk('id que não é do Drive nem chega na consulta', erro instanceof ErroDrive);
+  }
+  {
+    const g = googleFalso({ falhas: { listar: [503, 503, 503] } });
+    g.add('RAIZ00000001', 'EMPRESA', null);
+    const d = criarDrive({ fetch: g.fetch, env: k => ENV[k], esperar: nada });
+    let erro = null;
+    try { await d.filhas('RAIZ00000001'); } catch (e) { erro = e; }
+    chk('três 503 seguidos: o erro do Drive (a função responde 502)', erro instanceof ErroDrive && g.pedidos.filter(p => p.tipo === 'listar').length === 3);
+    const g2 = googleFalso({ falhas: { token: [400] } });
+    const d2 = criarDrive({ fetch: g2.fetch, env: k => ENV[k], esperar: nada });
+    erro = null;
+    try { await d2.pastaAbre('RAIZ00000001'); } catch (e) { erro = e; }
+    chk('a autorização recusada pelo Google é erro do Drive, com o status', erro instanceof ErroDrive && /400/.test(erro.message));
+  }
+
+  // a rota, com o banco e o Google de mentira
+  function dbRel({ clientes: cs = [], receita = [], erroUpsert = null } = {}) {
+    const db = { upserts: [], filtros: [], receita: receita.map(x => ({ ...x })) };
+    db.from = tabela => {
+      const f = [];
+      const api = {
+        select() { return api; }, ilike(c, x) { f.push(['ilike', c, x]); return api; }, order() { return api; }, limit() { return api; },
+        eq(c, x) { f.push(['eq', c, x]); return api; },
+        async maybeSingle() {
+          if (tabela === 'configuracoes_escritorio') return { data: { valor: h }, error: null };
+          if (tabela === 'receita_empresas') return { data: db.receita.find(x => x.cliente_id === f.find(y => y[0] === 'eq')[2]) || null, error: null };
+          return { data: null, error: null };
+        },
+        upsert(linha, op) { db.upserts.push({ tabela, linha, op }); if (!erroUpsert) { const i = db.receita.findIndex(x => x.cliente_id === linha.cliente_id); if (i >= 0) Object.assign(db.receita[i], linha); else db.receita.push({ ...linha }); } return Promise.resolve({ error: erroUpsert }); },
+        then(ok, erro) {
+          db.filtros.push([tabela, ...f]);
+          let data = [];
+          if (tabela === 'clientes') { const doc = (f.find(y => y[0] === 'ilike') || [])[2]; data = cs.filter(c => String(c.documento).toUpperCase() === String(doc).toUpperCase()).sort((a, b) => a.id.localeCompare(b.id)).slice(0, 1); }
+          return Promise.resolve({ data, error: null }).then(ok, erro);
+        }
+      };
+      return api;
+    };
+    return db;
+  }
+  const CLI = [{ id: 'c2', documento: '11222333000100', drive_folder_id: 'RAIZ00000002' }, { id: 'c1', documento: '11222333000100', drive_folder_id: 'RAIZ00000001' },
+    { id: 'c3', documento: '22333444000100', drive_folder_id: null, drive_folder_url: null }, { id: 'c4', documento: '33444555000100', drive_folder_id: 'SUMIU0000001' }];
+  const pedirRel = async (db, g, corpo, env = ENV) => {
+    const atender = criarServidor({ criarDb: () => db, agora: () => Date.parse('2026-11-09T11:00:00-03:00'), env: k => env[k], google: g.fetch, esperar: nada });
+    const res = await atender(new Request('http://local/ponte', { method: 'POST', headers: { 'x-chave': 'segredo' }, body: JSON.stringify(corpo) }));
+    return { status: res.status, corpo: await res.json() };
+  };
+  const montar = () => { const g = googleFalso(); g.add('RAIZ00000001', 'EMPRESA TESTE', null); g.add('FISC00000001', 'Fiscal', 'RAIZ00000001'); g.add('RAIZ00000002', 'OUTRA', null); return g; };
+  let g = montar(), dbr = dbRel({ clientes: CLI, receita: [{ cliente_id: 'c1', situacao_fiscal_em: '2026-11-03' }] });
+  let rr = await pedirRel(dbr, g, REL());
+  const sub = g.subidos[0];
+  chk('o relatório vai pra pasta da empresa ligada como o receita_gravar liga (a de menor id), em FISCAL › SITUAÇÃO FISCAL',
+    rr.status === 200 && rr.corpo.gravado === true && rr.corpo.novo === true && rr.corpo.ficha === true && sub && g.itens.get(sub.pai).name === 'SITUAÇÃO FISCAL'
+    && g.itens.get(sub.pai).parents[0] === 'FISC00000001' && g.criadas.join() === 'SITUAÇÃO FISCAL' && sub.conteudo === PDF, { rr, sub, criadas: g.criadas });
+  chk('a ficha fica com o dia, o id e o link do Drive', dbr.upserts.length === 1 && dbr.upserts[0].tabela === 'receita_empresas' && dbr.upserts[0].op.onConflict === 'cliente_id'
+    && dbr.upserts[0].linha.cliente_id === 'c1' && dbr.upserts[0].linha.situacao_fiscal_pdf_em === '2026-11-03' && dbr.upserts[0].linha.situacao_fiscal_pdf_id === sub.id
+    && dbr.upserts[0].linha.situacao_fiscal_pdf_url === 'https://drive.google.com/file/d/' + sub.id + '/view' && rr.corpo.link === dbr.upserts[0].linha.situacao_fiscal_pdf_url, dbr.upserts);
+  chk('o banco lê a empresa pelo documento, sem maiúscula e minúscula (o ilike do receita_gravar)', dbr.filtros.some(x => x[0] === 'clientes' && x[1][0] === 'ilike' && x[1][2] === '11222333000100'));
+  rr = await pedirRel(dbr, g, REL());
+  chk('mandado de novo (o banco tinha falhado): acha o que já subiu, não sobe outro nem cria pasta', rr.status === 200 && rr.corpo.novo === false && g.subidos.length === 1
+    && g.criadas.length === 1 && rr.corpo.link.endsWith(sub.id + '/view'), rr);
+  rr = await pedirRel(dbr, g, REL({ emitido_em: '2026-10-05' }));
+  chk('o relatório mais velho que o da ficha vai pro Drive, e a ficha fica com o mais novo', rr.status === 200 && rr.corpo.gravado === true && rr.corpo.ficha === false
+    && g.subidos.length === 2 && dbr.receita[0].situacao_fiscal_pdf_em === '2026-11-03' && dbr.upserts.length === 2, rr);
+  g = montar(); g.itens.delete('FISC00000001'); dbr = dbRel({ clientes: CLI });
+  rr = await pedirRel(dbr, g, REL());
+  chk('sem a pasta FISCAL, cria as duas (FISCAL e SITUAÇÃO FISCAL); sem a linha da empresa, ela nasce', rr.status === 200 && g.criadas.join() === 'FISCAL,SITUAÇÃO FISCAL'
+    && dbr.receita.length === 1 && dbr.receita[0].cliente_id === 'c1', { rr, criadas: g.criadas });
+  g = montar(); dbr = dbRel({ clientes: CLI });
+  rr = await pedirRel(dbr, g, REL({ teste: true }));
+  chk('com teste: true, só diz o que faria: nenhuma pasta criada, nada subido, nada no banco', rr.status === 200 && rr.corpo.teste === true && rr.corpo.gravado === false
+    && rr.corpo.fiscal === 'Fiscal' && rr.corpo.situacao === null && rr.corpo.arquivo === 'subiria' && rr.corpo.cria.join() === 'SITUAÇÃO FISCAL'
+    && !g.criadas.length && !g.subidos.length && !dbr.upserts.length, rr);
+  g = montar(); dbr = dbRel({ clientes: CLI });
+  rr = await pedirRel(dbr, g, REL({ documento: '22333444000100' }));
+  chk('sem a pasta no cadastro: 200, nada gravado, com o porquê (a ponte manda de novo depois)', rr.status === 200 && rr.corpo.gravado === false && rr.corpo.motivo === SEM_PASTA
+    && !g.pedidos.some(p => p.tipo !== 'token') && !dbr.upserts.length, rr);
+  rr = await pedirRel(dbr, g, REL({ documento: '33444555000100' }));
+  chk('a pasta do cadastro que não abre (apagada, sem acesso): o mesmo', rr.status === 200 && rr.corpo.gravado === false && rr.corpo.motivo === SEM_PASTA && !g.subidos.length, rr);
+  rr = await pedirRel(dbr, g, REL({ documento: '44555666000100' }));
+  chk('a empresa fora do cadastro: 422 (a ponte não manda de novo)', rr.status === 422 && rr.corpo.erro === SEM_CADASTRO, rr);
+  g = montar(); dbr = dbRel({ clientes: CLI });
+  rr = await pedirRel(dbr, g, REL({ ambiente: 'demonstracao' }));
+  chk('do ambiente de demonstração: 200, nada no Drive nem no banco', rr.status === 200 && rr.corpo.gravado === false && !g.pedidos.length && !dbr.upserts.length
+    && !dbr.filtros.some(x => x[0] === 'clientes'), rr);
+  rr = await pedirRel(dbr, g, REL(), {});
+  chk('sem os segredos do Google: 503 (a ponte manda de novo depois)', rr.status === 503 && rr.corpo.erro === SEM_DRIVE && !g.pedidos.length, rr);
+  g = googleFalso({ falhas: { meta: [503, 503, 503] } }); g.add('RAIZ00000001', 'EMPRESA', null);
+  rr = await pedirRel(dbRel({ clientes: CLI }), g, REL());
+  chk('o Drive fora: 502, sem detalhe do Google na resposta', rr.status === 502 && rr.corpo.erro === DRIVE_FORA, rr);
+  g = montar();
+  rr = await pedirRel(dbRel({ clientes: CLI, erroUpsert: { message: 'caiu' } }), g, REL());
+  chk('o banco falhou depois de subir: 500 (a ponte manda de novo e acha o arquivo)', rr.status === 500 && g.subidos.length === 1, rr);
+  rr = await pedirRel(dbRel({ clientes: CLI }), montar(), REL({ pdf: b64('isto não é pdf') }));
+  chk('o pedido fora do contrato: 422 com o campo', rr.status === 422 && /\(pdf\)/.test(rr.corpo.erro), rr);
+}
+
 console.log('O código que a função roda:');
 {
   const idx = readFileSync(raiz + 'supabase/functions/ponte/index.ts', 'utf8');

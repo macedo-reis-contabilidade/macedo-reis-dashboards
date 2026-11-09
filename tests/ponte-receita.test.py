@@ -43,6 +43,11 @@ dígito verificador errado; o do escritório, com letras, montado aqui).
       Caixa Postal em nome dele, o 304 do conferir e da rodada do mesmo dia, o termo recusado (um pedido só, o log uma
       vez, as consultas dele pra próxima rodada), o CPF que não é o do e-CPF, a configuração pela metade, a empresa que
       passou a ter a procuração (as consultas na mesma rodada), o procurador tirado do config.ini, e nada dele na saída
+  13. o relatório de situação fiscal no Drive (09/11/2026): no fim da rodada de produção, o PDF de cada empresa vai num
+      pedido à parte (só o contrato, o PDF inteiro), uma vez (o relatorios.json); a empresa sem a pasta do Drive vai de
+      novo, o recusado não; o sistema fora para no primeiro sem mudar o código de saída; o receita relatorios manda o
+      que faltou sem chamar o Serpro; só o relatório das empresas da lista, o mais velho primeiro, nunca a declaração;
+      o --falso, o --sem-enviar e a demonstração não mandam — e cada pedido passou pelo validarRelatorio de verdade
 Termina com código 1 se alguma checagem falhar.
 """
 import base64
@@ -80,6 +85,7 @@ if not NODE:
     print('O teste da ponte da Receita precisa do node (o validarPacote da função e os feriados, em JavaScript).')
     sys.exit(1)
 RECEITA_JS = RAIZ / 'supabase' / 'functions' / 'ponte' / 'receita.js'
+RELATORIO_JS = RAIZ / 'supabase' / 'functions' / 'ponte' / 'relatorio.js'
 FERIADOS_JS = RAIZ / 'assets' / 'js' / 'rescisao-datas.js'
 
 # o contrato da fila (2.5), escrito aqui e não importado da ponte: um campo a mais na ponte tem que derrubar o teste
@@ -547,11 +553,15 @@ class Sistema:
     pelo validarPacote de verdade (node) — 422 se a rodada sair do contrato; 200 com as recusadas; da demonstração e
     do --falso, "gravado": false. Na frente, pra simular o sistema fora ou a função não publicada, uma fila de
     respostas (o HTTP) pros pacotes e o empresas_status pra lista. `recusadas_extra` acrescenta recusadas à resposta
-    (a ponte nunca manda um bloco fora do contrato — é pra ver o que ela faz com elas)."""
+    (a ponte nunca manda um bloco fora do contrato — é pra ver o que ela faz com elas).
+    O pedido do relatório de situação fiscal (09/11/2026) fica em `relatorios`, conferido pelo validarRelatorio de
+    supabase/functions/ponte/relatorio.js (node): 422 fora do contrato; 200 "gravado": true com o link; da
+    demonstração, "gravado": false. Na frente, a fila `respostas_relatorio`: um número (o HTTP) ou um dict (o corpo, 200)."""
 
     def __init__(self):
         self.trava = threading.Lock()
         self.todas_validacoes = []          # todo pacote que a ponte mandou, conferido (nunca zerado)
+        self.todos_relatorios = []          # todo pedido de relatório que a ponte mandou, conferido (nunca zerado)
         self.zerar()
         dono = self
 
@@ -579,7 +589,13 @@ class Sistema:
                 except (ValueError, UnicodeDecodeError):
                     corpo = None
                 with dono.trava:
-                    if isinstance(corpo, dict) and corpo.get('pedir') == 'empresas':
+                    fila_rel = None
+                    if isinstance(corpo, dict) and corpo.get('relatorio') is not None:
+                        dono.relatorios.append({'cabecalhos': cab, 'corpo': corpo})
+                        fila_rel = dono.respostas_relatorio.pop(0) if dono.respostas_relatorio else None
+                        if isinstance(fila_rel, int):
+                            return self._enviar(fila_rel, {'erro': f'HTTP {fila_rel} do teste'})
+                    elif isinstance(corpo, dict) and corpo.get('pedir') == 'empresas':
                         dono.pedidos_empresas.append(cab)
                         if dono.empresas_status != 200:
                             return self._enviar(dono.empresas_status, {'erro': 'teste'})
@@ -606,6 +622,18 @@ class Sistema:
                     return self._enviar(200, {'empresas': empresas})
                 if corpo.get('tipo') != 'receita':
                     return self._enviar(422, {'erro': 'Nada pra fazer com este pacote.'})
+                if corpo.get('relatorio') is not None:
+                    v = validar_no_node(corpo)
+                    with dono.trava:
+                        dono.todos_relatorios.append(v)
+                    if not v['ok']:
+                        return self._enviar(422, {'erro': f"Relatório recusado: {v['erro']} ({v['campo']})."})
+                    if isinstance(fila_rel, dict):
+                        return self._enviar(200, fila_rel)
+                    if corpo.get('ambiente') != 'producao':
+                        return self._enviar(200, {'ok': True, 'gravado': False, 'motivo': 'Relatório do ambiente de demonstração: nada foi gravado.'})
+                    return self._enviar(200, {'ok': True, 'gravado': True, 'novo': True, 'ficha': True,
+                                              'link': 'https://drive.google.com/file/d/ARQ' + v['documento'] + '/view'})
                 v = validar_no_node(corpo)
                 ambiente = (corpo.get('rodada') or {}).get('ambiente')
                 with dono.trava:
@@ -625,9 +653,11 @@ class Sistema:
         threading.Thread(target=self.srv.serve_forever, daemon=True).start()
         self.url = f'http://127.0.0.1:{self.srv.server_address[1]}/functions/v1/ponte'
 
-    def zerar(self, *respostas, empresas=None, empresas_status=200, impressao=IMPRESSAO, recusadas_extra=()):
+    def zerar(self, *respostas, empresas=None, empresas_status=200, impressao=IMPRESSAO, recusadas_extra=(),
+              respostas_relatorio=()):
         with self.trava:
             self.respostas = list(respostas)
+            self.relatorios, self.respostas_relatorio = [], list(respostas_relatorio)
             self.pacotes, self.pedidos_empresas, self.validacoes = [], [], []
             self.pings = 0
             self.empresas = copy.deepcopy(EMPRESAS if empresas is None else empresas)
@@ -1053,8 +1083,8 @@ def caso_servicos(srp, sis):
     ok(versoes == {'SOLICITARPROTOCOLO91': '2.0', 'RELATORIOSITFIS92': '2.0'},
        f'situacao_fiscal: a versão 2.0 do SITFIS (a 1.0 a Receita desligou em 11/2026) — {versoes}')
     ok(faltou(pac) == [], 'nada no faltou')
-    ok(pac and pac['tipo'] == 'receita' and pac['versao'] == 1 and pac['rodada']['ponte'] == '0.2.0'
-       and pac['rodada']['ambiente'] == 'producao', 'o pacote: tipo receita, versão 1, ponte 0.2.0, produção')
+    ok(pac and pac['tipo'] == 'receita' and pac['versao'] == 1 and pac['rodada']['ponte'] == '0.3.0'
+       and pac['rodada']['ambiente'] == 'producao', 'o pacote: tipo receita, versão 1, ponte 0.3.0, produção')
     ok(pac and pac['rodada']['chamadas_mes'] == len(srp.pedidos), f'chamadas_mes = as chamadas do mês ({len(srp.pedidos)})')
 
     # a autorização vencida (a da demonstração, de 2023)
@@ -2710,6 +2740,117 @@ def caso_procurador(srp, sis):
 
 # ---------------------------------------------------------------- 9. a ponte do Domínio
 
+# ---------------------------------------------------------------- 13. o relatório de situação fiscal no Drive
+
+CONTRATO_RELATORIO = {'versao', 'tipo', 'relatorio', 'documento', 'emitido_em', 'ambiente', 'pdf'}
+
+
+def mandados_rel(pasta):
+    arq = pasta / 'receita' / 'relatorios.json'
+    return json.loads(arq.read_text(encoding='utf-8')) if arq.is_file() else {}
+
+
+def caso_relatorios(srp, sis):
+    titulo('13. o relatório de situação fiscal no Drive (09/11/2026): o PDF vai no fim da rodada, um por pedido, uma vez; '
+           'o que não foi vai depois, também pelo receita relatorios (sem o Serpro)')
+    pasta = pasta_nova()
+    escrever_config(pasta, sis)
+    srp.zerar()
+    sis.zerar()
+    cod, saida = rodar(pasta, srp, '--so', 'pgdas,faturamento,situacao_fiscal')
+    rels = list(sis.relatorios)
+    pdfs = pasta / 'receita' / 'pdfs'
+    ok(cod == 0 and sorted(r['corpo']['documento'] for r in rels) == sorted([A, B, C]),
+       f"no fim da rodada, um pedido por empresa com o relatório ({[r['corpo'].get('documento') for r in rels]})")
+    ok(all(set(r['corpo']) == CONTRATO_RELATORIO for r in rels), 'cada pedido leva só o contrato (o CNPJ, o dia, o ambiente e o PDF)')
+    ok(all(r['corpo']['relatorio'] == 'situacao_fiscal' and r['corpo']['emitido_em'] == '2026-10-23' and r['corpo']['ambiente'] == 'producao'
+           and base64.b64decode(r['corpo']['pdf']) == (pdfs / f"{r['corpo']['documento']}-situacao-fiscal-2026-10-23.pdf").read_bytes()
+           for r in rels), '  o PDF inteiro, como o Serpro mandou, e o dia do relatório')
+    ok(all(r['cabecalhos'].get('x-chave') == CHAVE_PONTE and r['cabecalhos'].get('apikey') == CHAVE_PUBLICA for r in rels),
+       '  com os cabeçalhos do envio de sempre (a chave da ponte)')
+    decl = [p.read_bytes() for p in pdfs.glob('*-declaracao-*.pdf')]
+    ok(decl and not any(base64.b64decode(r['corpo']['pdf']) in decl for r in rels), 'o PDF da declaração do PGDAS fica no PC')
+    pac = sis.ultimo()
+    ok(pac and 'JVBER' not in json.dumps(pac) and conferir_contrato(pac) == [], 'o pacote segue sem PDF nenhum')
+    ok(mandados_rel(pasta) == {A: '2026-10-23', B: '2026-10-23', C: '2026-10-23'}, f'o relatorios.json guarda o dia de cada um ({mandados_rel(pasta)})')
+    ok('relatórios de situação fiscal — 3 no Drive' in logs(pasta), 'o log diz quantos foram')
+    sis.zerar()
+    rodar(pasta, srp, '--so', 'autorizacao', hoje='2026-10-26')
+    ok(not sis.relatorios, 'o que já foi não vai de novo')
+
+    # a empresa sem a pasta do Drive no cadastro: não marca, vai de novo na próxima; o recusado (422) não vai de novo
+    p2 = pasta_nova()
+    escrever_config(p2, sis)
+    srp.zerar()
+    sis.zerar(respostas_relatorio=[{'ok': True, 'gravado': False, 'motivo': 'A empresa não tem a pasta do Drive no cadastro.'}, 422])
+    cod, saida = rodar(p2, srp, '--so', 'situacao_fiscal')
+    ordem = [r['corpo']['documento'] for r in sis.relatorios]
+    ok(cod == 0 and len(ordem) == 3 and mandados_rel(p2) == {ordem[1]: '2026-10-23', ordem[2]: '2026-10-23'},
+       f'sem a pasta: não fica marcado; o recusado fica (não vai de novo); o outro foi ({mandados_rel(p2)})')
+    log = logs(p2)
+    ok('1 sem a pasta do Drive no cadastro (' + ordem[0] + ')' in log and f'o relatório de {ordem[1]} (2026-10-23) foi recusado pelo sistema (HTTP 422' in log,
+       '  o log diz qual ficou sem a pasta e qual foi recusado')
+    antes = len(srp.pedidos)
+    sis.zerar()
+    cod, saida = ponte(p2, srp, 'receita', 'relatorios', hoje='2026-10-23')
+    ok(cod == 0 and [r['corpo']['documento'] for r in sis.relatorios] == [ordem[0]] and len(srp.pedidos) == antes
+       and mandados_rel(p2).get(ordem[0]) == '2026-10-23',
+       'o receita relatorios manda só o que faltou, sem nenhuma chamada ao Serpro')
+    cod, saida = ponte(p2, srp, 'receita', 'relatorios', hoje='2026-10-23')
+    ok(cod == 0 and len(sis.relatorios) == 1 and 'nenhum relatório de situação fiscal a mandar' in logs(p2), '  e, sem nada a mandar, diz e sai com 0')
+
+    # o sistema fora (ou o Drive): para no primeiro, o resto fica; o código de saída da rodada não muda; a chave recusada
+    p3 = pasta_nova()
+    escrever_config(p3, sis)
+    srp.zerar()
+    sis.zerar(respostas_relatorio=[503])
+    cod, saida = rodar(p3, srp, '--so', 'situacao_fiscal')
+    ok(cod == 0 and len(sis.relatorios) == 1 and mandados_rel(p3) == {} and 'os relatórios que faltam vão na próxima rodada' in logs(p3),
+       'o 503: para no primeiro (uma tentativa só), nada marcado, e a rodada sai com 0')
+    sis.zerar(impressao='0' * 64)
+    cod, saida = ponte(p3, srp, 'receita', 'relatorios', hoje='2026-10-23')
+    ok(cod == 2 and not sis.relatorios, 'o receita relatorios com a chave recusada na lista: sai com 2')
+    sis.zerar(respostas_relatorio=[401])
+    cod, saida = ponte(p3, srp, 'receita', 'relatorios', hoje='2026-10-23')
+    ok(cod == 1 and len(sis.relatorios) == 1 and mandados_rel(p3) == {} and 'a chave foi recusada' in logs(p3),
+       'o 401 no relatório: para e não marca (sai com 1)')
+    sis.zerar()
+    cod, saida = ponte(p3, srp, 'receita', 'relatorios', hoje='2026-10-23')
+    ok(cod == 0 and len(sis.relatorios) == 3 and len(mandados_rel(p3)) == 3, '  e, com o sistema de volta, vão os três')
+
+    # só os PDFs do relatório das empresas da lista, os que são PDF; o mais velho primeiro, e cada um só uma vez
+    p4 = pasta_nova()
+    escrever_config(p4, sis)
+    d4 = p4 / 'receita' / 'pdfs'
+    d4.mkdir(parents=True)
+    pdf = pdf_simples(['Relatório de teste'])
+    (d4 / f'{A}-situacao-fiscal-2026-09-05.pdf').write_bytes(pdf)
+    (d4 / f'{A}-situacao-fiscal-2026-10-05.pdf').write_bytes(pdf)
+    (d4 / f'{B}-situacao-fiscal-2026-10-05.pdf').write_bytes(b'isto nao e um pdf')
+    (d4 / f'99888777000100-situacao-fiscal-2026-10-05.pdf').write_bytes(pdf)
+    (d4 / f'{C}-declaracao-2026-09.pdf').write_bytes(pdf)
+    (d4 / 'outro-nome.pdf').write_bytes(pdf)
+    sis.zerar()
+    cod, saida = ponte(p4, srp, 'receita', 'relatorios', hoje='2026-10-23')
+    ok(cod == 0 and [(r['corpo']['documento'], r['corpo']['emitido_em']) for r in sis.relatorios] == [(A, '2026-09-05'), (A, '2026-10-05')],
+       f"só o relatório das empresas da lista, o mais velho primeiro ({[(r['corpo']['documento'], r['corpo']['emitido_em']) for r in sis.relatorios]})")
+    ok(mandados_rel(p4) == {A: '2026-10-05', B: '2026-10-05'} and 'não é um PDF que dê pra mandar' in logs(p4),
+       '  o que não é PDF fica no PC (marcado, com o aviso); a empresa fora da lista, a declaração e o nome estranho, não vão')
+    ok(all(v['ok'] for v in sis.todos_relatorios), f'todo pedido que a ponte mandou passou pelo validarRelatorio de verdade ({len(sis.todos_relatorios)})')
+
+    # demonstração, --falso e --sem-enviar não mandam relatório; o comando fora da produção recusa
+    p5 = pasta_nova()
+    escrever_config(p5, sis)
+    sis.zerar()
+    rodar(p5, srp, '--falso')
+    rodar(p5, srp, '--so', 'situacao_fiscal', '--sem-enviar')
+    ok(not sis.relatorios and list((p5 / 'receita' / 'pdfs').glob('*-situacao-fiscal-*.pdf')),
+       'o --falso e o --sem-enviar não mandam relatório (os PDFs ficam no PC)')
+    escrever_config(p5, sis, ambiente='demonstracao')
+    cod, saida = ponte(p5, srp, 'receita', 'relatorios', hoje='2026-10-23')
+    ok(cod == 2 and not sis.relatorios and 'só vão pro Drive na produção' in logs(p5), 'o receita relatorios fora da produção: sai com 2, sem mandar')
+
+
 def caso_dominio():
     titulo('9. o tests/ponte.test.py continua passando sem mudança')
     r = subprocess.run([sys.executable, str(RAIZ / 'tests' / 'ponte.test.py')], cwd=str(RAIZ), capture_output=True,
@@ -2739,8 +2880,14 @@ def main():
     VALIDADOR = pasta_js / 'validar.mjs'
     VALIDADOR.write_text(
         f"import {{ validarPacote }} from '{RECEITA_JS.resolve().as_uri()}';\n"
+        f"import {{ validarRelatorio }} from '{RELATORIO_JS.resolve().as_uri()}';\n"
         "let s = ''; process.stdin.setEncoding('utf8'); process.stdin.on('data', d => s += d);\n"
-        "process.stdin.on('end', () => { const r = validarPacote(JSON.parse(s)); process.stdout.write(JSON.stringify("
+        "process.stdin.on('end', () => { const x = JSON.parse(s);\n"
+        # o pedido do relatório (09/11/2026): o dia dele como hoje (as regras do dia são do tests/ponte-funcao.test.mjs)
+        "  if (x && x.relatorio != null) { const r = validarRelatorio(x, String(x.emitido_em || '2026-01-01')); process.stdout.write(JSON.stringify("
+        "{ ok: r.ok, campo: r.campo || null, erro: r.erro || null, relatorio: true, documento: r.ok ? r.relatorio.documento : null, "
+        "bytes: r.ok ? r.relatorio.bytes.length : 0 })); return; }\n"
+        "  const r = validarPacote(x); process.stdout.write(JSON.stringify("
         "{ ok: r.ok, campo: r.campo || null, erro: r.erro || null, recusadas: r.recusadas || [], "
         "empresas: r.ok ? r.pacote.empresas.length : 0 })); });\n", encoding='utf-8')
     srp, sis = Serpro(), Sistema()
@@ -2754,7 +2901,7 @@ def main():
                      lambda: caso_respostas_da_funcao(srp, sis), lambda: caso_faturamento_pendente(srp, sis),
                      lambda: caso_virada_do_ano(srp, sis), caso_folga_situacao, lambda: caso_certificado_do_serpro(srp, sis),
                      lambda: caso_caixa_postal_revisao(srp, sis), caso_termo, lambda: caso_procurador(srp, sis),
-                     lambda: caso_validacoes(sis), caso_dominio):
+                     lambda: caso_relatorios(srp, sis), lambda: caso_validacoes(sis), caso_dominio):
             try:
                 caso()
             except Exception as e:   # um caso que quebra no meio não esconde os outros

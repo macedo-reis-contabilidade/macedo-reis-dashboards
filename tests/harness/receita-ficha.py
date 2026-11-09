@@ -5,8 +5,9 @@ só neste teste; empresas e mensagens inventadas).
     python tests/harness/receita-ficha.py
 
 Confere:
-  1. a empresa que a ponte já consultou: a seção "Receita" aparece com a autorização, a situação fiscal, o PGDAS dos
-     meses (transmitido, DAS pago ou não), o faturamento da declaração e a Caixa Postal;
+  1. a empresa que a ponte já consultou: a seção "Receita" aparece com a autorização, a situação fiscal (com o link do
+     PDF do relatório no Drive, numa aba nova — 09/11/2026), o PGDAS dos meses (transmitido, DAS pago ou não), o
+     faturamento da declaração e a Caixa Postal;
   2. o que vem de fora entra como texto (o assunto com <img onerror> não vira imagem nem roda código);
   3. a empresa que a ponte ainda não consultou: sem a seção;
 e nenhum erro de JavaScript. Tira a foto da seção em .harness/receita-ficha.png, pra conferir o visual.
@@ -22,6 +23,7 @@ from conferir import montar_site, servir, SITE
 DADOS = {
     'receita_empresas': [{'cliente_id': 'c1', 'autorizacao': 'ativa', 'autorizacao_ate': '2027-03-31', 'autorizacao_em': '2026-10-21T12:00:00Z',
                           'pgdas_em': '2026-10-21T12:00:00Z', 'situacao_fiscal_em': '2026-10-05',
+                          'situacao_fiscal_pdf_em': '2026-10-05', 'situacao_fiscal_pdf_url': 'https://drive.google.com/file/d/ARQteste00001/view',
                           'pendencias': [{'orgao': 'Receita', 'titulo': 'Pendência - Débito (SIEF)'}, {'orgao': 'PGFN', 'titulo': 'Inscrição em Dívida Ativa'}]}],
     'receita_pgdas': [
         {'cliente_id': 'c1', 'competencia': '2026-09', 'transmitida_em': '2026-10-18T13:02:00Z', 'das_pago': False, 'receita_mes': 84211.5, 'receita_12_meses': 912000},
@@ -67,6 +69,11 @@ def main():
         t = p.inner_text('#receitaConteudo')
         ok('O escritório tem a autorização de acesso até 31/03/2027.' in t, 'a autorização do escritório, com a data')
         ok('2 pendências (relatório de 05/10/2026)' in t and 'Receita, Pendência - Débito (SIEF)' in t and 'PGFN, Inscrição em Dívida Ativa' in t, 'a situação fiscal: as pendências, com o órgão e o dia do relatório')
+        lk = p.locator('#receitaConteudo a', has_text='Abrir o relatório (PDF)')
+        ok(lk.count() == 1 and lk.get_attribute('href') == 'https://drive.google.com/file/d/ARQteste00001/view'
+           and lk.get_attribute('target') == '_blank' and 'noopener' in (lk.get_attribute('rel') or ''),
+           'o link do PDF do relatório de situação fiscal no Drive, numa aba nova')
+        ok('em FISCAL › SITUAÇÃO FISCAL' in t, 'o rodapé diz onde o PDF fica no Drive')
         ok('09/2026: transmitido em 18/10/2026 · DAS não pago' in t and '08/2026: transmitido em 15/09/2026 · DAS pago' in t, 'o PGDAS de cada mês, o mais recente primeiro')
         ok('Receita bruta de 09/2026: R$ 84.211,50 · nos 12 meses anteriores: R$ 912.000,00' in t, 'o faturamento da declaração, em reais')
         ok('20/10/2026 · Termo de Exclusão do Simples Nacional (Estado) · não lida' in t, 'a Caixa Postal: a data, o assunto, de onde veio e se foi lida')

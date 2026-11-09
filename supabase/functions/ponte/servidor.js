@@ -10,6 +10,12 @@
 //                                                              do ambiente de demonstração, nada é gravado; o bloco de
 //                                                              uma empresa fora do contrato fica de fora sozinho e volta
 //                                                              em `recusadas` (a rodada não trava por causa dele)
+//   { versao: 1, tipo: 'receita', relatorio: 'situacao_fiscal', documento, emitido_em, ambiente, pdf }
+//                                                            → o PDF do relatório de situação fiscal de uma empresa, na
+//                                                              pasta dela no Drive (FISCAL › SITUAÇÃO FISCAL), e o link
+//                                                              em receita_empresas, que a ficha mostra (09/11/2026,
+//                                                              relatorio.js e drive.js); com teste: true, só diz o que
+//                                                              faria, sem criar nem gravar nada
 //   o pacote do Domínio (sem tipo: rodada, empresas, mensal, faltou)
 //                                                            → gravado pelo banco (dominio_gravar), já conferido
 //                                                              (dominio.js); a linha de um mês fora do contrato fica
@@ -26,12 +32,15 @@
 //                                                              partir da data dela; nada das notas fica no sistema, só o
 //                                                              registro do envio (compartilhamentos_envios) (03/11/2026)
 // Respostas que a ponte entende (ponte/envio.py): 2xx foi · 4xx recusado (não repete) · 5xx tenta de novo.
-// Puro: env, banco, relógio e o envio ao destino injetados (index.ts monta). Testes: tests/ponte-funcao.test.mjs.
+// Puro: env, banco, relógio, o envio ao destino e o Google injetados (index.ts monta). Testes: tests/ponte-funcao.test.mjs.
 // ============================================================
 import { validarPacote, empresasDaCarteira, hojeEmBrasilia, sha256Hex, iguais, LIMITES } from './receita.js';
 import { validarPacoteDominio } from './dominio.js';
 import { validarPacoteNotas, empresasAutorizadas, autorizacaoAtiva, corpoDoDestino, destinosDaConfig, respostaDoDestino,
   SEM_DESTINO, SEM_AUTORIZACAO, DESTINO_FORA, LIMITES_NOTAS } from './notas.js';
+import { validarRelatorio, nomeDoRelatorio, pastaFiscal, pastaSituacao, idDaPasta, linkDoArquivo, PASTA_FISCAL, PASTA_SITUACAO,
+  SEM_PASTA, SEM_CADASTRO, SEM_DRIVE, DRIVE_FORA } from './relatorio.js';
+import { criarDrive, ErroDrive } from './drive.js';
 
 const CABECALHOS = { 'Content-Type': 'application/json' };
 const resposta = (obj, status = 200) => new Response(JSON.stringify(obj), { status, headers: CABECALHOS });
@@ -135,6 +144,51 @@ async function encaminharNotas(db, v, hoje, agora, enviar) {
     recusadas: recusadas.slice(0, LIMITES_NOTAS.recusadas), total_recusadas: recusadas.length });
 }
 
+// O relatório de situação fiscal de uma empresa (09/11/2026): a empresa é a que o receita_gravar liga pelo documento (a
+// de menor id), a pasta é a que o cadastro dela aponta, e dentro dela, FISCAL › SITUAÇÃO FISCAL (as duas criadas se
+// faltarem). O mesmo arquivo (o nome leva o dia) não sobe duas vezes: a ponte que manda de novo depois de uma falha no
+// banco acha o que já subiu. A ficha fica com o relatório mais novo. Sem a pasta no cadastro, ou com a pasta que não
+// abre, nada é feito (200, gravado: false: a ponte manda de novo na rodada seguinte). Com teste: true, só lê: diz o que
+// acharia e o que criaria, sem criar pasta, subir arquivo nem gravar no banco.
+async function guardarRelatorio(db, drive, r, agora) {
+  if (r.ambiente !== 'producao') return resposta({ ok: true, gravado: false, motivo: 'Relatório do ambiente de demonstração: nada foi gravado.' });
+  const { data: cli, error: e1 } = await db.from('clientes').select('id, drive_folder_id, drive_folder_url').ilike('documento', r.documento).order('id').limit(1);
+  if (e1) throw e1;
+  const c = cli && cli[0];
+  if (!c) return resposta({ erro: SEM_CADASTRO }, 422);
+  if (!drive.configurado()) return resposta({ erro: SEM_DRIVE }, 503);
+  const nome = nomeDoRelatorio(r.emitido_em);
+  try {
+    const raiz = idDaPasta(c);
+    if (!raiz || !(await drive.pastaAbre(raiz))) return resposta({ ok: true, gravado: false, motivo: SEM_PASTA, ...(r.teste ? { teste: true } : {}) });
+    const fiscal = pastaFiscal(await drive.filhas(raiz));
+    const situacao = fiscal ? pastaSituacao(await drive.filhas(fiscal.id)) : null;
+    const ja = situacao ? (await drive.arquivos(situacao.id)).find(a => a.name === nome) : null;
+    if (r.teste) {
+      return resposta({ ok: true, teste: true, gravado: false, pasta: true, fiscal: fiscal ? fiscal.name : null, situacao: situacao ? situacao.name : null,
+        arquivo: ja ? 'já está no Drive' : 'subiria', nome, cria: [!fiscal && PASTA_FISCAL, !situacao && PASTA_SITUACAO].filter(Boolean) });
+    }
+    const idFiscal = fiscal ? fiscal.id : await drive.criarPasta(PASTA_FISCAL, raiz);
+    const idSituacao = situacao ? situacao.id : await drive.criarPasta(PASTA_SITUACAO, idFiscal);
+    const idArquivo = ja ? ja.id : await drive.subir(idSituacao, nome, r.bytes);
+    const link = linkDoArquivo(idArquivo);
+    // a ficha fica com o mais novo: o relatório de um dia antes do que ela já mostra só vai pro Drive
+    const { data: atual, error: e2 } = await db.from('receita_empresas').select('situacao_fiscal_pdf_em').eq('cliente_id', c.id).maybeSingle();
+    if (e2) throw e2;
+    const naFicha = !(atual && atual.situacao_fiscal_pdf_em && String(atual.situacao_fiscal_pdf_em).slice(0, 10) > r.emitido_em);
+    if (naFicha) {
+      const { error: e3 } = await db.from('receita_empresas').upsert({ cliente_id: c.id, situacao_fiscal_pdf_em: r.emitido_em,
+        situacao_fiscal_pdf_id: idArquivo, situacao_fiscal_pdf_url: link, atualizado_em: new Date(agora()).toISOString() }, { onConflict: 'cliente_id' });
+      if (e3) throw e3;
+    }
+    return resposta({ ok: true, gravado: true, link, novo: !ja, ficha: naFicha });
+  } catch (e) {
+    if (!(e instanceof ErroDrive)) throw e;
+    console.error('ponte: o Drive do relatório', e.message);
+    return resposta({ erro: DRIVE_FORA }, 502);
+  }
+}
+
 // O pacote do Domínio vai pro banco em partes (05/11/2026: o primeiro da versão 2, com os 14 meses de 474 empresas e os
 // valores em reais, passou dos 5 MB e voltou 413): a primeira parte leva as empresas (que as linhas de mês precisam), as
 // outras só as linhas; a rodada nasce na primeira (o banco não a repete: on conflict do nothing) e, no fim, fica com o
@@ -168,7 +222,9 @@ export async function gravarDominio(db, p) {
   return { ...total, partes: n };
 }
 
-export function criarServidor({ criarDb, agora = () => Date.now(), enviar = (url, init) => fetch(url, init) }) {
+export function criarServidor({ criarDb, agora = () => Date.now(), enviar = (url, init) => fetch(url, init), env = () => null,
+  google = (url, init) => fetch(url, init), esperar }) {
+  const drive = criarDrive({ fetch: google, env, agora, esperar });
   return async function atender(req) {
     if (req.method !== 'POST') return resposta({ erro: 'Use POST.' }, 405);
     const bruto = await req.text();
@@ -193,6 +249,11 @@ export function criarServidor({ criarDb, agora = () => Date.now(), enviar = (url
       if (corpo.ping === true) return resposta({ ok: true, ponte: 'ok' });
       if (corpo.tipo === 'receita' && corpo.pedir === 'empresas') {
         return resposta({ empresas: await empresasParaConsultar(db, agora) });
+      }
+      if (corpo.tipo === 'receita' && corpo.relatorio != null) {
+        const v = validarRelatorio(corpo, hojeEmBrasilia(agora()));
+        if (!v.ok) return resposta({ erro: 'Relatório recusado: ' + v.erro + ' (' + v.campo + ').' }, 422);
+        return await guardarRelatorio(db, drive, v.relatorio, agora);
       }
       if (corpo.tipo === 'receita') {
         const v = validarPacote(corpo);

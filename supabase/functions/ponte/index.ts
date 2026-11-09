@@ -1,17 +1,11 @@
-// ============================================================
-// MACEDO & REIS — Edge Function ponte: recebe os pacotes da ponte do PC do escritório (23/10/2026)
-// A lógica está nos módulos ao lado (servidor.js, receita.js, dominio.js, notas.js) — testes no node em tests/ponte-funcao.test.mjs. Como a
-// função assistente, roda o código do repositório (o arquivo cru do GitHub) no commit fixado abaixo. Mudou algum desses
-// arquivos? Publique, troque o commit daqui pelo novo, publique de novo e reimplante a função — o teste avisa quando o
-// commit fixado ficou pra trás.
-// verify_jwt = true · a impressão digital da chave da ponte em configuracoes_escritorio.ponte_chave_sha256 (só o servidor
-// lê) · grava pela receita_gravar e pela dominio_gravar (só o service_role executa) · as notas das empresas autorizadas
-// seguem pro destino de configuracoes_escritorio.compartilhamentos_destinos (só o servidor lê), sem gravar nada delas.
-// ============================================================
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.0";
 import { criarServidor } from "https://raw.githubusercontent.com/macedo-reis-contabilidade/macedo-reis-dashboards/b2de6c7dc4918e90da71931c9a11f692a98afeb7/supabase/functions/ponte/servidor.js";
 
+// os segredos do Google (o Drive do relatório de situação fiscal, 09/11/2026) são lidos aqui, na hora, e só eles
+const SEGREDOS = new Set(["GOOGLE_OAUTH_CLIENT_ID", "GOOGLE_OAUTH_CLIENT_SECRET", "GOOGLE_OAUTH_REFRESH_TOKEN"]);
+
 Deno.serve(criarServidor({
   criarDb: () => createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!, { auth: { persistSession: false } }),
+  env: (k: string) => (SEGREDOS.has(k) ? Deno.env.get(k) ?? null : null),
 }));

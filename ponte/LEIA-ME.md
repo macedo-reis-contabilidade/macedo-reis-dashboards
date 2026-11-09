@@ -293,9 +293,19 @@ gravado) e volta na lista; a ponte anota no log o CNPJ, o campo e o erro (nunca 
 listas grandes demais). O 503 da chave não cadastrada não é tentado de novo: o pacote fica em pendentes até a
 impressão digital ser cadastrada.
 
-**O que sai do PC:** só os campos do contrato (`ponte\receita\pacote.py`); o que vier a mais do Serpro é jogado fora
-antes de montar o pacote. **Não sai:** o PDF (nem em base64), o texto das mensagens, as chaves, a senha do
-certificado, os tokens. No log, das mensagens só quantas — nunca o assunto. Do procurador, nada vai pro sistema: o
+**O relatório de situação fiscal no Drive (09/11/2026, pedido da Thalia com o ok do Samuel):** no fim de cada rodada de
+produção, o PDF do relatório de situação fiscal de cada empresa (o que a rodada guardou em `receita\pdfs`, desta e das
+de antes) vai pra função do sistema, **um por pedido**, só com o CNPJ, o dia e o PDF (`ponte\receita\relatorios.py`);
+a função o salva na pasta da empresa no Drive (a que o cadastro aponta), em **FISCAL › SITUAÇÃO FISCAL**, e a ficha da
+empresa ganha o link "Abrir o relatório (PDF)" — sem botão, sem nenhuma consulta a mais ao Serpro. Cada PDF vai uma
+vez (`relatorios.json`); a empresa sem a pasta do Drive no cadastro e o sistema (ou o Drive) fora ficam pra rodada
+seguinte, enquanto o PDF estiver no PC (30 dias); o recusado (4xx) não vai de novo; o sistema fora para no primeiro e o
+resto espera; nada disso muda o código de saída da rodada. `py -3 -m ponte receita relatorios` manda agora os que
+faltam, sem o Serpro (nenhuma chamada paga). O `--falso`, a demonstração e o `--sem-enviar` não mandam relatório.
+
+**O que sai do PC:** no pacote, só os campos do contrato (`ponte\receita\pacote.py`); o que vier a mais do Serpro é
+jogado fora antes de montar o pacote. À parte, só o PDF do relatório de situação fiscal, pro Drive da empresa (acima).
+**Não sai:** o PDF da declaração do PGDAS, o texto das mensagens, as chaves, a senha do certificado, os tokens. No log, das mensagens só quantas — nunca o assunto. Do procurador, nada vai pro sistema: o
 termo e o token ficam na memória da rodada, o CPF, o caminho do e-CPF e a senha viram `***` no log, e o pacote não diz
 por qual procuração a empresa foi consultada (o `via` fica só no `estado.json`).
 
@@ -370,6 +380,7 @@ py -3 -m ponte chave                                              # gera a chave
 py -3 -m ponte receita conferir                                   # não grava nem manda nada
 py -3 -m ponte receita rodar --demonstracao --sem-enviar --so autorizacao,pgdas,faturamento,caixa_postal,situacao_fiscal --saida demo.json
 py -3 -m ponte receita rodar --falso --sem-enviar                 # o Serpro de mentira dos testes (da pasta do repositório)
+py -3 -m ponte receita relatorios                                 # os PDFs da situação fiscal que faltam, pro Drive (sem o Serpro)
 ```
 
 - O **`conferir`** mostra se o `cryptography` e o `pypdf` estão instalados, cada campo da `[integra]` ("preenchido",
@@ -413,7 +424,9 @@ prévia de 5 empresas no e-CAC; o e-CAC, só onde o cruzamento do sistema não b
   Só é gravado quando o pacote foi (ou ficou em pendentes) — um envio recusado não perde nada.
 - `C:\ponte-dominio\receita\chamadas-AAAA-MM.json` — as chamadas ao Serpro no mês, por serviço (o teto).
 - `C:\ponte-dominio\receita\pdfs\` — os PDFs da declaração e da situação fiscal, apagados depois de 30 dias. Nunca no
-  repositório, nunca no pacote.
+  repositório, nunca no pacote; o da situação fiscal vai também pra pasta da empresa no Drive (acima).
+- `C:\ponte-dominio\receita\relatorios.json` — o dia do último relatório de situação fiscal de cada empresa que foi
+  pro Drive (o que está lá não vai de novo).
 - Os logs e os pendentes são os mesmos da ponte do Domínio.
 
 ## O certificado do Serpro

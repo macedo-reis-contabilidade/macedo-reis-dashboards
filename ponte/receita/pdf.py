@@ -1,5 +1,6 @@
-"""O que a ponte lê dos PDFs do Serpro (pelo texto, com o pypdf). O PDF fica em C:\\ponte-dominio\\receita\\pdfs\\ e
-nunca sai do PC; do texto sai só:
+"""O que a ponte lê dos PDFs do Serpro (pelo texto, com o pypdf). O PDF fica em C:\\ponte-dominio\\receita\\pdfs\\ (o do
+relatório de situação fiscal vai também, inteiro, pra pasta da empresa no Drive — relatorios.py, 09/11/2026; o da
+declaração nunca sai do PC); do texto sai só:
 
     da declaração do PGDAS-D   a receita bruta do mês (RPA) e a dos 12 meses anteriores (RBT12), com os centavos —
                                a coluna Total (mercado interno + externo)

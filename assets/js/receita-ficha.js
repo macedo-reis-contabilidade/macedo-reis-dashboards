@@ -5,6 +5,8 @@
 // a receita do mês e a dos 12 meses) e as mensagens da Caixa Postal do e-CAC. Só consulta: nada é transmitido.
 // A seção só aparece quando a ponte já consultou a empresa. Os avisos (sem autorização, PGDAS não transmitido, mensagem,
 // pendência) são do vigia (vigia_regras_receita). Tudo do banco entra escapado (regra 2b).
+// Desde 09/11/2026 (pedido da Thalia, com o ok do Samuel), o link do PDF do relatório de situação fiscal, que a função
+// ponte salva na pasta da empresa no Drive (FISCAL › SITUAÇÃO FISCAL): só o endereço de um arquivo do Drive vira link.
 // Puro, menos carregarReceita: testes em tests/receita-ficha.test.mjs e tests/harness/receita-ficha.py.
 // ============================================================
 
@@ -22,6 +24,23 @@ export function diaEmBrasilia(momento) {
 
 export const temDado = d => !!(d && (d.empresa || (d.pgdas && d.pgdas.length) || (d.mensagens && d.mensagens.length)));
 
+/** O link do PDF do relatório de situação fiscal: só o de um arquivo do Drive (o que a função ponte grava); o resto, null. */
+export const linkDoRelatorio = u => (typeof u === 'string' && /^https:\/\/drive\.google\.com\/file\/d\/[A-Za-z0-9_-]{10,100}\/view$/.test(u) ? u : null);
+
+// o PDF do relatório na linha da situação fiscal: o do mesmo dia das pendências mostradas, um de antes (o mais novo não
+// foi pro Drive) ou um mais novo, que a ponte não conseguiu ler (aí as pendências mostradas são as do relatório de antes)
+function oRelatorio(e) {
+  const url = linkDoRelatorio(e.situacao_fiscal_pdf_url);
+  if (!url) return { antes: '', depois: '' };
+  const a = rotulo => '<a href="' + esc(url) + '" target="_blank" rel="noopener noreferrer">' + esc(rotulo) + '</a>';
+  const dia = /^\d{4}-\d{2}-\d{2}/.test(String(e.situacao_fiscal_pdf_em || '')) ? String(e.situacao_fiscal_pdf_em).slice(0, 10) : null;
+  const lidas = Array.isArray(e.pendencias) ? String(e.situacao_fiscal_em || '').slice(0, 10) : null;
+  if (lidas === null || (dia && lidas && dia > lidas)) {
+    return { naoLido: true, depois: ' O relatório' + (dia ? ' de ' + esc(dataBR(dia)) : '') + ' a ponte não conseguiu ler: ' + a('abra o PDF') + ' pra conferir as pendências.' };
+  }
+  return { depois: ' ' + a(!dia || dia === lidas ? 'Abrir o relatório (PDF)' : 'Abrir o relatório de ' + dataBR(dia) + ' (PDF)') };
+}
+
 /** O HTML da seção (já escapado), ou '' quando a ponte ainda não consultou a empresa. */
 export function htmlDaReceita(d) {
   if (!temDado(d)) return '';
@@ -38,11 +57,14 @@ export function htmlDaReceita(d) {
       + ' Peça ao cliente pra autorizar o CNPJ do escritório (Portal de Serviços da Receita, Minhas Autorizações de Acesso) e aceite no e-CAC.', VERMELHO);
   }
 
+  const rel = oRelatorio(e);
   if (Array.isArray(e.pendencias)) {
     const quando = e.situacao_fiscal_em ? ' (relatório de ' + esc(dataBR(e.situacao_fiscal_em)) + ')' : '';
-    if (!e.pendencias.length) linha('Situação fiscal', 'Sem pendência na Receita e na PGFN' + quando + '.');
+    if (!e.pendencias.length) linha('Situação fiscal', 'Sem pendência na Receita e na PGFN' + quando + '.' + rel.depois);
     else linha('Situação fiscal', e.pendencias.length + (e.pendencias.length === 1 ? ' pendência' : ' pendências') + quando + ': '
-      + e.pendencias.map(p => esc((p && p.orgao) || 'Receita') + ', ' + esc(p && p.titulo)).join(' · ') + '.', VERMELHO);
+      + e.pendencias.map(p => esc((p && p.orgao) || 'Receita') + ', ' + esc(p && p.titulo)).join(' · ') + '.' + rel.depois, VERMELHO);
+  } else if (rel.naoLido) {
+    linha('Situação fiscal', rel.depois.trim());
   }
 
   const pg = (d.pgdas || []).slice().sort((a, b) => String(b.competencia).localeCompare(String(a.competencia)));
@@ -64,14 +86,16 @@ export function htmlDaReceita(d) {
   const consultas = [e.autorizacao_em, e.pgdas_em].map(diaEmBrasilia).filter(Boolean).sort();
   const ultima = consultas.length ? consultas[consultas.length - 1] : (e.situacao_fiscal_em || null);
   return linhas.join('') + '<div class="field-help" style="margin-top:10px;">Consultado pela ponte da Receita (Integra Contador, no PC do escritório)'
-    + (ultima ? ', a última vez em ' + esc(dataBR(ultima)) : '') + '. Só consulta: nada é transmitido. O texto das mensagens fica no e-CAC.</div>';
+    + (ultima ? ', a última vez em ' + esc(dataBR(ultima)) : '') + '. Só consulta: nada é transmitido. O texto das mensagens fica no e-CAC.'
+    + (linkDoRelatorio(e.situacao_fiscal_pdf_url) ? ' O PDF do relatório de situação fiscal fica na pasta da empresa no Drive, em FISCAL › SITUAÇÃO FISCAL.' : '') + '</div>';
 }
 
 /** Lê o que a ponte trouxe desta empresa. Erro na leitura: sem a seção (a ficha segue igual). */
 export async function carregarReceita(supabase, clienteId) {
   try {
     const [e, p, m] = await Promise.all([
-      supabase.from('receita_empresas').select('autorizacao, autorizacao_ate, autorizacao_em, pgdas_em, pendencias, situacao_fiscal_em').eq('cliente_id', clienteId).maybeSingle(),
+      supabase.from('receita_empresas').select('autorizacao, autorizacao_ate, autorizacao_em, pgdas_em, pendencias, situacao_fiscal_em, situacao_fiscal_pdf_em, situacao_fiscal_pdf_url')
+        .eq('cliente_id', clienteId).maybeSingle(),
       supabase.from('receita_pgdas').select('competencia, transmitida_em, das_pago, receita_mes, receita_12_meses').eq('cliente_id', clienteId).order('competencia', { ascending: false }).limit(12),
       supabase.from('receita_mensagens').select('assunto, enviada_em, origem, lida, recebida_em').eq('cliente_id', clienteId)
         .order('enviada_em', { ascending: false, nullsFirst: false }).order('recebida_em', { ascending: false }).limit(5)

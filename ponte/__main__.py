@@ -1,6 +1,7 @@
 """py -3 -m ponte conferir | rodar [--falso] [--sem-enviar] [--saida arquivo.json] [--meses N]
    py -3 -m ponte receita conferir | rodar [--demonstracao | --falso] [--sem-enviar] [--saida arquivo.json]
                                            [--so servico,servico] [--empresas N]   (a ponte da Receita)
+   py -3 -m ponte receita relatorios        (os PDFs do relatório de situação fiscal que faltam, pro Drive — sem o Serpro)
    py -3 -m ponte notas rodar [--sem-enviar] [--saida arquivo.json] [--falso] [--tudo] [--empresa CODIGO]
                                             (as notas de compra das empresas autorizadas — ponte/notas/)
    py -3 -m ponte chave [--trocar]          (gera a chave da ponte no config.ini e mostra só a impressão digital)
@@ -90,6 +91,7 @@ def main(argv=None):
     rr.add_argument('--so', type=_servicos, metavar='servico,servico',
                     help='roda só estes, agora, fora do calendário: autorizacao,pgdas,faturamento,caixa_postal,situacao_fiscal')
     rr.add_argument('--empresas', type=_empresas, metavar='N', help='só as N primeiras empresas da lista')
+    rsub.add_parser('relatorios', help='manda pro Drive os PDFs do relatório de situação fiscal que faltam (sem consultar o Serpro)')
     nt = sub.add_parser('notas', help='as notas de compra das empresas autorizadas (ponte/notas/) — o LEIA-ME explica')
     nsub = nt.add_subparsers(dest='acao', required=True)
     nr = nsub.add_parser('rodar', help='pede a lista ao sistema, lê as notas da Domínio, manda, registra')
@@ -137,6 +139,9 @@ def main(argv=None):
         if args.acao == 'conferir':
             from .receita.conferir import conferir as conferir_receita
             return conferir_receita()
+        if args.acao == 'relatorios':
+            from .receita.relatorios import rodar as rodar_relatorios
+            return rodar_relatorios()
         from .receita.rodada import rodar as rodar_receita
         return rodar_receita(demonstracao=args.demonstracao, falso=args.falso, sem_enviar=args.sem_enviar,
                              saida=args.saida, so=args.so, empresas_max=args.empresas)

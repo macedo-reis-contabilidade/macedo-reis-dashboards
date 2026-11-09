@@ -14,6 +14,10 @@ nos pendentes e só mandam pra um sistema de mentira (endereço local). O estado
 O que não deu pra ler do PDF (a declaração, o relatório da situação fiscal) não vai no pacote: vai só o `faltou` com
 `a_conferir` (24/10/2026). O estado.json guarda também o dia de cada consulta feita (o calendário "a partir do dia").
 
+No fim da rodada de produção (09/11/2026), o PDF do relatório de situação fiscal vai pra pasta da empresa no Drive,
+pela função do sistema (relatorios.py) — o desta rodada e os que ficaram das de antes; o que der errado ali fica pra
+próxima e não muda o código de saída.
+
 O procurador (03/11/2026, o Autentica Procurador): com o [integra] procurador_* preenchido, a autorização confere
 também a procuração pro CPF dele; a empresa ativa por ela é consultada em nome dele (o autor de cada consulta), e o lote
 de eventos da Caixa Postal sai um por autor. Sem o token dele nesta rodada, essas consultas vão pro `faltou` como erro
@@ -29,7 +33,7 @@ import traceback
 
 from .. import config, envio
 from ..log import Registro
-from . import VERSAO, calendario, demonstracao as demo_mod, estado as est_mod, pacote, serpro, servicos, sistema
+from . import VERSAO, calendario, demonstracao as demo_mod, estado as est_mod, pacote, relatorios, serpro, servicos, sistema
 
 OK, TENTAR_DE_NOVO, NAO_ADIANTA = 0, 1, 2
 
@@ -414,26 +418,33 @@ def rodar(demonstracao=False, falso=False, sem_enviar=False, saida=None, so=None
         destino.parent.mkdir(parents=True, exist_ok=True)
         destino.write_bytes(json.dumps(pac, ensure_ascii=False, indent=1).encode('utf-8'))
         reg(f'receita: pacote gravado em {destino}')
+    if sem_enviar:
+        reg('receita: nada a mandar' if not pac['empresas'] and not pac['faltou'] else 'receita: --sem-enviar: nada foi mandado')
+        return OK
     if not pac['empresas'] and not pac['faltou']:
         reg('receita: nada a mandar')
-        return OK
-    if sem_enviar:
-        reg('receita: --sem-enviar: nada foi mandado')
-        return OK
-
-    corpo = json.dumps(pac, ensure_ascii=False).encode('utf-8')
-    env = sistema.EnvioReceita(cfg.valor('sistema', 'url'), cfg.valor('sistema', 'chave_publica'),
-                               cfg.valor('sistema', 'chave_ponte'), reg)
-    if not real:
-        # demonstração e --falso não tocam nos pendentes de verdade
-        r = env.mandar(corpo, f'receita {pac["rodada"]["id"][:8]} ({rotulo})')
-        if r == envio.FOI:
-            return OK
-        if r == envio.FALHOU:
-            reg('receita: em demonstração e no --falso nada é guardado em pendentes', 'aviso')
-            return TENTAR_DE_NOVO
-        return NAO_ADIANTA
-    codigo, foi_ou_guardou = mandar_com_pendentes(env, pac, corpo, base, reg)
-    if foi_ou_guardou:
-        est.gravar()
+        codigo = OK
+    else:
+        corpo = json.dumps(pac, ensure_ascii=False).encode('utf-8')
+        env = sistema.EnvioReceita(cfg.valor('sistema', 'url'), cfg.valor('sistema', 'chave_publica'),
+                                   cfg.valor('sistema', 'chave_ponte'), reg)
+        if not real:
+            # demonstração e --falso não tocam nos pendentes de verdade (nem mandam os relatórios pro Drive)
+            r = env.mandar(corpo, f'receita {pac["rodada"]["id"][:8]} ({rotulo})')
+            if r == envio.FOI:
+                return OK
+            if r == envio.FALHOU:
+                reg('receita: em demonstração e no --falso nada é guardado em pendentes', 'aviso')
+                return TENTAR_DE_NOVO
+            return NAO_ADIANTA
+        codigo, foi_ou_guardou = mandar_com_pendentes(env, pac, corpo, base, reg)
+        if foi_ou_guardou:
+            est.gravar()
+    if real:
+        # o PDF do relatório de situação fiscal na pasta da empresa no Drive (09/11/2026): os que faltam, desta rodada e
+        # das de antes; o que der errado aqui fica pra próxima e não muda o código de saída
+        try:
+            relatorios.mandar(cfg, pasta, empresas, reg)
+        except Exception as e:
+            reg(f'receita: os relatórios de situação fiscal pararam: {type(e).__name__}: {e} — vão na próxima rodada', 'erro')
     return codigo

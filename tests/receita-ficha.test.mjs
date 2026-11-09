@@ -31,5 +31,25 @@ const pend = texto(htmlDaReceita({ empresa: { pendencias: [{ orgao: 'PGFN', titu
 chk('uma pendência, com o órgão', pend.includes('1 pendência (relatório de 05/10/2026): PGFN, Inscrição &lt;x&gt;.'), pend);
 chk('o dia em Brasília de um carimbo', diaEmBrasilia('2026-10-24T02:59:00Z') === '2026-10-23' && diaEmBrasilia(null) === null && diaEmBrasilia('x') === null);
 
+console.log('O PDF do relatório de situação fiscal no Drive (09/11/2026):');
+const URL_PDF = 'https://drive.google.com/file/d/ARQ_teste-0001/view';
+const comPdf = (empresa) => htmlDaReceita({ empresa: { pendencias: [], situacao_fiscal_em: '2026-11-03', situacao_fiscal_pdf_em: '2026-11-03', situacao_fiscal_pdf_url: URL_PDF, ...empresa } });
+let hp = comPdf({});
+chk('o do mesmo dia das pendências: "Abrir o relatório (PDF)", numa aba nova, sem o opener',
+  hp.includes('<a href="' + URL_PDF + '" target="_blank" rel="noopener noreferrer">Abrir o relatório (PDF)</a>') && texto(hp).includes('(relatório de 03/11/2026). Abrir o relatório (PDF)'), hp);
+chk('o rodapé diz onde ele fica no Drive', texto(hp).includes('fica na pasta da empresa no Drive, em FISCAL › SITUAÇÃO FISCAL'));
+hp = texto(comPdf({ situacao_fiscal_pdf_em: '2026-10-05' }));
+chk('um PDF de antes do relatório lido: com o dia dele', hp.includes('(relatório de 03/11/2026). Abrir o relatório de 05/10/2026 (PDF)'), hp);
+hp = texto(comPdf({ situacao_fiscal_em: '2026-10-05', pendencias: [{ orgao: 'Receita', titulo: 'Débito' }] }));
+chk('um PDF mais novo, que a ponte não conseguiu ler: as pendências de antes e o aviso pra conferir no PDF',
+  hp.includes('1 pendência (relatório de 05/10/2026): Receita, Débito. O relatório de 03/11/2026 a ponte não conseguiu ler: abra o PDF pra conferir as pendências.'), hp);
+hp = texto(comPdf({ pendencias: null, situacao_fiscal_em: null }));
+chk('nenhum relatório lido, mas o PDF no Drive: a linha da situação fiscal com o PDF', hp.includes('Situação fiscal O relatório de 03/11/2026 a ponte não conseguiu ler: abra o PDF pra conferir as pendências.'), hp);
+const torto = comPdf({ situacao_fiscal_pdf_url: 'javascript:alert(1)' }) + comPdf({ situacao_fiscal_pdf_url: 'https://drive.google.com.exemplo.com/file/d/ARQ_teste-0001/view' })
+  + comPdf({ situacao_fiscal_pdf_url: 'https://drive.google.com/file/d/ARQ"><img src=x>/view' });
+chk('endereço que não é o de um arquivo do Drive não vira link (nem aparece)', !/<a /.test(torto) && !torto.includes('javascript') && !torto.includes('exemplo.com') && !torto.includes('<img'), torto);
+chk('sem o PDF, a linha fica como era', texto(htmlDaReceita({ empresa: { pendencias: [], situacao_fiscal_em: '2026-11-03' } })).includes('(relatório de 03/11/2026). ')
+  && !htmlDaReceita({ empresa: { pendencias: [], situacao_fiscal_em: '2026-11-03' } }).includes('<a '));
+
 console.log(falhas ? '\n' + falhas + ' falha(s).' : '\nTudo certo.');
 process.exit(falhas ? 1 : 0);

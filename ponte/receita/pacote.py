@@ -8,8 +8,9 @@
 Bloco que não está na empresa = não consultado nesta rodada (nunca um "vazio" inventado). O que a ponte não conseguiu
 ler do PDF não vai (24/10/2026): o faturamento sem os dois valores e a situação fiscal sem a lista de pendências ficam
 fora do pacote — vai só o `faltou` com `a_conferir` (no sistema, a lista nula virava "sem pendência" e o faturamento
-nulo apagava o do mês). Só os campos daqui saem do PC — a mesma trava do Domínio: o que vier a mais é descartado antes
-de montar (o PDF e o texto inteiro de uma mensagem nunca saem).
+nulo apagava o do mês). No pacote, só os campos daqui — a mesma trava do Domínio: o que vier a mais é descartado antes
+de montar (o PDF e o texto inteiro de uma mensagem nunca vão nele). O PDF do relatório de situação fiscal vai à parte,
+um por pedido, pra pasta da empresa no Drive (relatorios.py, 09/11/2026).
 """
 import socket
 import uuid
