@@ -99,6 +99,10 @@
     .at-anexo span { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
     .at-anexo small { color:var(--text-muted); flex-shrink:0; }
     .at-anexo-img { max-width:220px; max-height:160px; border-radius:8px; display:block; }
+    .at-anexo-linha { display:flex; align-items:center; gap:6px; flex-wrap:wrap; max-width:100%; }
+    .at-anexo-salvar, .at-anexo-drive { font:inherit; font-size:12px; border:1px solid var(--line); background:transparent; color:var(--text-muted); border-radius:8px; padding:4px 8px; cursor:pointer; text-decoration:none; white-space:nowrap; }
+    .at-anexo-salvar:hover:not(:disabled), .at-anexo-drive:hover { border-color:var(--accent, #5B82A6); color:inherit; }
+    .at-anexo-salvar:disabled { opacity:.55; cursor:default; }
     .at-caixa.nota textarea { background:rgba(227,179,65,.06); border-color:rgba(227,179,65,.45); }
     .at-caixa.nota .at-modos button[aria-pressed="true"] { border-color:rgba(227,179,65,.7); background:rgba(227,179,65,.14); }
     .at-nota { margin:0; padding:12px 16px 14px; border-top:1px solid var(--line); color:var(--text-muted); font-size:13.5px; }
@@ -251,7 +255,7 @@
     import { SETORES, SEM_SETOR, ATENDENTES, MAX_TEXTO, nomeDe, nomeDoSetor, setoresDe, formatarTelefone, normalizarTelefone,
       tituloDaConversa, situacaoDaConversa, ehPraMim, podeAssumir, podeResponder, podeDevolver, podeTransferir, podeEncerrar,
       podeReabrir, podeNotar, contaComoUltima, porQueNaoResponde, mudancaDe, textoDoEvento, linhaDoTempo, previa, esperaResposta, filtrar, contagens,
-      caminhoDoAnexo, conferirAnexos, ehImagem, tamanhoDoAnexo } from './assets/js/atendimento.js';
+      caminhoDoAnexo, conferirAnexos, ehImagem, tamanhoDoAnexo, linkDoDrive } from './assets/js/atendimento.js';
     import { BIPE, horaCurta, horaDaLista, rotuloDoDia, linkificar, esperaParaReligar } from './assets/js/chat-equipe.js';
     import { buscarEmpresas } from './assets/js/tarefas-acoes.js';
 
@@ -576,7 +580,7 @@
         if (x.tipo === 'evento') { h.push('<li class="at-ev">' + esc(textoDoEvento(x.e)) + ' · ' + esc(horaCurta(x.e.em)) + '</li>'); return; }
         const m = x.m, quem = m.direcao === 'saida' ? nomeDe(m.autor) : m.direcao === 'interna' ? 'Nota de ' + nomeDe(m.autor) : '';
         const st = m.status === 'erro' ? '<span class="at-msg-erro"> · não foi' + (m.erro ? ': ' + esc(m.erro) : '') + '</span>' : m.status === 'enviando' ? ' · enviando…' : m.status === 'lida' ? ' · lida' : m.status === 'entregue' ? ' · entregue' : '';
-        const anx = htmlDosAnexos(m);
+        const anx = htmlDosAnexos(m, c);
         const corpo = (anx ? anx : '') + (m.texto ? linkificar(esc(m.texto)) : anx ? '' : esc(previa(m)));
         h.push('<li class="at-msg ' + esc(m.direcao) + '">' + corpo + '<span class="at-msg-pe">' + (quem ? esc(quem) + ' · ' : '') + esc(horaCurta(m.criada_em)) + st + '</span></li>');
       });
@@ -586,12 +590,31 @@
     }
 
     // ---------- os arquivos (09/11/2026): a pasta privada "atendimento", em <id da mensagem>/<nome> ----------
-    function htmlDosAnexos(m) {
+    // na conversa (não no simulador), cada arquivo tem o "Salvar no Drive da empresa" (10/11/2026), com o clique de alguém;
+    // depois de salvo, o link "No Drive"
+    function htmlDosAnexos(m, c = null) {
       const l = Array.isArray(m && m.anexos) ? m.anexos : [];
       if (!l.length) return '';
-      return '<div class="at-anexos">' + l.map(a => '<button type="button" class="at-anexo" data-caminho="' + esc(a.caminho) + '" data-nome="' + esc(a.nome) + '"'
-        + ' title="Abrir ' + esc(a.nome) + '">' + (ehImagem(a) ? '<img class="at-anexo-img" alt="' + esc(a.nome) + '" data-mini="' + esc(a.caminho) + '">' : '📄')
-        + '<span>' + esc(a.nome) + '</span><small>' + esc(tamanhoDoAnexo(a.tamanho)) + '</small></button>').join('') + '</div>';
+      return '<div class="at-anexos">' + l.map(a => {
+        const abrir = '<button type="button" class="at-anexo" data-caminho="' + esc(a.caminho) + '" data-nome="' + esc(a.nome) + '"'
+          + ' title="Abrir ' + esc(a.nome) + '">' + (ehImagem(a) ? '<img class="at-anexo-img" alt="' + esc(a.nome) + '" data-mini="' + esc(a.caminho) + '">' : '📄')
+          + '<span>' + esc(a.nome) + '</span><small>' + esc(tamanhoDoAnexo(a.tamanho)) + '</small></button>';
+        if (!c) return abrir;
+        const url = linkDoDrive(a);
+        const drive = url ? '<a class="at-anexo-drive" href="' + esc(url) + '" target="_blank" rel="noopener noreferrer" title="Abrir no Drive da empresa">No Drive ↗</a>'
+          : '<button type="button" class="at-anexo-salvar" data-msg="' + esc(m.id) + '" data-caminho="' + esc(a.caminho) + '"'
+            + (c.cliente_id ? ' title="Salvar ' + esc(a.nome) + ' na pasta da empresa no Drive"' : ' disabled title="Ligue a conversa a uma empresa pra salvar no Drive dela"') + '>Salvar no Drive</button>';
+        return '<div class="at-anexo-linha">' + abrir + drive + '</div>';
+      }).join('') + '</div>';
+    }
+    async function salvarNoDrive(b) {
+      const msgId = b.dataset.msg, caminho = b.dataset.caminho, rotulo = b.textContent;
+      b.disabled = true; b.textContent = 'Salvando…';
+      const r = await chamarWhatsapp({ acao: 'salvar_drive', mensagem_id: msgId, caminho });
+      if (r.erro) { b.disabled = false; b.textContent = rotulo; alert(r.erro); return; }
+      const m = mensagens.find(x => x.id === msgId);
+      if (m && r.data && Array.isArray(r.data.anexos)) m.anexos = r.data.anexos;
+      pintarTempo();
     }
     async function miniaturas(el) {
       const imgs = [...el.querySelectorAll('img[data-mini]')];
@@ -616,6 +639,8 @@
       }
     }
     document.addEventListener('click', e => {
+      const sd = e.target.closest && e.target.closest('.at-anexo-salvar');
+      if (sd && !sd.disabled) { e.preventDefault(); salvarNoDrive(sd); return; }
       const b = e.target.closest && e.target.closest('.at-anexo');
       if (b && b.dataset.caminho) { e.preventDefault(); abrirAnexo(b.dataset.caminho, b.dataset.nome || 'o arquivo'); }
     });

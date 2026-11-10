@@ -12,6 +12,7 @@ Confere:
   3. Assumir grava a situação e o responsável e o evento; a caixa aparece; responder chama a função com o id da tela, e a
      mensagem aparece uma vez só; a que não foi mostra "Tentar de novo", que manda o mesmo id;
   4. ligar o número à empresa (o que já falou por ela): a conversa ganha a empresa, o número fica confirmado, o evento;
+     o arquivo do cliente vai pro Drive da empresa com o "Salvar no Drive" e fica com o link "No Drive";
   5. passar pro DP com recado: a fila do DP, sem ninguém, o evento com o recado no histórico; sai das minhas;
   6. o simulador: o cliente de teste escreve, a conversa nasce na fila do setor escolhido e chega na lista na hora, com o
      aviso; a resposta do escritório aparece no "celular" do cliente;
@@ -85,6 +86,12 @@ SEMEAR = """
       const m = { id: b.id || ('msg-' + Math.random().toString(36).slice(2)), conversa_id: c.id, direcao: 'entrada', autor: 'cliente', tipo: (b.anexos || []).length ? 'imagem' : 'texto', texto: b.texto || null, transcricao: null, anexos: b.anexos || [], status: null, erro: null, criada_em: agoraIso };
       db.atend_mensagens.push(m); window.__mockEmitir('atend_mensagens', 'INSERT', m);
       return { data: { ok: true, conversa_id: c.id, nova, mensagem_id: m.id }, error: null };
+    }
+    if (b.acao === 'salvar_drive') {
+      const m = db.atend_mensagens.find(x => x.id === b.mensagem_id), c = m && db.atend_conversas.find(x => x.id === m.conversa_id);
+      if (!c || !c.cliente_id) return { data: null, error: { message: 'non-2xx', context: { status: 409, json: async () => ({ error: 'Ligue a conversa a uma empresa antes de salvar no Drive.' }) } } };
+      m.anexos = m.anexos.map(a => a.caminho === b.caminho ? { ...a, drive_id: 'drv123456789', drive_url: 'https://drive.google.com/file/d/drv123456789/view' } : a);
+      return { data: { ok: true, anexos: m.anexos, drive_url: 'https://drive.google.com/file/d/drv123456789/view' }, error: null };
     }
     if (b.acao === 'nota') {
       if (db.atend_mensagens.some(m => m.id === b.id)) return { data: { ok: true, id: b.id, repetida: true }, error: null };
@@ -196,6 +203,19 @@ def main():
         k1 = conversa(p, 'k1'); num = next(n for n in db(p, 'atend_numeros') if n['id'] == 'n-k1')
         ok(k1['cliente_id'] == 'c2' and num['confirmado'] is True, 'a conversa com a EMPRESA EXEMPLO e o número confirmado pra ela')
         ok('editar.html?id=c2' in p.get_attribute('#cMeta a', 'href') and 'Thalia ligou o número à empresa EMPRESA EXEMPLO LTDA' in p.inner_text('#cTempo'), 'o link da ficha e o evento no histórico')
+
+        print('4b. Salvar o arquivo no Drive da empresa')
+        p.evaluate("""() => { const m = { id: 'm7', conversa_id: 'k1', direcao: 'entrada', autor: 'cliente', tipo: 'documento', texto: null, transcricao: null, status: null, erro: null,
+          anexos: [{ caminho: '0b6e4f3a-1c2d-4e5f-8a9b-0c1d2e3f4a5b/extrato.pdf', nome: 'extrato.pdf', tamanho: 2048, tipo: 'application/pdf' }], criada_em: new Date().toISOString() };
+          window.__mockDb.atend_mensagens.push(m); window.__mockEmitir('atend_mensagens', 'INSERT', m); }""")
+        p.wait_for_selector('#cTempo .at-anexo-salvar')
+        ok(p.locator('#cTempo .at-anexo-salvar').count() == 1 and not p.is_disabled('#cTempo .at-anexo-salvar'), 'com a empresa ligada, o arquivo do cliente tem o "Salvar no Drive"')
+        p.click('#cTempo .at-anexo-salvar')
+        p.wait_for_selector('#cTempo a.at-anexo-drive')
+        sd = [x[1] for x in p.evaluate('() => window.__log') if x[0] == 'whatsapp' and x[1].get('acao') == 'salvar_drive']
+        ok(len(sd) == 1 and sd[0]['mensagem_id'] == 'm7' and sd[0]['caminho'].endswith('/extrato.pdf'), 'chama a função com a mensagem e o caminho do arquivo')
+        href = p.get_attribute('#cTempo a.at-anexo-drive', 'href'); rel = p.get_attribute('#cTempo a.at-anexo-drive', 'rel') or ''
+        ok(href == 'https://drive.google.com/file/d/drv123456789/view' and 'noopener' in rel and p.locator('#cTempo .at-anexo-salvar').count() == 0, 'depois, o link "No Drive" no lugar do botão, numa aba nova')
 
         print('5. Passar pro DP')
         p.click('#cAcoes button[data-acao="transferir"]')

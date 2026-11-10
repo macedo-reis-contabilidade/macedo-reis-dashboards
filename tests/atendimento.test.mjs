@@ -133,6 +133,10 @@ chk('a mensagem nasce com o id da tela (tentar de novo não duplica: 23505 é "j
 
 chk('os mesmos arquivos aceitos (o caminho na pasta da mensagem, até 5, 25 MB)', sem(corpo(fn, 'anexosValidos')).replace(':Anexo[]', '') === sem(corpo(modulo, 'anexosValidos')) && /MAX_ANEXOS = 5/.test(fn) && /MAX_ARQUIVO = 25 \* 1024 \* 1024/.test(fn));
 chk('o mesmo tipo da mensagem pelo arquivo', sem(corpo(fn, 'tipoDaMensagem')) === sem(corpo(modulo, 'tipoDaMensagem')));
+chk('o mesmo nome no Drive (o dia e a hora de Brasília)', sem(corpo(fn, 'nomeNoDrive')) === sem(corpo(modulo, 'nomeNoDrive')) && /PASTA_WHATSAPP = "WHATSAPP"/.test(fn) && A.PASTA_WHATSAPP === 'WHATSAPP');
+chk('o Salvar no Drive: só com a empresa ligada e a pasta no cadastro; o que já foi devolve o link de antes', /acao === "salvar_drive"/.test(fn) && /Ligue a conversa a uma empresa/.test(fn) && /ja: true/.test(fn) && !/\.delete\(|method: "DELETE"/.test(fn));
+chk('o nome no Drive: o dia e a hora de Brasília e o nome sem barra', A.nomeNoDrive('Guia/DAS.pdf', '2026-11-10T13:05:00Z') === '2026-11-10 10h05 Guia DAS.pdf' && A.nomeNoDrive('', '2026-01-01T02:00:00Z') === '2025-12-31 23h00 arquivo');
+chk('o link do Drive só quando é do Drive', A.linkDoDrive({ drive_url: 'https://drive.google.com/file/d/abc/view' }) === 'https://drive.google.com/file/d/abc/view' && A.linkDoDrive({ drive_url: 'javascript:alert(1)' }) === null && A.linkDoDrive({}) === null);
 chk('o arquivo tem de estar na pasta antes de gravar', /storage\.from\("atendimento"\)\.list\(id/.test(fn) && /arquivosNaPasta\(\)/.test(fn));
 
 console.log('Os arquivos:');

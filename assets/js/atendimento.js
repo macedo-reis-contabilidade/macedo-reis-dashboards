@@ -273,3 +273,18 @@ export function anexosValidos(lista, mensagemId) {
   }
   return out;
 }
+// o "Salvar no Drive da empresa" (10/11/2026): sempre com o clique de alguém, na pasta da empresa do cadastro, numa
+// subpasta WHATSAPP; o nome no Drive leva o dia e a hora da mensagem em Brasília (o mesmo arquivo de outro dia não se
+// confunde) — a função whatsapp leva a cópia (tests/atendimento.test.mjs confere). Depois de salvo, o anexo guarda o
+// drive_url, que só vira link quando é do Drive
+export const PASTA_WHATSAPP = 'WHATSAPP';
+export function nomeNoDrive(nome, iso) {
+  const t = new Date(iso).getTime();
+  const d = new Date((Number.isFinite(t) ? t : Date.now()) - 3 * 3600 * 1000).toISOString();
+  const limpo = String(nome || 'arquivo').replace(/[\/\\\u0000-\u001f]+/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 180) || 'arquivo';
+  return d.slice(0, 10) + ' ' + d.slice(11, 13) + 'h' + d.slice(14, 16) + ' ' + limpo;
+}
+export function linkDoDrive(a) {
+  const u = String((a && a.drive_url) || '');
+  return /^https:\/\/(drive|docs)\.google\.com\//.test(u) ? u : null;
+}
