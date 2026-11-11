@@ -5,8 +5,9 @@
 // do Real pela contabilidade, o resto da conta), os impedimentos do Simples pelo cadastro e a precisão do estudo.
 // Rodar com: node tests/comparativo-roteiro.test.mjs — dados inventados (o repositório é público).
 
-import { roteiroDoEstudo, crescimentoMedido, FASES, FASES_GERAL, fasesDoObjetivo, fontesDoEstudo, ultimoMesFechado, AUTOMATICO, precisaoDoEstudo, NIVEL_DA_PRECISAO, PESO_DA_PRECISAO, LIMITE_PRESUMIDO } from '../assets/js/comparativo-roteiro.js';
-import { entradaDoSistema, premissasParaTestar, situacaoDoGrupo } from '../assets/js/comparativo-dados.js';
+import { roteiroDoEstudo, crescimentoMedido, FASES, FASES_GERAL, fasesDoObjetivo, fontesDoEstudo, ultimoMesFechado, AUTOMATICO, precisaoDoEstudo, NIVEL_DA_PRECISAO, PESO_DA_PRECISAO, LIMITE_PRESUMIDO,
+  presuncaoDoEstudo } from '../assets/js/comparativo-roteiro.js';
+import { entradaDoSistema, premissasParaTestar, situacaoDoGrupo, presuncaoPeloCnae } from '../assets/js/comparativo-dados.js';
 import { comparar, testarPremissas, fraseDaDecisao } from '../assets/js/comparativo-motor.js';
 
 let falhas = 0, total = 0;
@@ -172,12 +173,14 @@ console.log('=== qual comparativo: as fases de cada caminho (11/11/2026) ===');
   ok('o caminho do estudo e as quatro fases dele', g0.objetivo === 'presumido_real' && g0.fases.map(f => f.id).join() === 'presuncao,lucro,premissas,veredito');
   ok('nenhuma missão do Simples: sem o limite, os impedimentos, as empresas dos sócios e o PGDAS', !['limite', 'vedacoes', 'pgdas'].some(id => missao(g0, id)));
   const pres = missao(g0, 'presuncao');
-  ok('a presunção: pelo CNAE do cadastro, a conferir, com o que a conta usou', pres.fase === 'presuncao' && pres.estado === 'aberta' && pres.peso === 'importa' && pres.conferir.join() === 'atividades.0.tipo' && pres.conferirRotulo === 'Está certa'
-    && /^A conta usou: Comércio \(revenda de mercadorias\), 8% no IRPJ e 12% na CSLL sobre R\$\s1\.000\.000\. A atividade veio do CNAE do cadastro/.test(pres.texto), pres.texto);
+  // sem as notas no sistema (o roteiro sem a medida da atividade): a atividade veio do CNAE, e a missão diz o que fazer
+  ok('a presunção sem as notas: pelo CNAE do cadastro, aberta, com o que a conta usou e o que fazer', pres.fase === 'presuncao' && pres.estado === 'aberta' && pres.peso === 'importa' && pres.conferir.join() === 'atividades.0.tipo' && pres.conferirRotulo === 'Está certa'
+    && pres.campo === 'atividades.0.tipo' && pres.irRotulo === 'Ver a atividade'
+    && /^O sistema não tem as notas desta empresa: a atividade veio do CNAE do cadastro\. A conta usou: Comércio \(revenda de mercadorias\), 8% no IRPJ e 12% na CSLL sobre R\$\s1\.000\.000\. Venda de mercadoria presume 8% no IRPJ e 12% na CSLL; serviço, 32% nos dois\. Se a empresa tem as duas receitas, separe cada uma numa atividade; se é isso mesmo, clique em Está certa\.$/.test(pres.texto), pres.texto);
   // 11/11/2026: só o Presumido contra o Real, o serviço é "Serviços" — o anexo e o fator r são do Simples e não aparecem
   // em nenhuma missão, fase ou fonte do caminho
   const gServ = rodarC(comP({ atividades: [{ tipo: 'servico_r', receita: 600000 }], compras: 0, regimeAtual: 'presumido', objetivo: 'presumido_real' }), ORI, base);
-  ok('o serviço do fator r no Presumido × Real: a missão diz "Serviços", 32%', /^A conta usou: Serviços, 32% no IRPJ e 32% na CSLL sobre R\$\s600\.000\./.test(missao(gServ, 'presuncao').texto), missao(gServ, 'presuncao').texto);
+  ok('o serviço do fator r no Presumido × Real: a missão diz "Serviços", 32%', / A conta usou: Serviços, 32% no IRPJ e 32% na CSLL sobre R\$\s600\.000\./.test(missao(gServ, 'presuncao').texto), missao(gServ, 'presuncao').texto);
   ok('nada do Simples no caminho do Presumido × Real (nem o anexo, nem o fator r, nem o DAS, nem o PGDAS)', [g0, gServ].every(r => !/Anexo [IV]|fator r|\bDAS\b|PGDAS|Simples Nacional|no Simples|do Simples\b(?! bem)/.test(JSON.stringify(r).replace(/fornecedor do Simples/g, ''))),
     (JSON.stringify(gServ).replace(/fornecedor do Simples/g, '').match(/.{60}(Anexo [IV]|fator r|\bDAS\b|PGDAS|Simples Nacional|no Simples|do Simples).{60}/) || [''])[0]);
   const luc = missao(g0, 'lucro');
@@ -257,11 +260,92 @@ console.log('=== qual comparativo: as fases de cada caminho (11/11/2026) ===');
   const dre = fo.lucro[0];
   ok('a DRE: falta, no Domínio Contabilidade, com os meses que faltam da contabilidade — e a ponte ainda não traz', dre.estado === 'falta' && dre.campo === 'lucroContabil' && /^Domínio Contabilidade: a DRE \(ou o balancete\) dos mesmos 12 meses da receita/.test(dre.onde)
     && /Pelo Controle das contabilidades, ela está feita até jul\/26: faltam ago\/26 e set\/26 pra DRE dos 12 meses fechar\.$/.test(dre.onde) && /A ponte do Domínio ainda não traz o resultado da contabilidade: digite o lucro da DRE\./.test(dre.auto), dre);
-  ok('a atividade: pelo CNAE do cadastro, a conferir', fo.presuncao[1].estado === 'padrao' && fo.presuncao[1].situacao === 'pelo CNAE do cadastro: confira');
+  ok('a atividade sem as notas: pelo CNAE do cadastro, e a linha diz onde resolver', fo.presuncao[1].estado === 'padrao' && fo.presuncao[1].situacao === 'sem notas no sistema: pelo CNAE do cadastro'
+    && fo.presuncao[1].onde === 'O sistema não tem as notas desta empresa: a atividade veio do CNAE do cadastro. A regra e o que fazer estão na missão abaixo.'
+    && fo.presuncao[1].auto === 'Com a empresa no Domínio, a ponte traz essa divisão pelas notas, todo dia.', fo.presuncao[1]);
   ok('a folha zerada pela ponte: "sem folha nem pró-labore no Domínio"', fo.lucro[1].estado === 'tem' && fo.lucro[1].situacao === 'sem folha nem pró-labore no Domínio');
   ok('o veredito: a reunião, com o Real trimestral ou anual e a distribuição de lucros', /a projeção do lucro e as escolhas — o Real trimestral ou anual e a distribuição de lucros aos sócios\.$/.test(fo.veredito[0].onde), fo.veredito[0].onde);
   const foL = fontesDoEstudo({ entrada: { ...G, lucroContabil: 100000 }, origens: oriL, comparacao: comparar({ ...G, lucroContabil: 100000, regimes: ['presumido', 'real'] }), serie, hoje: '2026-11-11', objetivo: 'presumido_real', contabil: { faz: true, feitaAte: '2026-07' } });
   ok('com a DRE digitada e a contabilidade atrás: "faltam meses", e as adições e exclusões no padrão', foL.lucro[0].estado === 'antigo' && /a contabilidade vai até jul\/26/.test(foL.lucro[0].situacao) && foL.lucro[1].id === 'lalur' && foL.lucro[1].estado === 'padrao');
+
+  console.log('=== a atividade e a presunção pelas notas do Domínio (11/11/2026) ===');
+  {
+    // Pedido do Samuel: "não ficou claro o que preciso fazer, como temos acesso nas notas fiscais pela ponte da domínio, não
+    // ficaria mais fácil para o próprio sistema apurar essa informação?" — com a divisão medida nas notas, a missão vem
+    // cumprida sozinha; aberta, só com o que a nota não diz, e dizendo o que fazer
+    const notas = (merc, serv, x = {}) => ({ divisao: { fonte: 'ponte', de: '2025-10', ate: '2026-09', n: 12, mercadorias: merc, servicos: serv }, especial: null, lida: true, ...x });
+    const comNotas = rodarC(G, ORI, { ...base, atividade: notas(1000000, 0) }), mN = missao(comNotas, 'presuncao');
+    ok('100% de mercadoria nas notas: a missão vem cumprida, sem ninguém conferir, e diz de onde saiu', mN.estado === 'feita' && mN.como === 'apurado pelas notas do Domínio'
+      && /^Nas notas do Domínio de out\/25 a set\/26, toda a receita é venda de mercadoria\. A conta usou: Comércio \(revenda de mercadorias\), 8% no IRPJ e 12% na CSLL sobre R\$\s1\.000\.000\.$/.test(mN.texto), mN.texto);
+    ok('a origem gravada como "pelo CNAE — confira" não segura a missão: vale a medida de hoje', ORI['atividades.0.tipo'].fonte === 'cadastro' && comNotas.fases[0].concluida && comNotas.proximo.id !== 'presuncao');
+    const fN = comNotas.fases[0].fontes.find(x => x.id === 'atividade');
+    ok('a fonte da fase: tem, apurado pelas notas, com o período e a ponte de todo dia', fN.estado === 'tem' && fN.situacao === 'apurado pelas notas do Domínio, de out/25 a set/26'
+      && fN.onde === 'As notas de saída e de serviço do Domínio: toda a receita é venda de mercadoria. Venda de mercadoria presume 8% no IRPJ e 12% na CSLL; serviço, 32% nos dois.' && fN.auto === AUTOMATICO.ponte, fN);
+    ok('a precisão: a presunção já está na conta, pelas notas', precisaoDoEstudo(comNotas).tem.some(x => x.id === 'presuncao' && x.como === 'apurado pelas notas do Domínio') && !precisaoDoEstudo(comNotas).falta.some(x => x.id === 'presuncao'));
+    // serviço com um resto de mercadoria (R$ 400 em R$ 1 milhão): as duas linhas, e as notas dizem as partes
+    const Gm = comP({ atividades: [{ tipo: 'comercio', receita: 400 }, { tipo: 'servico_r', receita: 999600 }], compras: 0, regimeAtual: 'presumido', objetivo: 'presumido_real' });
+    const mM = missao(rodarC(Gm, { ...ORI, 'atividades.1.tipo': { fonte: 'cadastro' }, 'atividades.1.receita': { fonte: 'ponte' } }, { ...base, atividade: notas(400, 999600) }), 'presuncao');
+    ok('serviço e um resto de mercadoria: as partes das notas e a presunção de cada linha', mM.estado === 'feita'
+      && /^Nas notas do Domínio de out\/25 a set\/26, 99,96% é de serviço e 0,04% é venda de mercadoria\. A conta usou: Comércio \(revenda de mercadorias\), 8% no IRPJ e 12% na CSLL sobre R\$\s400; Serviços, 32% no IRPJ e 32% na CSLL sobre R\$\s999\.600\.$/.test(mM.texto), mM.texto);
+    ok('a medida do caso da Reforma (o faturamento do Domínio) e a de menos de 12 meses', (() => {
+      const m = missao(rodarC(G, ORI, { ...base, atividade: { divisao: { fonte: 'reforma', de: '2026-05', ate: '2026-09', n: 5, mercadorias: 10, servicos: 0 } } }), 'presuncao');
+      return m.estado === 'feita' && m.como === 'apurado pelo faturamento do Domínio' && /^No faturamento do Domínio de mai\/26 a set\/26 \(5 meses\), toda a receita é venda de mercadoria\./.test(m.texto); })());
+    // o estudo que não bate com as notas (a receita de serviço posta à mão): aberta, dizendo as duas divisões
+    const Gd = comP({ atividades: [{ tipo: 'comercio', receita: 600000 }, { tipo: 'servico', receita: 200000 }], compras: 0, regimeAtual: 'presumido', objetivo: 'presumido_real' });
+    const oriD = { ...ORI, 'atividades.0.tipo': { fonte: 'ponte' }, 'atividades.1.receita': { fonte: 'digitado' } };
+    const rD = rodarC(Gd, oriD, { ...base, atividade: notas(1000000, 0) }), mD = missao(rD, 'presuncao');
+    ok('o estudo não bate com as notas: aberta, com as duas divisões e o que fazer', mD.estado === 'aberta' && mD.peso === 'importa' && mD.conferirRotulo === 'Está certa' && mD.conferir.join() === 'atividades.0.tipo,atividades.1.tipo'
+      && /^Nas notas do Domínio de out\/25 a set\/26, toda a receita é venda de mercadoria; no estudo, 75% é venda de mercadoria e 25% é de serviço\. A conta usou: /.test(mD.texto)
+      && / Acerte a receita de cada atividade pra ficar como as notas; se o estudo é que está certo, clique em Está certa\.$/.test(mD.texto), mD.texto);
+    ok('a fonte, quando não bate: "o estudo não bate com as notas do Domínio"', rD.fases[0].fontes.find(x => x.id === 'atividade').situacao === 'o estudo não bate com as notas do Domínio'
+      && /no estudo, 75% é venda de mercadoria e 25% é de serviço\. Acerte na missão abaixo\.$/.test(rD.fases[0].fontes.find(x => x.id === 'atividade').onde));
+    ok('"Está certa" (a origem de cada atividade conferida) fecha a missão', missao(rodarC(Gd, { ...oriD, 'atividades.0.tipo': { fonte: 'confirmado' }, 'atividades.1.tipo': { fonte: 'confirmado' } }, { ...base, atividade: notas(1000000, 0) }), 'presuncao').como === 'conferido');
+    ok('a atividade que a equipe escolheu (digitada, ou do relatório solto) vale como está, mesmo sem bater', ['digitado', 'dominio'].every(f => { const m = missao(rodarC(Gd, { ...oriD, 'atividades.0.tipo': { fonte: f }, 'atividades.1.tipo': { fonte: f } }, { ...base, atividade: notas(1000000, 0) }), 'presuncao');
+      return m.estado === 'feita' && m.como === (f === 'digitado' ? 'digitado' : 'veio do relatório do Domínio') && /^A conta usou: /.test(m.texto); }));
+    ok('até 1 ponto de diferença, bate', presuncaoDoEstudo({ entrada: Gd, origens: oriD, atividade: notas(755000, 245000) }).caso === 'notas' && presuncaoDoEstudo({ entrada: Gd, origens: oriD, atividade: notas(770000, 230000) }).caso === 'diverge');
+    // o Domínio lido e sem nota (a ponte leu a empresa): a frase muda, e não promete o que a ponte já faz
+    const mZ = missao(rodarC(G, ORI, { ...base, atividade: { divisao: null, especial: null, lida: true } }), 'presuncao');
+    ok('a ponte leu e o Domínio não tem nota: a missão e a fonte dizem isso', /^O Domínio não tem nota de saída nem de serviço desta empresa nos meses fechados: a atividade veio do CNAE do cadastro\./.test(mZ.texto)
+      && (() => { const f = rodarC(G, ORI, { ...base, atividade: { divisao: null, especial: null, lida: true } }).fases[0].fontes.find(x => x.id === 'atividade'); return f.situacao === 'sem nota no Domínio: pelo CNAE do cadastro' && f.auto === null; })(), mZ.texto);
+
+    // a presunção própria do CNAE: a nota não diz, e a missão decide — com a regra e o que fazer
+    const obra = presuncaoPeloCnae('4120-4/00 - Construção de edifícios');
+    const Go = comP({ atividades: [{ tipo: 'servico_iv', receita: 960000 }], compras: 0, regimeAtual: 'presumido', objetivo: 'presumido_real' });
+    const rO = rodarC(Go, ORI, { ...base, atividade: notas(0, 960000, { especial: obra }) }), mO = missao(rO, 'presuncao');
+    ok('a construtora: a missão fica aberta e decide, com a regra da obra, o que a conta usou e o que fazer', mO.estado === 'aberta' && mO.peso === 'decide' && mO.campo === 'atividades.0.presIrpj' && mO.irRotulo === 'Ver a presunção' && mO.conferirRotulo === 'Está certa'
+      && /^O CNAE da empresa é de construção \(4120-4\/00\)\. A obra por empreitada com todos os materiais por conta da empresa presume 8% no IRPJ e 12% na CSLL; só com a mão de obra, ou com parte dos materiais, 32% nos dois\. A conta usou: Serviços, 32% no IRPJ e 32% na CSLL sobre R\$\s960\.000\. Veja nos contratos das obras: na receita das feitas com todos os materiais, ponha 8 e 12 na presunção\. Se a conta já está como deve, clique em Está certa\.$/.test(mO.texto)
+      && rO.provisorio && mO.efeito === 'a presunção própria da atividade (construção) muda o IRPJ e a CSLL do Presumido', mO.texto);
+    const fO = rO.fases[0].fontes.find(x => x.id === 'atividade');
+    ok('a fonte da construtora: falta conferir a presunção, e aponta a missão (sem repetir a regra)', fO.estado === 'padrao' && fO.situacao === 'CNAE de construção: falta conferir a presunção'
+      && fO.onde === 'Em construção, a presunção depende do que as notas do Domínio não dizem. A regra e o que fazer estão na missão abaixo.' && fO.auto === null, fO);
+    ok('a presunção digitada na atividade resolve (volta a valer o que as notas dizem)', (() => { const m = missao(rodarC({ ...Go, atividades: [{ ...Go.atividades[0], presIrpj: 8, presCsll: 12 }] }, { ...ORI, 'atividades.0.presIrpj': { fonte: 'digitado' } }, { ...base, atividade: notas(0, 960000, { especial: obra }) }), 'presuncao');
+      return m.estado === 'feita' && m.como === 'apurado pelas notas do Domínio' && / A conta usou: Serviços, 8% no IRPJ e 12% na CSLL sobre /.test(m.texto); })());
+    ok('"Está certa" também resolve', missao(rodarC(Go, { ...ORI, 'atividades.0.tipo': { fonte: 'confirmado' } }, { ...base, atividade: notas(0, 960000, { especial: obra }) }), 'presuncao').como === 'conferido');
+    // o transporte vale pra receita toda: o sistema já põe na conta, e a missão vem cumprida pelo CNAE
+    const passag = presuncaoPeloCnae('4929-9/01');
+    const Gp = comP({ atividades: [{ tipo: 'servico', receita: 480000, presIrpj: 16, presCsll: 12 }], compras: 0, regimeAtual: 'presumido', objetivo: 'presumido_real' });
+    const mP = missao(rodarC(Gp, ORI, { ...base, atividade: notas(0, 480000, { especial: passag }) }), 'presuncao');
+    ok('o transporte de passageiros com 16 e 12 na conta: cumprida pelo CNAE', mP.estado === 'feita' && mP.como === 'pelo CNAE: transporte de passageiros'
+      && /^O transporte de passageiros presume 16% no IRPJ e 12% na CSLL\. A conta usou: Serviços, 16% no IRPJ e 12% na CSLL sobre R\$\s480\.000\.$/.test(mP.texto), mP.texto);
+    const mP2 = missao(rodarC({ ...Gp, atividades: [{ tipo: 'servico', receita: 480000 }] }, ORI, { ...base, atividade: notas(0, 480000, { especial: passag }) }), 'presuncao');
+    ok('o estudo gravado antes, ainda com 32%: aberta, mandando pôr 16 e 12', mP2.estado === 'aberta' && mP2.peso === 'decide' && / Ponha 16 e 12 na presunção da atividade\. Se a conta já está como deve, clique em Está certa\.$/.test(mP2.texto), mP2.texto);
+    // só serviço e até R$ 120 mil no ano: a dica dos 16% do IRPJ (Lei 9.250/1995, art. 40)
+    const Gs = comP({ atividades: [{ tipo: 'servico', receita: 96000 }], compras: 0, regimeAtual: 'presumido', objetivo: 'presumido_real' });
+    ok('serviço de até R$ 120 mil no ano: a missão lembra os 16% do IRPJ; acima disso, com mercadoria ou já com 16, não', / Só com serviço e até R\$ 120 mil de receita no ano, a empresa pode presumir 16% no IRPJ, se não for de profissão regulamentada \(Lei 9\.250\/1995, art\. 40\): se for o caso, ponha 16 na presunção do IRPJ\.$/.test(missao(rodarC(Gs, ORI, { ...base, atividade: notas(0, 96000) }), 'presuncao').texto)
+      && !/120 mil/.test(missao(rodarC({ ...Gs, atividades: [{ tipo: 'servico', receita: 120001 }] }, ORI, { ...base, atividade: notas(0, 1) }), 'presuncao').texto)
+      && !/120 mil/.test(missao(rodarC({ ...Gs, atividades: [{ tipo: 'servico', receita: 96000, presIrpj: 16 }] }, ORI, { ...base, atividade: notas(0, 1) }), 'presuncao').texto)
+      && !/120 mil/.test(mN.texto));
+    ok('nada do Simples nessas missões e fontes (nem anexo, nem DAS, nem PGDAS)', [comNotas, rD, rO].every(r => !/Anexo [IV]|[Aa]nexo do|fator r|\bDAS\b|PGDAS|Simples/.test(JSON.stringify([missao(r, 'presuncao'), r.fases[0].fontes.find(x => x.id === 'atividade')]))));
+
+    // com o Simples na comparação: a presunção só vira missão com a presunção própria do CNAE (a coluna do Presumido)
+    const To = { ...Go, objetivo: 'todos', regimeAtual: 'simples' };
+    const tO = rodarC(To, ORI, { ...base, socios: 2, atividade: notas(0, 960000, { especial: obra }) }), mTO = missao(tO, 'presuncao');
+    ok('a construtora do Simples comparando os três: "A presunção do Presumido", nos números da empresa, com a marca da missão', mTO && mTO.fase === 'numeros' && mTO.titulo === 'A presunção do Presumido' && mTO.estado === 'aberta' && mTO.peso === 'importa'
+      && mTO.conferir.join() === 'presuncao' && /^O CNAE da empresa é de construção/.test(mTO.texto), mTO);
+    ok('"Está certa" ali marca a missão, sem mexer na origem da atividade', missao(rodarC(To, { ...ORI, presuncao: { fonte: 'confirmado' } }, { ...base, socios: 2, atividade: notas(0, 960000, { especial: obra }) }), 'presuncao').estado === 'feita');
+    ok('sem presunção própria, o caminho com o Simples segue sem a missão (e sem a fonte)', !missao(rodarC({ ...G, objetivo: 'todos' }, ORI, { ...base, socios: 2, atividade: notas(1000000, 0) }), 'presuncao')
+      && !rodarC({ ...G, objetivo: 'todos' }, ORI, { ...base, socios: 2, atividade: notas(1000000, 0) }).fases.flatMap(f => f.fontes).some(x => x.id === 'atividade'));
+  }
 
   console.log('=== os impedimentos do Simples, no caminho com o Simples ===');
   const T = { ...G, objetivo: 'todos' };

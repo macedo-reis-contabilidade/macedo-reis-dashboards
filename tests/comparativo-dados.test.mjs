@@ -5,7 +5,8 @@
 
 import { entradaDoSistema, aplicarRelatorios, premissasParaTestar, prazosDaEscolha, exclusaoObrigatoria, ultimoDiaUtil, serieDosMeses, tipoPeloCnae, tipoPeloAnexo, regimeDoCadastro,
   ehRefeicaoRS, ehRdaRS, empresasDosSocios, receitaDaEmpresa, situacaoDoGrupo, serieDaEmpresa, foraDaSoma, avisoDaSoma, mesclarSerie,
-  pareceFolha, cnpjsDoCabecalho, juntarFolha, folhaDoAno, aplicarFolha, mesesDaPonte, seriePonte, somaDaPonte, objetivoSugerido, porQueDoObjetivo, objetivoValido, doRegimeGeral, simplesNoEstudo } from '../assets/js/comparativo-dados.js';
+  pareceFolha, cnpjsDoCabecalho, juntarFolha, folhaDoAno, aplicarFolha, mesesDaPonte, seriePonte, somaDaPonte, objetivoSugerido, porQueDoObjetivo, objetivoValido, doRegimeGeral, simplesNoEstudo,
+  presuncaoPeloCnae, periodoCurto } from '../assets/js/comparativo-dados.js';
 import { comparar, testarPremissas } from '../assets/js/comparativo-motor.js';
 
 let falhas = 0, total = 0;
@@ -398,6 +399,67 @@ console.log('=== o RAT e terceiros pelas guias do Domínio (a ponte), na empresa
     && entradaDoSistema({ cliente: { regime_tributario: 'Lucro Real' }, dominio: guia({ inss_rat: 900 }) }).origens.rat.fonte === 'padrao' && entradaDoSistema({ cliente: { regime_tributario: 'Lucro Real' }, dominio: guia({ base_inss: 0 }) }).origens.rat.fonte === 'padrao'
     && entradaDoSistema({ cliente: { regime_tributario: 'Lucro Real' }, dominio: guia({ base_inss: null, inss_rat: null, inss_terceiros: null }) }).origens.rat.fonte === 'padrao');
   ok('no Real, com o RAT de 3%', entradaDoSistema({ cliente: { regime_tributario: 'Lucro Real' }, dominio: guia({ inss_rat: 300 }) }).entrada.rat === 3);
+}
+
+console.log('=== a atividade pelas notas do Domínio e a presunção própria do CNAE (11/11/2026) ===');
+{
+  // Pedido do Samuel: "como temos acesso nas notas fiscais pela ponte da domínio, não ficaria mais fácil para o próprio
+  // sistema apurar essa informação?" — a venda de mercadoria × serviço sai das notas; o que elas não dizem, o CNAE acusa
+  const comps = ['2025-10', '2025-11', '2025-12', '2026-01', '2026-02', '2026-03', '2026-04', '2026-05', '2026-06', '2026-07', '2026-08', '2026-09'];
+  const dom = (merc, serv, x = {}) => comps.map(c => ({ codigo: 7, competencia: c, receita_bruta: merc + serv, receita_mercadorias: merc, receita_servicos: serv, receita_simples: null,
+    compras: 20000, servicos_tomados: 0, ativo_e_consumo: 0, salarios: 0, decimo_terceiro: 0, pro_labore_valor: 0, ...x }));
+  const PRES = 'Lucro Presumido';
+  const ind = entradaDoSistema({ cliente: { regime_tributario: PRES, cnae_principal: '1099-6/99 - Fabricação de outros produtos alimentícios', uf: 'RS' }, dominio: dom(50000, 0) });
+  ok('a divisão medida nas notas: de onde veio, o período e as partes', ind.divisao && ind.divisao.fonte === 'ponte' && ind.divisao.de === '2025-10' && ind.divisao.ate === '2026-09' && ind.divisao.n === 12
+    && ind.divisao.mercadorias === 600000 && ind.divisao.servicos === 0 && ind.lida === true && ind.especial === null, ind.divisao);
+  const oInd = ind.origens['atividades.0.tipo'];
+  ok('a indústria com 100% de mercadoria nas notas: a origem da atividade é a ponte, sem mandar conferir', ind.entrada.atividades.length === 1 && ind.entrada.atividades[0].tipo === 'industria' && oInd.fonte === 'ponte'
+    && oInd.texto === 'Domínio, pela ponte: toda a receita das notas de out/25 a set/26 é venda de mercadoria' && !/confira/.test(oInd.texto) && /comércio ou indústria, pelo CNAE do cadastro \(1099-6\/99 - Fabricação/.test(oInd.dica), oInd);
+  ok('o anexo, que as notas não dizem, fica à parte (só pra quando o Simples está no estudo)', oInd.simples === 'o anexo, pelo CNAE do cadastro (1099-6/99 - Fabricação de outros produtos alimentícios): confira'
+    && !/[Aa]nexo|Simples/.test(oInd.texto + oInd.dica), oInd.simples);
+  const mis = entradaDoSistema({ cliente: { regime_tributario: PRES, cnae_principal: '8020-0/01', uf: 'RS' }, dominio: dom(14, 36000) });
+  ok('serviço com um resto de mercadoria: cada linha com a parte dela nas notas', mis.entrada.atividades.length === 2 && mis.origens['atividades.0.tipo'].texto === 'Domínio, pela ponte: 0,04% da receita das notas de out/25 a set/26 é venda de mercadoria'
+    && mis.origens['atividades.1.tipo'].texto === 'Domínio, pela ponte: 99,96% da receita das notas de out/25 a set/26 é de serviço' && mis.origens['atividades.0.tipo'].simples === 'o anexo está no padrão: confira',
+    [mis.origens['atividades.0.tipo'], mis.origens['atividades.1.tipo']]);
+  const sem = entradaDoSistema({ cliente: { regime_tributario: PRES, cnae_principal: '4754-7/01 - Comércio varejista de móveis', uf: 'RS' } });
+  ok('sem a ponte: sem medida, a atividade pelo CNAE do cadastro, com a dica do que conferir', sem.divisao === null && sem.lida === false && sem.origens['atividades.0.tipo'].fonte === 'cadastro'
+    && sem.origens['atividades.0.tipo'].texto === 'pelo CNAE do cadastro (4754-7/01 - Comércio varejista de móveis) — confira' && /venda de mercadoria \(no Presumido, presume 8% no IRPJ e 12% na CSLL\) ou serviço \(32% nos dois\)/.test(sem.origens['atividades.0.tipo'].dica));
+  const zerada = entradaDoSistema({ cliente: { regime_tributario: PRES, cnae_principal: '6462-0/00', uf: 'RS' }, dominio: dom(0, 0) });
+  ok('a ponte leu e o Domínio não tem nota: sem medida, mas lida', zerada.divisao === null && zerada.lida === true && zerada.especial.id === 'holding');
+  // o Simples com a apuração no Domínio: o anexo apurado segue sendo a origem; a divisão é medida do mesmo jeito
+  const simp = entradaDoSistema({ cliente: { regime_tributario: 'Simples Nacional', cnae_principal: '4754-7/01', uf: 'RS' },
+    dominio: dom(50000, 0, { receita_simples: 50000, receita_anexo_1: 50000, receita_anexo_2: 0, receita_anexo_3: 0, receita_anexo_4: 0, receita_anexo_5: 0 }) });
+  ok('com a apuração do Simples, a origem é o anexo apurado (sem a parte "confira o anexo")', simp.origens['atividades.0.tipo'].texto === 'Domínio, pela ponte: Anexo I na apuração do Simples' && !simp.origens['atividades.0.tipo'].simples && simp.divisao.fonte === 'ponte');
+  ok('o período curto: sem o "anualizado"; com menos de 12 meses, diz quantos', periodoCurto({ de: '2025-10', ate: '2026-09', n: 12 }) === 'out/25 a set/26' && periodoCurto({ de: '2026-05', ate: '2026-09', n: 5 }) === 'mai/26 a set/26 (5 meses)'
+    && periodoCurto({ de: '2026-09', ate: '2026-09', n: 1 }) === 'set/26 a set/26 (1 mês)');
+  // o relatório solto na tela que separa as saídas dos serviços também diz a atividade
+  const mesesRel = comps.map(c => ({ competencia: c, saidas: 70000, servicos: 30000, total: 100000 }));
+  const rel = aplicarRelatorios(sem.entrada, sem.origens, { resVen: { meses: mesesRel }, campos: {} });
+  ok('o relatório de saídas e serviços solto na tela: cada linha com a atividade dita por ele', rel.entrada.atividades.length === 2 && rel.origens['atividades.0.tipo'].fonte === 'dominio'
+    && rel.origens['atividades.0.tipo'].texto === 'venda de mercadoria, pelas saídas e serviços do Domínio de out/25 a set/26' && /^serviço, pelas saídas e serviços do Domínio/.test(rel.origens['atividades.1.tipo'].texto), rel.origens['atividades.0.tipo']);
+
+  // a presunção própria pelo CNAE principal (Lei 9.249/1995, arts. 15 e 20)
+  const P = c => presuncaoPeloCnae(c);
+  ok('comércio, indústria e serviço comuns: sem presunção própria', [null, '', '47', '4754-7/01', '1042-2/00', '8020-0/01', '6920-6/01', '0161-0/03', '4732-6/00', '8630-5/03', '8650-0/02', '6821-8/01'].every(c => P(c) === null));
+  ok('a revenda de combustível (o posto e o GLP): 1,6% e 12%, só na parte do combustível', ['4731-8/00', '4784-9/00 - Comércio varejista de GLP'].every(c => P(c).id === 'combustivel' && P(c).irpj === 1.6 && P(c).csll === 12 && P(c).toda === false)
+    && /SC Cosit 25\/2023/.test(P('4784-9/00').base) && P('4784-9/00 - Comércio varejista de GLP').cnae === '4784-9/00');
+  ok('o transporte de carga: 8% e 12%, na receita toda', ['4930-2/02', '4911-6/00', '5011-4/01', '5012-2/01', '5021-1/02', '5120-0/00'].every(c => P(c).id === 'carga' && P(c).irpj === 8 && P(c).csll === 12 && P(c).toda === true));
+  ok('o transporte de passageiros: 16% e 12%, na receita toda', ['4929-9/01', '4921-3/01', '4922-1/02', '4923-0/01', '4924-8/00', '4912-4/03', '4950-7/00', '5011-4/02', '5012-2/02', '5022-0/01', '5091-2/01', '5099-8/01', '5111-1/00', '5112-9/01']
+    .every(c => P(c).id === 'passageiros' && P(c).irpj === 16 && P(c).csll === 12 && P(c).toda === true));
+  ok('o hospital e o diagnóstico: 8% e 12% com os requisitos (a conferir); a consulta fica de fora', ['8610-1/01', '8640-2/02', '8630-5/01', '8630-5/02', '8630-5/07'].every(c => P(c).id === 'hospitalar' && P(c).irpj === 8 && P(c).csll === 12 && !P(c).toda)
+    && /sociedade empresária e segue as normas da Anvisa/.test(P('8610-1/01').regra));
+  ok('a construção (41 a 43): 8% e 12% com todos os materiais; a incorporação é atividade imobiliária', ['4120-4/00', '4211-1/01', '4321-5/00', '4399-1/03'].every(c => P(c).id === 'construcao' && !P(c).toda) && P('4110-7/00').id === 'imoveis');
+  ok('os imóveis próprios e a holding', ['6810-2/01', '6810-2/02', '6810-2/03'].every(c => P(c).id === 'imoveis') && ['6461-1/00', '6462-0/00', '6463-8/00'].every(c => P(c).id === 'holding' && P(c).irpj === null));
+  ok('toda regra diz o que é, a base legal e, quando depende da empresa, o que fazer', ['4731-8/00', '4930-2/02', '4929-9/01', '8610-1/01', '4120-4/00', '6810-2/01', '6462-0/00'].every(c => { const x = P(c); return x.nome && x.regra && x.base && (x.toda || x.fazer) && !('cnaes' in x) && !('divisoes' in x); }));
+  // o transporte entra na conta sozinho: o de passageiros em toda linha; o de carga, só na que não é 8% e 12%
+  const pass = entradaDoSistema({ cliente: { regime_tributario: PRES, cnae_principal: '4929-9/01', uf: 'RS' }, dominio: dom(0, 40000) });
+  ok('o transporte de passageiros: 16 e 12 na atividade, com a origem pelo CNAE e a base na dica', pass.especial.id === 'passageiros' && pass.entrada.atividades[0].presIrpj === 16 && pass.entrada.atividades[0].presCsll === 12
+    && pass.origens['atividades.0.presIrpj'].fonte === 'cadastro' && pass.origens['atividades.0.presIrpj'].texto === 'pelo CNAE: transporte de passageiros' && /Lei 9\.249\/1995, art\. 15, §1º, II/.test(pass.origens['atividades.0.presCsll'].dica), pass.origens['atividades.0.presIrpj']);
+  const cargaServ = entradaDoSistema({ cliente: { regime_tributario: PRES, cnae_principal: '4930-2/02', uf: 'RS' }, dominio: dom(30000, 10000) });
+  ok('o transporte de carga: o conhecimento (mercadoria) já é 8 e 12; a nota de serviço passa a ser', cargaServ.entrada.atividades[0].presIrpj === undefined && !cargaServ.origens['atividades.0.presIrpj']
+    && cargaServ.entrada.atividades[1].presIrpj === 8 && cargaServ.entrada.atividades[1].presCsll === 12 && cargaServ.origens['atividades.1.presIrpj'].texto === 'pelo CNAE: transporte de carga');
+  const obra = entradaDoSistema({ cliente: { regime_tributario: PRES, cnae_principal: '4120-4/00', uf: 'RS' }, dominio: dom(0, 80000) });
+  ok('a obra depende do contrato: o sistema não troca a presunção sozinho', obra.especial.id === 'construcao' && obra.entrada.atividades[0].presIrpj === undefined && !obra.origens['atividades.0.presIrpj']);
 }
 
 console.log('\n' + (total - falhas) + ' de ' + total + ' conferências ok' + (falhas ? ' — ' + falhas + ' FALHA(S)' : ''));

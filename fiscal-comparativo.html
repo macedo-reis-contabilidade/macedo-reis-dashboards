@@ -401,7 +401,7 @@
       await gravarPendente();
       st.cliente = null; st.nome = nome; st.estudoId = null; st.gravadoEm = null; st.gravadoPor = null; st.rels = []; st.conferencia = null;
       st.serie = null; st.serieRel = null; st.folhaRel = null; st.grupoSeries = []; st.grupoFora = []; st.socios = null; st.faseVista = null; st.jornada = { inicial: true, feitas: new Set(), fases: new Set() };
-      st.vedacoes = null; st.contabil = null; st.trocando = false;
+      st.vedacoes = null; st.contabil = null; st.atividade = null; st.trocando = false;
       st.entrada = comPadroes({ atividades: [{ tipo: 'comercio', receita: 0 }], grupo: [] });
       st.origens = { ...ORIGENS_PADRAO, 'atividades.0.receita': { fonte: 'padrao', texto: 'digite a receita dos 12 meses' }, 'atividades.0.tipo': { fonte: 'padrao' },
         compras: { fonte: 'padrao', texto: 'digite ou solte os relatórios' }, folha: { fonte: 'padrao', texto: 'digite os 12 meses', dica: 'salários, 13º e férias' }, proLabore: { fonte: 'padrao', texto: 'digite' },
@@ -438,6 +438,8 @@
       st.notas = est.notas; st.notasSimples = est.notasSimples || [];
       st.sistema = est.sistema;
       st.vedacoes = est.vedacoes || null; st.contabil = est.contabil || null; st.trocando = false;
+      // o que o sistema apurou da atividade (as notas do Domínio e o CNAE): é o que cumpre a missão da presunção
+      st.atividade = est.atividade || null;
       renderEmpresa(); renderPergunta(); renderForm(); calcular();
       if (st.estudoId) $('gravado').textContent = 'Estudo gravado em ' + new Date(st.gravadoEm).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' }) + (st.gravadoPor ? ' por ' + (nomePorEmail(st.gravadoPor) || st.gravadoPor) : '') + '.';
       contextoDoAssistente();
@@ -544,7 +546,9 @@
     function tag(campo) {
       const o = st.origens[campo];
       const f = o ? o.fonte : 'padrao';
-      const visivel = semSimples(o && o.texto ? o.texto : FONTES[f] || '');
+      // `simples`: a parte da origem que só interessa com o Simples no estudo (o anexo que as notas não dizem)
+      const doSimples = o && o.simples && !(st.entrada && st.entrada.objetivo === 'presumido_real') ? ' · ' + o.simples : '';
+      const visivel = semSimples(o && o.texto ? o.texto : FONTES[f] || '') + doSimples;
       return '<small class="ct-orig" data-orig="' + esc(campo) + '" data-fonte="' + esc(f) + '" title="' + esc(o && o.dica ? visivel + ' — ' + semSimples(o.dica) : visivel) + '">' + esc(visivel) + '</small>';
     }
     function campo(caminho, def) {
@@ -759,7 +763,7 @@
       if ($('grupoSit')) { const tg = textoGrupo(); $('grupoSit').textContent = tg.txt; $('grupoSit').classList.toggle('ct-alerta', tg.alerta); }
       // a conta inteira (a mesma do assistente do escritório): comparar, as premissas, o roteiro, os prazos, o que muda e os avisos
       const conta = contaDoEstudo({ entrada: st.entrada, origens: st.origens, conferencia: st.conferencia, notas: st.notas, notasSimples: st.notasSimples, serie: st.serie,
-        grupoSeries: st.grupoSeries, grupoFora: st.grupoFora, socios: st.socios, aliq2027, hoje: hojeLocal(), vedacoes: st.vedacoes, contabil: st.contabil });
+        grupoSeries: st.grupoSeries, grupoFora: st.grupoFora, socios: st.socios, aliq2027, hoje: hojeLocal(), vedacoes: st.vedacoes, contabil: st.contabil, atividade: st.atividade });
       if (!conta.comparacao) {
         ultimo = null;
         box.innerHTML = '<p class="ct-vazio">' + esc(conta.erro) + '</p>';

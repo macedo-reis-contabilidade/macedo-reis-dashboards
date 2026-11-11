@@ -16,8 +16,8 @@
 // Testado por tests/comparativo-roteiro.test.mjs.
 // ============================================================
 
-import { LIMITE_SIMPLES, SUBLIMITE, ROTULO_REGIME, TIPOS, ehObjetivo, fraseDaDecisao, rotuloDoTipo } from './comparativo-motor.js';
-import { DO_SISTEMA } from './comparativo-dados.js';
+import { LIMITE_SIMPLES, SUBLIMITE, ROTULO_REGIME, TIPOS, ehObjetivo, ehServico, fraseDaDecisao, rotuloDoTipo } from './comparativo-motor.js';
+import { DO_SISTEMA, periodoCurto } from './comparativo-dados.js';
 import { NAO_CONFERE, oQueConferiu } from './simples-vedacoes.js';
 
 // o Presumido só é opção com receita bruta de até R$ 78 milhões no ano anterior (Lei 9.718/1998, art. 13, na redação da
@@ -58,6 +58,60 @@ export function crescimentoMedido(serie) {
   const ini = a.reduce((t, m) => t + num(m.total), 0), fim = b.reduce((t, m) => t + num(m.total), 0);
   return ini > 0 ? { pct: (fim / ini - 1) * 100, ini: [a[0].competencia, a[2].competencia], fim: [b[0].competencia, b[2].competencia] } : null;
 }
+
+// ---------- a atividade e a presunção ----------
+// Pedido do Samuel, 11/11/2026 (o item "A atividade de cada receita" mandava conferir sem dizer o quê: "não ficou claro o
+// que preciso fazer, como temos acesso nas notas fiscais pela ponte da domínio, não ficaria mais fácil para o próprio
+// sistema apurar essa informação?"): quem diz a presunção é a nota — a venda de mercadoria presume 8% no IRPJ e 12% na
+// CSLL, e o serviço, 32% nos dois —, e o Domínio separa uma da outra. Com a divisão medida (atividade.divisao, de
+// entradaDoSistema: as notas pela ponte, ou o faturamento do caso da Reforma) batendo com o estudo, a missão vem cumprida,
+// sem ninguém conferir nada. Sobra pra equipe só o que a nota não diz, e a missão fala o que fazer: a atividade com
+// presunção própria pelo CNAE (atividade.especial, de presuncaoPeloCnae: combustível, transporte, hospital, obra,
+// imóveis, holding), o estudo que não bate com as notas e a empresa sem nota no sistema.
+// Volta { caso, feita, como, com, ks, partes, div, doDominio, descr, doEstudo, esp, pequeno, lida, semNotas, fonteTipo }: caso = 'conferida' | 'especial'
+// (a conferir) | 'especial_ok' (o transporte, que o sistema já pôs na conta) | 'notas' | 'origem' (digitada, do relatório
+// solto, do anexo apurado) | 'diverge' | 'sem_notas'
+const descreverDivisao = pm => (pm >= 99.995 ? 'toda a receita é venda de mercadoria' : pm <= 0.005 ? 'toda a receita é de serviço'
+  : pm >= 50 ? pct(pm, 2) + '% é venda de mercadoria e ' + pct(100 - pm, 2) + '% é de serviço' : pct(100 - pm, 2) + '% é de serviço e ' + pct(pm, 2) + '% é venda de mercadoria');
+export function presuncaoDoEstudo({ entrada = {}, origens = {}, atividade = null } = {}) {
+  const e = entrada || {}, o = origens || {};
+  const fonte = k => (o[k] && o[k].fonte) || 'padrao';
+  const com = (e.atividades || []).map((a, i) => ({ a, i })).filter(x => x.a && TIPOS[x.a.tipo] && num(x.a.receita) > 0);
+  const receita = com.reduce((t, x) => t + num(x.a.receita), 0);
+  const ks = com.map(x => 'atividades.' + x.i + '.tipo');
+  const pres = x => ({ irpj: num(x.a.presIrpj, TIPOS[x.a.tipo].presIrpj), csll: num(x.a.presCsll, TIPOS[x.a.tipo].presCsll) });
+  const partes = com.map(x => rotuloDoTipo(x.a.tipo, false) + ', ' + pct(pres(x).irpj) + '% no IRPJ e ' + pct(pres(x).csll) + '% na CSLL sobre ' + brl(x.a.receita));
+  const at = atividade || {};
+  const div = at.divisao && num(at.divisao.mercadorias) + num(at.divisao.servicos) > 0 ? at.divisao : null;
+  const esp = at.especial || null;
+  // a parte de mercadoria nas notas e no estudo (o serviço é o resto): batem com até 1 ponto de diferença
+  const pmNotas = div ? num(div.mercadorias) / (num(div.mercadorias) + num(div.servicos)) * 100 : null;
+  const pmEstudo = receita > 0 ? com.filter(x => !ehServico(x.a.tipo)).reduce((t, x) => t + num(x.a.receita), 0) / receita * 100 : null;
+  const bate = pmNotas != null && pmEstudo != null && Math.abs(pmNotas - pmEstudo) <= 1;
+  // "Está certa": a origem de cada atividade conferida (o caminho do Presumido × Real) ou a marca da missão (com o Simples)
+  const conferida = fonte('presuncao') === 'confirmado' || (ks.length > 0 && ks.every(k => fonte(k) === 'confirmado'));
+  const digitada = com.some(x => ['presIrpj', 'presCsll'].some(c => fonte('atividades.' + x.i + '.' + c) === 'digitado'));
+  const igual = !!esp && esp.toda && com.every(x => pres(x).irpj === esp.irpj && pres(x).csll === esp.csll);
+  const porOrigem = ks.length > 0 && ks.every(k => !['padrao', 'cadastro'].includes(fonte(k)));
+  // a atividade que a equipe escolheu (digitada, ou do relatório solto na tela) vale como está; a que veio do sistema e
+  // não bate com as notas (a receita de uma atividade foi trocada à mão) pede pra conferir
+  const daEquipe = ks.length > 0 && ks.every(k => ['digitado', 'dominio'].includes(fonte(k)));
+  const caso = !com.length ? 'sem_notas' : conferida ? 'conferida' : esp && igual ? 'especial_ok' : esp && !digitada ? 'especial'
+    : bate ? 'notas' : daEquipe ? 'origem' : div ? 'diverge' : porOrigem ? 'origem' : 'sem_notas';
+  const doDominio = div ? (div.fonte === 'ponte' ? 'nas notas do Domínio de ' : 'no faturamento do Domínio de ') + periodoCurto(div) : '';
+  const como = { conferida: 'conferido', especial_ok: esp ? 'pelo CNAE: ' + esp.nome : null, notas: div && div.fonte === 'ponte' ? 'apurado pelas notas do Domínio' : 'apurado pelo faturamento do Domínio',
+    origem: ks.length ? (digitada ? 'digitado' : COMO[fonte(ks[0])] || 'feito') : null }[caso] || null;
+  // só serviço e até R$ 120 mil no ano: a presunção do IRPJ pode ser de 16% (Lei 9.250/1995, art. 40; IN RFB 1.700/2017,
+  // art. 33, §7º) — fora a profissão regulamentada, o hospital e o transporte
+  const pequeno = !esp && com.length > 0 && receita <= 120000 && com.every(x => ehServico(x.a.tipo) && pres(x).irpj === 32);
+  // sem a divisão medida: a ponte leu a empresa e o Domínio não tem nota dela nos meses fechados, ou a empresa não está lá
+  const lida = !!at.lida;
+  const semNotas = lida ? 'O Domínio não tem nota de saída nem de serviço desta empresa nos meses fechados' : 'O sistema não tem as notas desta empresa';
+  return { caso, feita: ['conferida', 'especial_ok', 'notas', 'origem'].includes(caso), como, com, ks, partes, div, doDominio, lida, semNotas,
+    descr: pmNotas != null ? descreverDivisao(pmNotas) : '', doEstudo: pmEstudo != null ? descreverDivisao(pmEstudo) : '', esp, pequeno, fonteTipo: ks.length ? fonte(ks[0]) : 'padrao' };
+}
+const REGRA_DA_PRESUNCAO = 'Venda de mercadoria presume 8% no IRPJ e 12% na CSLL; serviço, 32% nos dois.';
+const DICA_DO_PEQUENO = ' Só com serviço e até R$ 120 mil de receita no ano, a empresa pode presumir 16% no IRPJ, se não for de profissão regulamentada (Lei 9.250/1995, art. 40): se for o caso, ponha 16 na presunção do IRPJ.';
 
 // ---------- o que usar em cada fase ----------
 // Pedido do Samuel, 01/11/2026: "o bom seria se a cada fase você indicasse qual informação ou relatório seria ideal de ser
@@ -103,7 +157,8 @@ const faltamMeses = l => (l.length === 1 ? 'falta ' : 'faltam ') + juntar(l.map(
 // ficha (o contrato vai na ficha da empresa) }
 // objetivo: o comparativo escolhido — 'presumido_real' devolve { presuncao, lucro, premissas, veredito }
 // contabil: o Controle das contabilidades da empresa ({ faz, feitaAte 'AAAA-MM' } ou null), pro lucro da contabilidade
-export function fontesDoEstudo({ entrada = {}, origens = {}, comparacao = null, situacao = null, serie = null, socios = null, conferencia = null, hoje = null, objetivo = null, contabil = null } = {}) {
+// atividade: o que o sistema apurou da atividade ({ divisao, especial }: as notas e o CNAE — presuncaoDoEstudo)
+export function fontesDoEstudo({ entrada = {}, origens = {}, comparacao = null, situacao = null, serie = null, socios = null, conferencia = null, hoje = null, objetivo = null, contabil = null, atividade = null } = {}) {
   const e = entrada || {}, o = origens || {};
   const geral = objetivoDe(objetivo, e) === 'presumido_real';
   const F1 = geral ? 'presuncao' : 'simples', F2 = geral ? 'lucro' : 'numeros';
@@ -141,13 +196,24 @@ export function fontesDoEstudo({ entrada = {}, origens = {}, comparacao = null, 
       auto: simples ? AUTOMATICO.receita : AUTOMATICO.ponte });
   }
   if (geral && receita > 0) {
-    // a atividade de cada receita faz a presunção: pelo CNAE do cadastro e pela divisão mercadoria × serviço das notas
-    const ks = comRec.map(x => 'atividades.' + x.i + '.tipo');
-    const certa = ks.every(k => !['padrao', 'cadastro'].includes(fonte(k)));
-    add(F1, { id: 'atividade', info: 'A atividade de cada receita (a presunção)', estado: certa ? 'tem' : 'padrao', campo: ks[0],
-      situacao: certa ? como(ks[0]) : fonte(ks[0]) === 'cadastro' ? 'pelo CNAE do cadastro: confira' : 'no padrão',
-      onde: 'O CNAE do cadastro e a divisão mercadoria × serviço das notas do Domínio; o objeto, no contrato social. Revenda e indústria presumem 8% (12% na CSLL); serviço, 32%.',
-      auto: 'O Domínio traz a divisão mercadoria × serviço; a atividade é conferência da equipe.' });
+    // a atividade de cada receita faz a presunção: o sistema apura pelas notas do Domínio (venda de mercadoria × serviço);
+    // a linha só pede alguma coisa quando sobra o que a nota não diz, e aí diz o quê (a ação fica na missão, logo abaixo)
+    const p = presuncaoDoEstudo({ entrada: e, origens: o, atividade });
+    const item = {
+      notas: { estado: 'tem', situacao: p.como + (p.div ? ', de ' + periodoCurto(p.div) : ''),
+        onde: 'As notas de saída e de serviço do Domínio: ' + p.descr + '. ' + REGRA_DA_PRESUNCAO, auto: p.div && p.div.fonte === 'ponte' ? AUTOMATICO.ponte : null },
+      origem: { estado: 'tem', situacao: p.como, onde: 'As notas de saída e de serviço do Domínio. ' + REGRA_DA_PRESUNCAO, auto: AUTOMATICO.ponte },
+      conferida: { estado: 'tem', situacao: 'conferido', onde: 'As notas de saída e de serviço do Domínio. ' + REGRA_DA_PRESUNCAO, auto: AUTOMATICO.ponte },
+      especial_ok: { estado: 'tem', situacao: p.como, onde: p.esp ? p.esp.regra : '', auto: null },
+      especial: { estado: 'padrao', situacao: p.esp ? 'CNAE de ' + p.esp.nome + ': falta conferir a presunção' : '',
+        onde: p.esp ? 'Em ' + p.esp.nome + ', a presunção depende do que as notas do Domínio não dizem. A regra e o que fazer estão na missão abaixo.' : '', auto: null },
+      diverge: { estado: 'padrao', situacao: 'o estudo não bate com as notas do Domínio',
+        onde: maiuscula(p.doDominio) + ', ' + p.descr + '; no estudo, ' + p.doEstudo + '. Acerte na missão abaixo.', auto: null },
+      sem_notas: { estado: 'padrao', situacao: (p.lida ? 'sem nota no Domínio' : 'sem notas no sistema') + (p.fonteTipo === 'cadastro' ? ': pelo CNAE do cadastro' : ': no padrão'),
+        onde: p.semNotas + (p.fonteTipo === 'cadastro' ? ': a atividade veio do CNAE do cadastro' : '') + '. A regra e o que fazer estão na missão abaixo.',
+        auto: p.lida ? null : 'Com a empresa no Domínio, a ponte traz essa divisão pelas notas, todo dia.' }
+    }[p.caso];
+    add(F1, { id: 'atividade', info: 'A atividade de cada receita (a presunção)', campo: p.ks[0], ...item });
   }
   if (!geral && socios != null) {
     add('simples', { id: 'socios', info: 'Os sócios e a participação de cada um', estado: socios > 0 ? 'tem' : 'falta', ficha: true,
@@ -300,6 +366,31 @@ export function fasesDoObjetivo(objetivo, regimeAtual = null) {
   return FASES.map((f, i) => (i === 0 && entrar ? { ...f, titulo: 'Ela pode entrar no Simples?' } : f));
 }
 
+// a missão "A atividade e a presunção", pelo que presuncaoDoEstudo achou: cumprida sozinha quando as notas dizem; aberta só
+// com o que sobra pra equipe, dizendo o que fazer
+function missaoDaPresuncao(p, titulo) {
+  const usou = 'A conta usou: ' + p.partes.join('; ') + '.';
+  const base = { id: 'presuncao', titulo, curto: 'a presunção', peso: 'importa', estado: p.feita ? 'feita' : 'aberta', como: p.como,
+    efeito: 'serviço presume 32% e venda de mercadoria, 8%: a atividade errada muda o IRPJ e a CSLL do Presumido',
+    campo: p.ks[0], irRotulo: 'Ver a atividade', conferir: p.ks, conferirRotulo: 'Está certa' };
+  const esp = p.esp;
+  if (p.caso === 'notas') return { ...base, texto: maiuscula(p.doDominio) + ', ' + p.descr + '. ' + usou + (p.pequeno ? DICA_DO_PEQUENO : '') };
+  if (p.caso === 'especial_ok') return { ...base, texto: esp.regra + ' ' + usou };
+  if (p.caso === 'especial') {
+    const i0 = p.com.length ? p.com[0].i : 0;
+    return { ...base, peso: 'decide', campo: 'atividades.' + i0 + '.presIrpj', irRotulo: 'Ver a presunção',
+      efeito: 'a presunção própria da atividade (' + esp.nome + ') muda o IRPJ e a CSLL do Presumido',
+      texto: 'O CNAE da empresa é de ' + esp.nome + (esp.cnae ? ' (' + esp.cnae + ')' : '') + '. ' + esp.regra + ' ' + usou + ' '
+        + (esp.toda ? 'Ponha ' + pct(esp.irpj) + ' e ' + pct(esp.csll) + ' na presunção da atividade.' : esp.fazer) + ' Se a conta já está como deve, clique em Está certa.' };
+  }
+  if (p.caso === 'diverge') return { ...base, texto: maiuscula(p.doDominio) + ', ' + p.descr + '; no estudo, ' + p.doEstudo + '. ' + usou
+    + ' Acerte a receita de cada atividade pra ficar como as notas; se o estudo é que está certo, clique em Está certa.' };
+  if (p.caso === 'sem_notas') return { ...base, texto: p.semNotas + (p.fonteTipo === 'cadastro' ? ': a atividade veio do CNAE do cadastro' : '') + '. ' + usou + ' ' + REGRA_DA_PRESUNCAO
+    + ' Se a empresa tem as duas receitas, separe cada uma numa atividade; se é isso mesmo, clique em Está certa.' + (p.pequeno ? DICA_DO_PEQUENO : '') };
+  // conferida, ou a atividade que a equipe digitou, o relatório solto ou a apuração trouxe
+  return { ...base, texto: usou + (p.pequeno ? DICA_DO_PEQUENO : '') };
+}
+
 // ---------- o roteiro ----------
 // entrada e origens: as da tela · comparacao: comparar() (null se a conta não roda) · testes: testarPremissas()
 // situacao: situacaoDoGrupo() (o ano-calendário pelos números do sistema) · serie: a receita datada da empresa
@@ -315,7 +406,8 @@ export function fasesDoObjetivo(objetivo, regimeAtual = null) {
 // (pra onde ir) e irRotulo, relatorio (o relatório do Domínio que cumpre a missão), conferir (os campos que o "está certo"
 // marca) e conferirRotulo, acao ('mais-grupo') e acaoRotulo }. `passos` são as missões com o estado antigo (falta |
 // conferir | feito), na ordem: o que falta e decide primeiro.
-export function roteiroDoEstudo({ entrada = {}, origens = {}, comparacao = null, testes = [], situacao = null, serie = null, socios = null, achadas = 0, grupoFora = [], conferencia = null, hoje = null, objetivo = null, vedacoes = null, contabil = null } = {}) {
+export function roteiroDoEstudo({ entrada = {}, origens = {}, comparacao = null, testes = [], situacao = null, serie = null, socios = null, achadas = 0, grupoFora = [], conferencia = null, hoje = null, objetivo = null, vedacoes = null, contabil = null,
+  atividade = null } = {}) {
   const e = entrada || {}, o = origens || {};
   const obj = objetivoDe(objetivo, e);
   const geral = obj === 'presumido_real';
@@ -352,17 +444,7 @@ export function roteiroDoEstudo({ entrada = {}, origens = {}, comparacao = null,
 
   if (geral) {
     // ===== fase 1 (Presumido × Real): a atividade de cada receita faz a presunção =====
-    if (receita > 0) {
-      const com = ats.map((a, i) => ({ a, i })).filter(x => num(x.a.receita) > 0);
-      const ks = com.map(x => 'atividades.' + x.i + '.tipo');
-      const certa = ks.every(k => !['padrao', 'cadastro'].includes(fonte(k)));
-      const partes = com.map(x => { const t = TIPOS[x.a.tipo]; return rotuloDoTipo(x.a.tipo, false) + ', ' + pct(num(x.a.presIrpj, t.presIrpj)) + '% no IRPJ e ' + pct(num(x.a.presCsll, t.presCsll)) + '% na CSLL sobre ' + brl(x.a.receita); });
-      add({ id: 'presuncao', fase: F1, titulo: 'A atividade e a presunção', curto: 'a presunção', peso: 'importa',
-        estado: certa ? 'feita' : 'aberta', como: certa ? como(ks[0]) : null,
-        texto: 'A conta usou: ' + partes.join('; ') + '.' + (certa ? '' : ' A atividade veio ' + (fonte(ks[0]) === 'cadastro' ? 'do CNAE do cadastro' : 'do padrão') + ': revenda e indústria presumem 8% (12% na CSLL); serviço, 32%. Confira se cada receita está na atividade certa.'),
-        efeito: 'serviço presume 32% e comércio ou indústria, 8%: a atividade errada muda o IRPJ e a CSLL do Presumido',
-        campo: ks[0], irRotulo: 'Ver a atividade', conferir: ks, conferirRotulo: 'Está certa' });
-    }
+    if (receita > 0) add({ fase: F1, ...missaoDaPresuncao(presuncaoDoEstudo({ entrada: e, origens: o, atividade }), 'A atividade e a presunção') });
   } else {
     // ===== fase 1 (com o Simples): os impedimentos do cadastro, o limite e as empresas dos sócios =====
     if (vedacoes) {
@@ -439,6 +521,12 @@ export function roteiroDoEstudo({ entrada = {}, origens = {}, comparacao = null,
   const folhaOk = (!semFolha && !padrao('folha')) || conferido('folha') || fonte('folha') === 'digitado' || zeroPelaPonte;
   const faltaFolha = !folhaOk;
   const custos = num(e.compras) + num(e.despesasCredito) + num(e.folha) * 1.08 + num(e.proLabore) + num(e.outrasDespesas);
+  // com o Simples na comparação, a presunção só vira missão quando a atividade tem presunção própria pelo CNAE (o
+  // transporte, o hospital, a obra, o combustível): a coluna do Presumido depende dela, e a nota não diz
+  if (!geral && receita > 0 && atividade && atividade.especial) {
+    const p = presuncaoDoEstudo({ entrada: e, origens: o, atividade });
+    if (p.caso === 'especial' || p.feita) add({ fase: F2, ...missaoDaPresuncao(p, 'A presunção do Presumido'), peso: 'importa', conferir: ['presuncao'] });
+  }
   if (geral) {
     const emp = d && d.real ? d.real.empate.presumido : null;
     const empTxt = !emp ? '' : emp.nunca ? ' Nem com lucro zero o Real fica abaixo do Presumido.'
@@ -623,7 +711,7 @@ export function roteiroDoEstudo({ entrada = {}, origens = {}, comparacao = null,
 
   // ===== as fases, o progresso e o veredito =====
   const conta = m => m.peso !== 'detalhe';
-  const fontes = fontesDoEstudo({ entrada, origens, comparacao, situacao, serie, socios, conferencia, hoje, objetivo: obj, contabil });
+  const fontes = fontesDoEstudo({ entrada, origens, comparacao, situacao, serie, socios, conferencia, hoje, objetivo: obj, contabil, atividade });
   const fases = fasesDoObjetivo(obj, e.regimeAtual).map(f => {
     const ms = missoes.filter(m => m.fase === f.id);
     const valem = ms.filter(conta);

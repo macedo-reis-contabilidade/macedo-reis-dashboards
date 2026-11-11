@@ -95,6 +95,61 @@ export function tipoPeloCnae(cnae) {
   return 'servico';
 }
 
+// ---------- a presunção do Presumido pela atividade ----------
+// Pedido do Samuel, 11/11/2026 ("como temos acesso nas notas fiscais pela ponte da domínio, não ficaria mais fácil para o
+// próprio sistema apurar essa informação?"): a regra geral sai das notas — a venda de mercadoria (comércio e indústria)
+// presume 8% no IRPJ e 12% na CSLL, e o serviço, 32% nos dois (Lei 9.249/1995, art. 15, caput e §1º, III, e art. 20) —, e o
+// Domínio já separa uma da outra, nota a nota. O que as notas não dizem são as atividades com outro percentual, que o CNAE
+// principal acusa: a revenda de combustível pra consumo, 1,6% (art. 15, §1º, I; o GLP, SC Cosit 25/2023); o transporte de
+// carga, 8%, e o de passageiros, 16% (§1º, II, "a"), os dois com 12% na CSLL; os serviços hospitalares e de auxílio
+// diagnóstico e terapia, 8% e 12%, da sociedade empresária que segue as normas da Anvisa (§1º, III, "a"); a obra por
+// empreitada com todos os materiais, 8% e 12%, e só com a mão de obra ou parte dos materiais, 32%; a venda de imóveis, 8% e
+// 12% (art. 15, caput e §4º), e o aluguel de imóvel próprio, 32% (§1º, III, "c"); a holding, em que os lucros recebidos
+// não entram na receita (art. 10). Conferido em 11/11/2026 no texto atualizado da Lei 9.249 (Câmara) e no Perguntas e
+// Respostas da Pessoa Jurídica da Receita, o capítulo do Lucro Presumido (perguntas 015, 016 e 019); a CSLL de 12% do
+// transporte e dos hospitalares sai do art. 20 (os 32% são só das atividades do inciso III do §1º do art. 15).
+// `toda`: vale pra receita toda da empresa, sem condição (o sistema já põe na conta); senão, depende do que a equipe sabe
+// da empresa (a parte do combustível, os requisitos do hospital, o contrato da obra): a missão pergunta.
+const PRESUNCOES_ESPECIAIS = [
+  { id: 'combustivel', nome: 'revenda de combustível', cnaes: ['4731800', '4784900'], irpj: 1.6, csll: 12, toda: false,
+    regra: 'A revenda de combustível pra consumo (gasolina, diesel, etanol, gás natural, GLP) presume 1,6% no IRPJ e 12% na CSLL; o resto que a empresa vende (loja, lubrificante) presume 8% e 12%.',
+    fazer: 'Separe a receita do combustível numa atividade e ponha 1,6 na presunção do IRPJ dela.',
+    base: 'Lei 9.249/1995, art. 15, §1º, I; o GLP, SC Cosit 25/2023' },
+  { id: 'carga', nome: 'transporte de carga', cnaes: ['49116', '49302', '5011401', '5012201', '50211', '51200'], irpj: 8, csll: 12, toda: true,
+    regra: 'O transporte de carga presume 8% no IRPJ e 12% na CSLL, com nota de serviço ou com conhecimento de transporte.',
+    base: 'Lei 9.249/1995, art. 15, §1º, II, "a", e art. 20' },
+  { id: 'passageiros', nome: 'transporte de passageiros', cnaes: ['49124', '4921', '4922', '4923', '4924', '4929', '49507', '5011402', '5012202', '5022', '5091', '5099', '5111', '5112'], irpj: 16, csll: 12, toda: true,
+    regra: 'O transporte de passageiros presume 16% no IRPJ e 12% na CSLL.',
+    base: 'Lei 9.249/1995, art. 15, §1º, II, "a", e art. 20' },
+  { id: 'hospitalar', nome: 'serviços hospitalares e de diagnóstico', cnaes: ['8610', '8640', '8630501', '8630502', '8630507'], irpj: 8, csll: 12, toda: false,
+    regra: 'Os serviços hospitalares e de auxílio diagnóstico e terapia (exames, imagem, análises, endoscopia, quimioterapia, diálise) presumem 8% no IRPJ e 12% na CSLL quando a empresa é sociedade empresária e segue as normas da Anvisa; a consulta e a sociedade simples ficam em 32% nos dois.',
+    fazer: 'Se a empresa cumpre os dois requisitos, ponha 8 e 12 na presunção dessa receita.',
+    base: 'Lei 9.249/1995, art. 15, §1º, III, "a", e art. 20' },
+  { id: 'imoveis', nome: 'atividade imobiliária', cnaes: ['41107', '6810201', '6810202', '6810203'], irpj: 8, csll: 12, toda: false,
+    regra: 'A venda de imóveis (loteamento, incorporação, construção pra venda, compra e venda) presume 8% no IRPJ e 12% na CSLL; o aluguel de imóvel próprio, 32% nos dois. Nenhuma das duas paga ICMS nem ISS, e essa receita não passa pelas notas do Domínio.',
+    fazer: 'Digite a receita de cada uma, com a presunção dela (8 e 12 na venda) e o ICMS ou o ISS em zero.',
+    base: 'Lei 9.249/1995, art. 15, caput, §1º, III, "c", e §4º' },
+  { id: 'construcao', nome: 'construção', divisoes: ['41', '42', '43'], irpj: 8, csll: 12, toda: false,
+    regra: 'A obra por empreitada com todos os materiais por conta da empresa presume 8% no IRPJ e 12% na CSLL; só com a mão de obra, ou com parte dos materiais, 32% nos dois.',
+    fazer: 'Veja nos contratos das obras: na receita das feitas com todos os materiais, ponha 8 e 12 na presunção.',
+    base: 'IN RFB 1.700/2017, art. 33; Perguntas e Respostas da Receita, Lucro Presumido, pergunta 019' },
+  { id: 'holding', nome: 'holding', cnaes: ['6461', '6462', '6463'], irpj: null, csll: null, toda: false,
+    regra: 'Na holding, os lucros e dividendos recebidos e o resultado das participações não entram na receita do Presumido; o aluguel e os serviços presumem 32% nos dois; juros e ganhos entram inteiros na base, fora da presunção (e fora desta conta).',
+    fazer: 'Deixe na receita só o que a holding fatura (aluguel, serviços).',
+    base: 'Lei 9.249/1995, arts. 10 e 15; Lei 9.430/1996, art. 25' }
+];
+// a atividade com presunção própria pelo CNAE principal ({ id, nome, irpj, csll, toda, regra, fazer, base, cnae }), ou null
+export function presuncaoPeloCnae(cnae) {
+  const d = digitosCnae(cnae);
+  if (d.length < 4) return null;
+  // o código mais específico primeiro (a incorporação, 4110-7, é atividade imobiliária, não obra)
+  const porCodigo = PRESUNCOES_ESPECIAIS.find(x => (x.cnaes || []).some(p => d.startsWith(p)));
+  const x = porCodigo || PRESUNCOES_ESPECIAIS.find(y => (y.divisoes || []).includes(d.slice(0, 2)));
+  if (!x) return null;
+  const { cnaes, divisoes, ...resto } = x;
+  return { ...resto, cnae: String(cnae || '').split(/\s+-\s+/)[0].trim() };
+}
+
 // ---------- a refeição no RS ----------
 // Receita Estadual do RS ("bares e restaurantes", regime geral fora do RDA e Simples): a refeição feita no estabelecimento,
 // pronta pra consumo e vendida direto ao consumidor paga 12% (RICMS-RS, Livro I, art. 27, V, e Apêndice I, Seção II, item
@@ -151,6 +206,8 @@ export function serieDosMeses(meses) {
   }
   return { n, de: ult[0].competencia, ate: ult[n - 1].competencia, receita: total * fator, mercadorias: saidas * fator, servicos: servicos * fator, meses: calendario };
 }
+// o período de uma medida, sem o "anualizado": "nov/25 a out/26" ou "jun/26 a out/26 (5 meses)"
+export const periodoCurto = s => rotuloComp(s.de) + ' a ' + rotuloComp(s.ate) + (s.n && s.n < 12 ? ' (' + s.n + (s.n === 1 ? ' mês)' : ' meses)') : '');
 const periodo = s => s.n === 12 ? rotuloComp(s.de) + ' a ' + rotuloComp(s.ate) : rotuloComp(s.de) + ' a ' + rotuloComp(s.ate) + ' (' + s.n + (s.n === 1 ? ' mês' : ' meses') + ', anualizado)';
 
 // ---------- o Domínio pela ponte (05/11/2026, a versão 2 da ponte) ----------
@@ -272,10 +329,14 @@ export function entradaDoSistema({ cliente = null, caso = null, fatorR = [], pgd
   const sPgdas = serieDosMeses((pgdas || []).map(p => ({ competencia: p.competencia, total: p.receita_mes })));
   const sDom = serieDosMeses(dom.meses || (dom.vendas && dom.vendas.meses) || []);
   let receita = 0, merc = 0, serv = 0, meses = null, textoRec = null, fonteRec = 'padrao', divisao = null;
-  if (sDom) { receita = sDom.receita; merc = sDom.mercadorias; serv = sDom.servicos; meses = sDom.meses; fonteRec = 'reforma'; textoRec = 'caso da Reforma: faturamento do Domínio de ' + periodo(sDom); divisao = 'do faturamento do Domínio'; }
+  // a divisão mercadoria × serviço medida nas notas (a ponte) ou no faturamento do caso da Reforma: é ela que faz a presunção
+  // do Presumido (8% e 12% na venda de mercadoria, 32% no serviço) — { fonte, de, ate, n, mercadorias, servicos }, ou null
+  let medida = null;
+  const medir = (fonte, s) => { if (s.mercadorias + s.servicos > 0) medida = { fonte, de: s.de, ate: s.ate, n: s.n, mercadorias: s.mercadorias, servicos: s.servicos }; };
+  if (sDom) { receita = sDom.receita; merc = sDom.mercadorias; serv = sDom.servicos; meses = sDom.meses; fonteRec = 'reforma'; textoRec = 'caso da Reforma: faturamento do Domínio de ' + periodo(sDom); divisao = 'do faturamento do Domínio'; medir('reforma', sDom); }
   const pgdasVale = !!sPgdas && (!sPonte || sPgdas.n >= sPonte.npos);
   if (sPonte) {
-    if (sPonte.mercadorias + sPonte.servicos > 0) { merc = sPonte.mercadorias; serv = sPonte.servicos; divisao = 'do Domínio, pela ponte'; }
+    if (sPonte.mercadorias + sPonte.servicos > 0) { merc = sPonte.mercadorias; serv = sPonte.servicos; divisao = 'do Domínio, pela ponte'; medir('ponte', sPonte); }
     if (!pgdasVale) { receita = sPonte.receita; meses = sPonte.meses; fonteRec = 'ponte'; textoRec = 'Domínio, pela ponte: ' + oQueDaPonte(sPonte) + ' de ' + periodo(sPonte); }
   }
   if (pgdasVale) {
@@ -289,10 +350,32 @@ export function entradaDoSistema({ cliente = null, caso = null, fatorR = [], pgd
     if (ehMerc) merc = 1; else serv = 1;
   }
   const atividades = linhas(receita, merc, serv, tipoMerc, tipoServ);
+  const cnaeTxt = (cliente && cliente.cnae_principal) || '';
+  // a atividade que saiu das notas: a parte da receita que é venda de mercadoria ou serviço, no período medido. O anexo do
+  // Simples as notas não dizem: fica à parte (`simples`), só pra quando o Simples está no estudo
+  const pelasNotas = a => {
+    const ehMerc = TIPOS[a.tipo].tributo === 'icms', p = (ehMerc ? medida.mercadorias : medida.servicos) / (medida.mercadorias + medida.servicos) * 100;
+    const o = origem(medida.fonte, (medida.fonte === 'ponte' ? 'Domínio, pela ponte: ' : 'caso da Reforma: ') + (p >= 99.995 ? 'toda a receita' : pct2(p) + '% da receita')
+      + (medida.fonte === 'ponte' ? ' das notas de ' : ' do faturamento do Domínio de ') + periodoCurto(medida) + ' é ' + (ehMerc ? 'venda de mercadoria' : 'de serviço'),
+      ehMerc ? 'as notas de saída e de serviço do Domínio separam a venda de mercadoria do serviço; comércio ou indústria, pelo CNAE do cadastro' + (cnaeTxt ? ' (' + cnaeTxt + ')' : '') + ' — a presunção é a mesma'
+        : 'as notas de saída e de serviço do Domínio separam a venda de mercadoria do serviço');
+    o.simples = tipoCnae && a.tipo === tipoCnae ? 'o anexo, pelo CNAE do cadastro (' + cnaeTxt + '): confira' : 'o anexo está no padrão: confira';
+    return o;
+  };
   atividades.forEach((a, i) => {
     origens['atividades.' + i + '.tipo'] = doAnexo[a.tipo] ? origem('ponte', 'Domínio, pela ponte: Anexo ' + doAnexo[a.tipo] + ' na apuração do Simples' + (a.tipo === 'servico_r' && doAnexo[a.tipo] === 'III' ? ' (o CNAE é do fator r)' : ''))
-      : tipoAnexo && (a.tipo === tipoAnexo) ? origem('reforma', 'Anexo ' + anexoPgdas + ' do PGDAS (caso da Reforma)') : tipoCnae && a.tipo === tipoCnae ? origem('cadastro', 'pelo CNAE do cadastro (' + (cliente && cliente.cnae_principal || '') + ') — confira') : origem('padrao');
+      : tipoAnexo && (a.tipo === tipoAnexo) ? origem('reforma', 'Anexo ' + anexoPgdas + ' do PGDAS (caso da Reforma)')
+      : medida ? pelasNotas(a)
+      : tipoCnae && a.tipo === tipoCnae ? origem('cadastro', 'pelo CNAE do cadastro (' + cnaeTxt + ') — confira', 'o sistema não tem as notas desta empresa: confira se a receita é venda de mercadoria (no Presumido, presume 8% no IRPJ e 12% na CSLL) ou serviço (32% nos dois)') : origem('padrao');
     origens['atividades.' + i + '.receita'] = receita > 0 ? origem(fonteRec, textoRec) : origem('padrao', 'falta no sistema: digite os 12 meses');
+  });
+  // a atividade com presunção própria pelo CNAE principal: a que vale pra receita toda (o transporte) já entra na conta
+  const especial = presuncaoPeloCnae(cnaeTxt);
+  if (especial && especial.toda) atividades.forEach((a, i) => {
+    const t = TIPOS[a.tipo];
+    if (t.presIrpj === especial.irpj && t.presCsll === especial.csll) return;
+    a.presIrpj = especial.irpj; a.presCsll = especial.csll;
+    ['presIrpj', 'presCsll'].forEach(k => { origens['atividades.' + i + '.' + k] = origem('cadastro', 'pelo CNAE: ' + especial.nome, especial.regra + ' (' + especial.base + ')'); });
   });
   // ST e monofásico (só nas mercadorias): a apuração do Simples no Domínio (a ponte), senão as saídas do Domínio e o
   // PGDAS do caso da Reforma
@@ -443,7 +526,10 @@ export function entradaDoSistema({ cliente = null, caso = null, fatorR = [], pgd
   const pg = dom.pgdas || null;
   const conferencia = pg && num(pg.aliquotaEfetiva) > 0 ? { competencia: pg.competencia, aliquota: num(pg.aliquotaEfetiva), das: num(pg.dasTotal), fonte: 'reforma' } : null;
   const sd = serieDaEmpresa({ caso, pgdas, dominio: mp });
-  return { entrada: e, origens, notas, notasSimples, conferencia, serie: sd ? sd.serie : null, ponte: sPonte ? { de: sPonte.de, ate: sPonte.ate, n: sPonte.n } : null };
+  // divisao: a medida da venda de mercadoria × serviço (as notas); especial: a presunção própria do CNAE principal; lida:
+  // a ponte do Domínio leu a empresa (com ou sem nota nos meses fechados)
+  return { entrada: e, origens, notas, notasSimples, conferencia, serie: sd ? sd.serie : null, ponte: sPonte ? { de: sPonte.de, ate: sPonte.ate, n: sPonte.n } : null,
+    divisao: medida, especial, lida: mp.length > 0 };
 }
 
 // junta duas séries datadas ([{ competencia 'AAAA-MM', total }]) — a de b vale no mês que as duas têm —, em ordem. É o que a
@@ -595,7 +681,13 @@ export function aplicarRelatorios(entrada, origens, cons) {
     e.meses = s.meses;
     Object.keys(o).filter(k => k.startsWith('atividades.')).forEach(k => { if (/\.(receita|tipo)$/.test(k)) delete o[k]; });
     const txt = (cons.fat ? 'faturamento' : 'saídas e serviços') + ' do Domínio de ' + periodo(s);
-    e.atividades.forEach((a, i) => { o['atividades.' + i + '.receita'] = origem('dominio', txt); if (tipoAnexo && a.tipo === tipoAnexo) o['atividades.' + i + '.tipo'] = origem('dominio', 'Anexo ' + cons.campos.anexo + ' do PGDAS'); });
+    // o relatório que separa a venda de mercadoria do serviço diz a atividade de cada linha (é o que faz a presunção)
+    const medido = s.mercadorias + s.servicos > 0;
+    e.atividades.forEach((a, i) => {
+      o['atividades.' + i + '.receita'] = origem('dominio', txt);
+      if (tipoAnexo && a.tipo === tipoAnexo) o['atividades.' + i + '.tipo'] = origem('dominio', 'Anexo ' + cons.campos.anexo + ' do PGDAS');
+      else if (medido) o['atividades.' + i + '.tipo'] = origem('dominio', (TIPOS[a.tipo].tributo === 'icms' ? 'venda de mercadoria' : 'serviço') + (cons.fat ? ', pelo ' : ', pelas ') + txt);
+    });
   }
   const receita = (e.atividades || []).reduce((t, a) => t + num(a.receita), 0);
   const v = cons.resVen;

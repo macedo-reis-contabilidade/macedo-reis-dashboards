@@ -293,8 +293,31 @@ console.log('Qual comparativo, os impedimentos do Simples, a contabilidade e a p
   chk('o que muda abre com a diferença entre os dois (só o IRPJ e a CSLL) e o empate do Real', conta.muda[0].txt === 'Em 2027 o Presumido e o Real só diferem no IRPJ e na CSLL: o PIS/Cofins acaba, e a CBS, o IBS, o ICMS, o ISS e o INSS são iguais nos dois.'
     && /^O Real empata com o Presumido em 2027 com lucro de R\$\s57\.000,00 antes do IR \(9,5% da receita\)/.test(conta.muda[1].txt) && !conta.muda.some(m => /empata com o Simples|Simples Nacional/.test(m.txt)), JSON.stringify(conta.muda));
   const pr = conta.precisao;
-  chk('a precisão: provisório, o lucro da contabilidade é o primeiro que falta, e o que veio do Domínio já está na conta', pr.nivel === 'provisorio' && pr.falta[0].id === 'lucro' && pr.falta[0].peso === 'decide'
-    && pr.tem.map(x => x.id).join() === 'receita,folha,compras' && pr.tem.every(x => x.como === 'veio do Domínio pela ponte'), JSON.stringify(pr));
+  chk('a precisão: provisório, o lucro da contabilidade é o primeiro que falta, e o que veio do Domínio já está na conta (a presunção, pelas notas)', pr.nivel === 'provisorio' && pr.falta[0].id === 'lucro' && pr.falta[0].peso === 'decide'
+    && pr.tem.map(x => x.id).join() === 'receita,presuncao,folha,compras' && pr.tem.filter(x => x.id !== 'presuncao').every(x => x.como === 'veio do Domínio pela ponte')
+    && pr.tem[1].como === 'apurado pelas notas do Domínio' && !pr.falta.some(x => x.id === 'presuncao'), JSON.stringify(pr));
+  // pedido do Samuel, 11/11/2026 (19h12): a atividade e a presunção, o próprio sistema apura pelas notas do Domínio
+  chk('a leitura traz o que o sistema apurou da atividade: a divisão das notas, sem presunção própria no CNAE', est.atividade && est.atividade.divisao && est.atividade.divisao.fonte === 'ponte' && est.atividade.divisao.de === '2025-10'
+    && est.atividade.divisao.ate === '2026-09' && est.atividade.divisao.mercadorias === 600000 && est.atividade.divisao.servicos === 0 && est.atividade.especial === null && est.atividade.lida === true, JSON.stringify(est.atividade));
+  chk('a origem da atividade: pelas notas, sem "confira"', est.origens['atividades.0.tipo'].fonte === 'ponte' && est.origens['atividades.0.tipo'].texto === 'Domínio, pela ponte: toda a receita das notas de out/25 a set/26 é venda de mercadoria');
+  const mPres = conta.roteiro.fases[0].missoes.find(m => m.id === 'presuncao');
+  chk('a missão da presunção vem cumprida pelas notas, e a fase 1 fecha sem ninguém conferir nada', mPres.estado === 'feita' && mPres.como === 'apurado pelas notas do Domínio' && conta.roteiro.fases[0].concluida
+    && /^Nas notas do Domínio de out\/25 a set\/26, toda a receita é venda de mercadoria\. A conta usou: Indústria, 8% no IRPJ e 12% na CSLL sobre R\$\s600\.000\.$/.test(mPres.texto)
+    && conta.roteiro.proximo.id === 'lucro', mPres.texto);
+  // o estudo gravado antes desta mudança (a origem "pelo CNAE do cadastro — confira o anexo") abre com a origem de hoje
+  const antigo = { id: 'e-antigo', cliente_id: 'c8', atualizado_em: '2026-11-11T21:21:00Z', atualizado_por: 'financeiro@macedoereis.com.br',
+    entrada: { v: 1, entrada: { ...est.entrada, objetivo: 'presumido_real' }, origens: { ...est.origens, 'atividades.0.tipo': { fonte: 'cadastro', texto: 'pelo CNAE do cadastro (1091-1/02 - Fabricação de produtos de padaria) — confira o anexo' } }, conferencia: null } };
+  const gravado = await carregarEstudo({ ler: banco({ comparativos: [antigo], socios: SOC, extras }).ler, cliente: IND, hoje: '2026-11-11' });
+  const cGrav = contaDoEstudo({ ...gravado, aliq2027: ALIQ, hoje: '2026-11-11' });
+  chk('o estudo gravado com "pelo CNAE — confira": a origem passa a dizer as notas, e a missão vem cumprida', gravado.estudoId === 'e-antigo' && gravado.origens['atividades.0.tipo'].fonte === 'ponte'
+    && /toda a receita das notas de out\/25 a set\/26 é venda de mercadoria$/.test(gravado.origens['atividades.0.tipo'].texto) && cGrav.roteiro.fases[0].missoes.find(m => m.id === 'presuncao').estado === 'feita', JSON.stringify(gravado.origens['atividades.0.tipo']));
+  // o que a equipe digitou ou conferiu fica; e a atividade trocada no estudo (outra que a do sistema) não ganha a origem de hoje
+  const mexe = (o, e = {}) => ({ ...antigo, entrada: { ...antigo.entrada, entrada: { ...antigo.entrada.entrada, ...e }, origens: { ...antigo.entrada.origens, 'atividades.0.tipo': o } } });
+  const conferido = await carregarEstudo({ ler: banco({ comparativos: [mexe({ fonte: 'confirmado', texto: 'conferido' })], socios: SOC, extras }).ler, cliente: IND, hoje: '2026-11-11' });
+  const trocado = await carregarEstudo({ ler: banco({ comparativos: [mexe({ fonte: 'cadastro', texto: 'pelo CNAE — confira' }, { atividades: [{ ...est.entrada.atividades[0], tipo: 'servico' }] })], socios: SOC, extras }).ler, cliente: IND, hoje: '2026-11-11' });
+  chk('o que a equipe conferiu fica como está; a atividade que não é a do sistema não ganha a origem das notas', conferido.origens['atividades.0.tipo'].fonte === 'confirmado' && trocado.origens['atividades.0.tipo'].fonte === 'cadastro'
+    && contaDoEstudo({ ...trocado, aliq2027: ALIQ, hoje: '2026-11-11' }).roteiro.fases[0].missoes.find(m => m.id === 'presuncao').estado === 'aberta');
+  chk('o estudo de empresa sem cadastro: sem a medida da atividade', estudoGravado({ id: 'x', nome: 'SEM CADASTRO', entrada: { entrada: { atividades: [{ tipo: 'comercio', receita: 1 }] } } }).atividade === null);
   chk('a missão do lucro diz até onde a contabilidade vai', /Pelo Controle das contabilidades, ela está feita até jul\/26: a DRE até set\/26 ainda não fecha\.$/.test(conta.roteiro.fases[1].missoes.find(m => m.id === 'lucro').texto));
   const res = resumoParaGravar(conta.comparacao);
   chk('o resumo gravado diz os regimes do comparativo; o Simples vai nulo', res.regimes.join() === 'presumido,real' && res.totais['2027'].simples === null && res.totais['2027'].presumido > 0 && res.melhor === d27.melhor);

@@ -203,8 +203,11 @@ export async function carregarEstudo({ ler, cliente, cadastroDe = null, hoje = n
   if (contabil) fontes.push({ ok: !!contabil.feitaAte, txt: contabil.faz === false ? 'contabilidade fora do escritório' : contabil.feitaAte ? 'contabilidade feita até ' + rotuloComp(contabil.feitaAte) : 'contabilidade sem mês feito' });
   const semTabela = erroSemTabela(rEst && rEst.error);
   const salvo = !semTabela && rEst && rEst.data && rEst.data[0];
+  // o que o sistema apurou da atividade, sempre o de hoje (o estudo gravado não guarda): a venda de mercadoria × serviço
+  // medida nas notas do Domínio e a presunção própria do CNAE principal — é o que cumpre a missão da presunção
+  const atividade = { divisao: sis.divisao || null, especial: sis.especial || null, lida: !!sis.lida };
   const est = { cliente: c, nome: c.nome_principal, notas: sis.notas, notasSimples: sis.notasSimples, serie: sis.serie, serieRel: null, folhaRel: null, grupoSeries, grupoFora, socios: nSocios, sistema: sis, fontes, semTabela,
-    vedacoes, contabil, estudoId: null, gravadoEm: null, gravadoPor: null };
+    vedacoes, contabil, atividade, estudoId: null, gravadoEm: null, gravadoPor: null };
   if (salvo && salvo.entrada && salvo.entrada.entrada) {
     Object.assign(est, { estudoId: salvo.id, gravadoEm: salvo.atualizado_em, gravadoPor: salvo.atualizado_por });
     // os meses do faturamento que a equipe soltou na tela (serieRel) entram na série do sistema
@@ -214,6 +217,12 @@ export async function carregarEstudo({ ler, cliente, cadastroDe = null, hoje = n
     est.entrada = comPadroes(salvo.entrada.entrada); est.origens = salvo.entrada.origens || {}; est.conferencia = salvo.entrada.conferencia || sis.conferencia;
     // o estudo gravado antes da soma das empresas dos sócios: entram as que o sistema achou
     if (!Array.isArray(salvo.entrada.entrada.grupo)) { est.entrada.grupo = sis.entrada.grupo; grupo.forEach((g, i) => { est.origens['grupo.' + i + '.receita'] = g.origem; }); }
+    // a atividade que o estudo gravou como "pelo CNAE do cadastro — confira" (ou no padrão) e que hoje o sistema apura pelas
+    // notas: a origem passa a dizer isso, se a atividade segue a mesma (o que a equipe digitou ou conferiu não muda)
+    est.entrada.atividades.forEach((a, i) => {
+      const k = 'atividades.' + i + '.tipo', antes = est.origens[k], hoje = sis.origens[k], aSis = sis.entrada.atividades[i];
+      if ((!antes || ['cadastro', 'padrao'].includes(antes.fonte)) && hoje && sis.divisao && ['ponte', 'reforma'].includes(hoje.fonte) && aSis && aSis.tipo === a.tipo) est.origens[k] = hoje;
+    });
   } else {
     est.entrada = comPadroes(sis.entrada); est.origens = { ...ORIGENS_PADRAO, ...sis.origens }; est.conferencia = sis.conferencia;
   }
@@ -226,7 +235,7 @@ export function estudoGravado(linha) {
   const folhaRel = Array.isArray(g.folhaRel) && g.folhaRel.length ? g.folhaRel : null;
   return { cliente: null, nome: (linha && linha.nome) || 'empresa sem cadastro', entrada: comPadroes(g.entrada || {}), origens: g.origens || {}, conferencia: g.conferencia || null,
     notas: [], notasSimples: [], serie: serieRel ? mesclarSerie(null, serieRel) : null, serieRel, folhaRel, grupoSeries: [], grupoFora: [], socios: null, sistema: null, fontes: [], semTabela: false,
-    vedacoes: null, contabil: null,
+    vedacoes: null, contabil: null, atividade: null,
     estudoId: (linha && linha.id) || null, gravadoEm: (linha && linha.atualizado_em) || null, gravadoPor: (linha && linha.atualizado_por) || null };
 }
 
@@ -307,11 +316,12 @@ export function alertaDasVedacoes(c, vedacoes, regimes = null) {
 // empresas dos sócios, o roteiro (as fases e as missões), os prazos, o que muda o resultado e os avisos. Sem receita (ou
 // com o mix fora de 100%), a conta não roda: erro com o porquê, e o roteiro diz o que falta. hoje: 'AAAA-MM-DD'
 // objetivo: o comparativo escolhido (sem ele, o da entrada; sem nenhum, o que o sistema sugere) · vedacoes: o que o cadastro
-// veda no Simples (carregarEstudo) · contabil: o Controle das contabilidades ({ faz, feitaAte }). A volta diz o objetivo e
+// veda no Simples (carregarEstudo) · contabil: o Controle das contabilidades ({ faz, feitaAte }) · atividade: o que o
+// sistema apurou da atividade ({ divisao, especial }: as notas do Domínio e o CNAE — carregarEstudo). A volta diz o objetivo e
 // os regimes da conta, as vedações (e `vedado`: o aviso de que a linha do Simples é simulação) e a precisão (o que já está
 // na conta e o que falta, com o efeito de cada item).
 export function contaDoEstudo({ entrada, origens = {}, conferencia = null, notas = [], notasSimples = [], serie = null, grupoSeries = [], grupoFora = [], socios = null, aliq2027 = null, hoje = null,
-  objetivo = null, vedacoes = null, contabil = null } = {}) {
+  objetivo = null, vedacoes = null, contabil = null, atividade = null } = {}) {
   const achadas = (grupoSeries || []).length;
   const obj = objetivoDoEstudo(entrada, vedacoes, objetivo);
   const regimes = regimesDoObjetivo(obj);
@@ -322,11 +332,11 @@ export function contaDoEstudo({ entrada, origens = {}, conferencia = null, notas
     testes = testarPremissas(entradaDoMotor(entrada, aliq2027, obj), premissasParaTestar(entrada, origens, regimes));
   } catch (e) { comparacao = null; testes = []; erro = (e && e.message) || 'A conta não rodou.'; }
   if (!comparacao) {
-    const roteiro = roteiroDoEstudo({ entrada, origens, serie, socios, achadas, grupoFora, conferencia, hoje, objetivo: obj, vedacoes, contabil });
+    const roteiro = roteiroDoEstudo({ entrada, origens, serie, socios, achadas, grupoFora, conferencia, hoje, objetivo: obj, vedacoes, contabil, atividade });
     return { comparacao: null, testes: [], situacao: null, erro, prazos: [], muda: [], avisos: [], limite: null, vedado: null, objetivo: obj, regimes, vedacoes, roteiro, precisao: precisaoDoEstudo(roteiro) };
   }
   const situacao = comSimples ? situacaoComGrupo(serie, entrada.grupo, grupoSeries) : null;
-  const roteiro = roteiroDoEstudo({ entrada, origens, comparacao, testes, situacao, serie, socios, achadas, grupoFora, conferencia, hoje, objetivo: obj, vedacoes, contabil });
+  const roteiro = roteiroDoEstudo({ entrada, origens, comparacao, testes, situacao, serie, socios, achadas, grupoFora, conferencia, hoje, objetivo: obj, vedacoes, contabil, atividade });
   return {
     comparacao, testes, situacao, erro: null, objetivo: obj, regimes, vedacoes,
     limite: comSimples ? alertaDoLimite(comparacao, situacao, entrada.grupo) : null,

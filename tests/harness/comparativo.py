@@ -48,6 +48,13 @@ Confere:
      fala do Simples; trocado o regime de hoje pra Simples na tela, a nota e o PGDAS voltam; a empresa do Simples que
      compara só o Presumido com o Real vê que o Simples ficou fora; e a do Presumido com o Simples vedado, com o regime
      trocado pra Simples, vê a lista dos impedimentos;
+ 13. a atividade e a presunção, o sistema apura pelas notas do Domínio (11/11/2026, pedido do Samuel: "não ficou claro o que
+     preciso fazer, como temos acesso nas notas fiscais pela ponte da domínio, não ficaria mais fácil para o próprio
+     sistema apurar essa informação?"): o estudo gravado antes com a atividade "pelo CNAE do cadastro — confira o anexo"
+     abre com a origem de hoje (as notas) e a fase 1 concluída; a receita de serviço posta à mão, que as notas não têm,
+     abre a missão com as duas divisões e o "Está certa"; a construtora (a nota não diz se a obra é com todos os
+     materiais) tem a missão aberta, que decide, com a regra e o "Ver a presunção", e a presunção digitada a fecha; a
+     empresa sem nota no sistema lê por que a tela pergunta e o que fazer;
 e nenhum erro de JavaScript. No 7, também o aviso do limite no resultado: a conta põe o Simples em 2027, mas o ano de 2026
 passa do limite.
 Termina com código 1 se alguma checagem falhar. Pré-requisito: pip install playwright e python -m playwright install chromium
@@ -103,6 +110,21 @@ SEMEAR = """
     v.contabil_empresas = [{ cliente_id: 'c7', faz: true, inicio: '2025-01', fim: null }];
     v.contabil_meses = Array.from({ length: 19 }, (_, i) => { const d = new Date(Date.UTC(2025, i, 1)); return { cliente_id: 'c7', competencia: d.toISOString().slice(0, 7), situacao: 'feita', feita_em: '2026-08-10' }; });
     v.comparativos = [{ id: 'est3', cliente_id: 'c3', nome: null, entrada: { v: 1, entrada: { atividades: [{ tipo: 'comercio', receita: 500000 }] }, origens: {} }, resultado: null, atualizado_em: '2026-10-30T12:00:00Z', atualizado_por: 'fiscal@macedoereis.com.br' }];
+    // o cenário 13 (a presunção pelas notas do Domínio): a construtora do Presumido, só com nota de serviço; a loja do Presumido
+    // com o estudo gravado antes (a atividade "pelo CNAE do cadastro — confira o anexo"); e a loja sem nota nenhuma no sistema
+    v.clientes.push(
+      { id: 'c10', nome_principal: 'CONSTRUTORA FICTICIA LTDA', nome_fantasia: null, documento: '10101010101010', status: 'ativo', regime_tributario: 'Lucro Presumido', cnae_principal: '4120-4/00 - Construção de edifícios', cidade: 'Igrejinha', uf: 'RS' },
+      { id: 'c11', nome_principal: 'MOVEIS FICTICIOS LTDA', nome_fantasia: null, documento: '12121212121212', status: 'ativo', regime_tributario: 'Lucro Presumido', cnae_principal: '4754-7/01 - Comércio varejista de móveis', cidade: 'Igrejinha', uf: 'RS' },
+      { id: 'c12', nome_principal: 'LOJA FICTICIA LTDA', nome_fantasia: null, documento: '13131313131313', status: 'ativo', regime_tributario: 'Lucro Presumido', cnae_principal: '4754-7/01 - Comércio varejista de móveis', cidade: 'Igrejinha', uf: 'RS' });
+    const ponteDe = (id, codigo, merc, serv) => Array.from({ length: 12 }, (_, i) => { const d = new Date(Date.UTC(2025, 9 + i, 1));
+      return { codigo, cliente_id: id, competencia: d.toISOString().slice(0, 7), receita_bruta: merc + serv, receita_mercadorias: merc, receita_servicos: serv, receita_simples: null, compras: 20000, servicos_tomados: 0, ativo_e_consumo: 0,
+        salarios: 0, decimo_terceiro: 0, pro_labore_valor: 0 }; });
+    v.dominio_mensal.push(...ponteDe('c10', 1000, 0, 80000), ...ponteDe('c11', 1100, 70000, 0));
+    // (o estudo antigo só entra no cenário 13, que marca window.__estudoAntigo: os outros contam os estudos gravados)
+    if (window.__estudoAntigo) v.comparativos.push({ id: 'est11', cliente_id: 'c11', nome: null, resultado: null, atualizado_em: '2026-11-11T21:21:00Z', atualizado_por: 'financeiro@macedoereis.com.br',
+      entrada: { v: 1, entrada: { objetivo: 'presumido_real', regimeAtual: 'presumido', atividades: [{ tipo: 'comercio', receita: 840000 }], compras: 240000, grupo: [] },
+        origens: { 'atividades.0.receita': { fonte: 'ponte', texto: 'Domínio, pela ponte: o faturamento de out/25 a set/26' }, 'atividades.0.tipo': { fonte: 'cadastro', texto: 'pelo CNAE do cadastro (4754-7/01 - Comércio varejista de móveis) — confira o anexo' },
+          compras: { fonte: 'ponte', texto: 'Domínio, pela ponte: compras' }, folha: { fonte: 'ponte', texto: 'Domínio, pela ponte: sem empregados na folha' }, proLabore: { fonte: 'ponte', texto: 'Domínio, pela ponte: sem pró-labore na folha' } } } });
   } });
 })();
 """.replace('SIM_OBS_JSON', json.dumps(SIM_OBS))
@@ -507,7 +529,9 @@ def main():
         ok('PGDAS' not in p5.inner_text('#dropAjuda') and 'Faturamento, acompanhamento de entradas' in p5.inner_text('#dropAjuda'), 'a caixa dos relatórios não pede o PGDAS')
         tipos = p5.eval_on_selector_all('#f_atividades_0_tipo option', 'os => os.map(o => o.value + "=" + o.textContent + (o.selected ? "*" : ""))')
         ok(tipos == ['comercio=Comércio (revenda de mercadorias)', 'industria=Indústria*', 'servico=Serviços'], f'as atividades: comércio, indústria e serviços, sem os anexos do Simples ({tipos})')
-        ok(texto(p5, '.ct-orig[data-orig="atividades.0.tipo"]').endswith('— confira'), 'a origem da atividade manda conferir, sem falar em anexo')
+        ot = texto(p5, '.ct-orig[data-orig="atividades.0.tipo"]')
+        ok(ot == 'Domínio, pela ponte: toda a receita das notas de out/25 a set/26 é venda de mercadoria' and p5.get_attribute('.ct-orig[data-orig="atividades.0.tipo"]', 'data-fonte') == 'ponte',
+           f'a origem da atividade: o sistema apurou pelas notas do Domínio, sem mandar conferir e sem falar em anexo ({ot!r})')
         trilha = p5.eval_on_selector_all('#trilha .ct-tr-t', 'els => els.map(e => e.textContent)')
         ok(trilha == ['A receita e a presunção', 'O lucro do Real', 'O resto da conta', 'O veredito'], f'o caminho do Presumido × Real ({trilha})')
         ok(celula(p5, 'Simples Nacional', 1) is None and celula(p5, 'Lucro Presumido', 1).startswith('R$') and celula(p5, 'Lucro Real', 1).startswith('R$'), 'a tabela só com o Presumido e o Real')
@@ -527,14 +551,24 @@ def main():
            'na empresa do Presumido, as fontes não dizem a falta do que é só do Simples (a Reforma, o Fator R, o PGDAS)')
         aj = texto(p5, '#ajudaLucro')
         ok('dos mesmos 12 meses da receita (de out/25 a set/26)' in aj and 'Pelo Controle das contabilidades, ela está feita até jul/26.' in aj, f'o campo do lucro diz os meses da DRE e até onde a contabilidade vai ({aj[:70]}…)')
-        ok('A atividade e a presunção' in p5.inner_text('#fase .ct-m.ct-prox') and 'Indústria, 8% no IRPJ e 12% na CSLL' in texto(p5, '#fase .ct-m[data-id="presuncao"]'),
-           'fase 1: a presunção da atividade pra conferir (veio do CNAE)')
+        # a fase 1 já abre concluída: a receita e a atividade (a presunção) vieram do Domínio, e a tela vai direto pro lucro
+        ok(p5.get_attribute('#trilha li:nth-child(1)', 'data-estado') == 'feita' and p5.get_attribute('#trilha li:nth-child(2)', 'data-estado') == 'atual'
+           and 'O lucro da contabilidade' in p5.inner_text('#fase .ct-m.ct-prox'), 'a fase 1 abre concluída (a receita e a presunção pelo Domínio): o próximo passo é o lucro da contabilidade')
+        p5.click('#trilha button[data-fase="0"]')
+        mp = texto(p5, '#fase .ct-m[data-id="presuncao"]')
+        ok(p5.get_attribute('#fase .ct-m[data-id="presuncao"]', 'data-estado') == 'feita' and 'apurado pelas notas do Domínio' in mp
+           and 'Nas notas do Domínio de out/25 a set/26, toda a receita é venda de mercadoria. A conta usou: Indústria, 8% no IRPJ e 12% na CSLL sobre R$ 600.000.' in mp
+           and p5.locator('#fase .ct-m[data-id="presuncao"] .ct-m-acoes').count() == 0, f'fase 1: a presunção vem cumprida pelas notas do Domínio, sem nada pra conferir ({mp[:110]}…)')
+        fa = texto(p5, '#fase .ct-usar-item[data-id="atividade"]')
+        ok(p5.get_attribute('#fase .ct-usar-item[data-id="atividade"]', 'data-estado') == 'tem' and 'apurado pelas notas do Domínio, de out/25 a set/26' in fa
+           and 'toda a receita é venda de mercadoria. Venda de mercadoria presume 8% no IRPJ e 12% na CSLL; serviço, 32% nos dois.' in fa and 'confira' not in fa.lower(),
+           f'o que usar: a atividade de cada receita, apurada pelas notas, sem "confira" ({fa[:110]}…)')
+        ok('No Presumido, o IRPJ e a CSLL de 2027 dão R$ 13.680' in texto(p5, '#fase .ct-conquista'), 'a fase 1 diz o que conquistou: o IRPJ e a CSLL do Presumido')
+        p5.click('#trilha button[data-fase="1"]')
         pr = texto(p5, '#precisao')
         ok(p5.get_attribute('#precisao li[data-id="lucro"]', 'data-peso') == 'decide' and 'O lucro da contabilidade' in pr and 'o IRPJ e a CSLL do Real saem dele' in pr
-           and 'a receita dos 12 meses (veio do Domínio pela ponte)' in pr, f'a precisão: falta o lucro da contabilidade, que decide ({pr[:90]}…)')
-        p5.click('#fase .ct-m[data-id="presuncao"] [data-conferir]')
-        p5.wait_for_function("() => document.querySelector('#trilha li:nth-child(1)').dataset.estado === 'feita'", timeout=3000)
-        ok('No Presumido, o IRPJ e a CSLL de 2027 dão R$ 13.680' in texto(p5, '#banner'), f'a presunção conferida fecha a fase 1, com o IRPJ e a CSLL do Presumido ({texto(p5, "#banner")[:90]})')
+           and 'a receita dos 12 meses (veio do Domínio pela ponte)' in pr and 'a atividade e a presunção (apurado pelas notas do Domínio)' in pr and p5.locator('#precisao li[data-id="presuncao"]').count() == 0,
+           f'a precisão: falta o lucro da contabilidade, que decide; a presunção já está na conta ({pr[:90]}…)')
         ml = texto(p5, '#fase .ct-m[data-id="lucro"]')
         ok(p5.get_attribute('#fase .ct-m[data-id="lucro"]', 'data-estado') == 'aberta' and 'Falta o lucro da DRE' in ml and 'O Real empata com o Presumido com lucro de R$ 57.000' in ml
            and 'feita até jul/26: a DRE até set/26 ainda não fecha' in ml and 'Digitar o lucro da DRE' in ml and 'Seguir com a estimativa' in ml,
@@ -602,6 +636,9 @@ def main():
         ok('Simples Nacional (PGDAS)' in p5.inner_text('#dropAjuda'), 'e a caixa dos relatórios volta a pedir o PGDAS')
         tipos3 = p5.eval_on_selector_all('#f_atividades_0_tipo option', 'os => os.map(o => o.textContent)')
         ok(tipos3 == ['Comércio (revenda de mercadorias)', 'Indústria', 'Serviços do Anexo III', 'Serviços do fator r (Anexo V ou III)', 'Serviços do Anexo IV'], f'e as atividades voltam com os anexos ({tipos3})')
+        ot3 = texto(p5, '.ct-orig[data-orig="atividades.0.tipo"]')
+        ok(ot3.startswith('Domínio, pela ponte: toda a receita das notas de out/25 a set/26 é venda de mercadoria · o anexo, pelo CNAE do cadastro (1091-1/02') and ot3.endswith(': confira'),
+           f'com o Simples no estudo, a origem da atividade diz o que as notas não dizem: o anexo, pelo CNAE, a conferir ({ot3[-70:]!r})')
         p5.click('#trilha button[data-fase="0"]')
         mv = texto(p5, '#fase .ct-m[data-id="vedacoes"]')
         ok(p5.get_attribute('#fase .ct-m[data-id="vedacoes"]', 'data-estado') == 'aberta' and 'O Simples está vedado hoje.' in mv and 'Vai tirar os impedimentos' in mv and 'Entrar no Simples' in texto(p5, '.ct-prazos')
@@ -681,6 +718,74 @@ def main():
         sug = texto(p8, '#pergunta .ct-opcao[data-objetivo="presumido_real"]')
         ok('A empresa está no Simples Nacional e o Simples está vedado pra ela.' in sug and p8.locator('#vedado').count() == 1, 'e, na pergunta, o Simples vedado é o motivo da sugestão, com a lista')
         p8.close()
+
+        print('13. A atividade e a presunção: o sistema apura pelas notas do Domínio')
+        # pedido do Samuel, 11/11/2026 (19h12): "não ficou claro o que preciso fazer, como temos acesso nas notas fiscais pela
+        # ponte da domínio, não ficaria mais fácil para o próprio sistema apurar essa informação?"
+        # (a) o estudo gravado antes, com a atividade "pelo CNAE do cadastro — confira o anexo": abre com a origem de hoje
+        p9 = cx.new_page()
+        p9.on('pageerror', lambda e: erros.append('comparativo: ' + str(e)))
+        p9.add_init_script('window.__estudoAntigo = true'); p9.add_init_script(TOUR); p9.add_init_script(SEMEAR)
+        p9.clock.set_fixed_time('2026-11-01T12:00:00')
+        p9.goto(base + 'fiscal-comparativo.html?cliente=c11')
+        p9.wait_for_selector('#resultado table.ct', timeout=8000)
+        ot = texto(p9, '.ct-orig[data-orig="atividades.0.tipo"]')
+        ok(ot == 'Domínio, pela ponte: toda a receita das notas de out/25 a set/26 é venda de mercadoria', f'o estudo gravado com "pelo CNAE — confira o anexo" abre com a origem de hoje: as notas do Domínio ({ot!r})')
+        ok(p9.get_attribute('#trilha li:nth-child(1)', 'data-estado') == 'feita', 'e a fase 1 abre concluída, sem ninguém conferir a atividade')
+        p9.click('#trilha button[data-fase="0"]')
+        mp = texto(p9, '#fase .ct-m[data-id="presuncao"]')
+        ok(p9.get_attribute('#fase .ct-m[data-id="presuncao"]', 'data-estado') == 'feita' and 'apurado pelas notas do Domínio' in mp and 'toda a receita é venda de mercadoria' in mp
+           and 'Comércio (revenda de mercadorias), 8% no IRPJ e 12% na CSLL sobre R$ 840.000' in mp, f'a missão da presunção, cumprida pelas notas ({mp[:100]}…)')
+        ok(varrer(p9) == [], 'e nada do Simples na tela (a origem antiga falava em anexo)')
+        # a receita de serviço posta à mão, que as notas não têm: a missão abre dizendo as duas divisões e o que fazer
+        p9.click('button[data-acao="mais"]'); p9.wait_for_selector('#f_atividades_1_receita', timeout=2000)
+        p9.fill('#f_atividades_1_receita', '280000')
+        p9.wait_for_function("() => { const m = document.querySelector('#fase .ct-m[data-id=\"presuncao\"]'); return m && m.dataset.estado === 'aberta'; }", timeout=4000)
+        mp = texto(p9, '#fase .ct-m[data-id="presuncao"]')
+        ok('toda a receita é venda de mercadoria; no estudo, 75% é venda de mercadoria e 25% é de serviço' in mp and 'Acerte a receita de cada atividade pra ficar como as notas; se o estudo é que está certo, clique em Está certa.' in mp
+           and 'o estudo não bate com as notas do Domínio' in texto(p9, '#fase .ct-usar-item[data-id="atividade"]'), f'a receita de serviço que as notas não têm: a missão abre e diz o que fazer ({mp[:120]}…)')
+        p9.click('#fase .ct-m[data-id="presuncao"] [data-conferir]')
+        p9.wait_for_function("() => document.querySelector('#trilha li:nth-child(1)').dataset.estado === 'feita'", timeout=3000)
+        p9.click('#trilha button[data-fase="0"]')
+        ok(p9.get_attribute('#fase .ct-m[data-id="presuncao"]', 'data-estado') == 'feita' and 'conferido' in texto(p9, '#fase .ct-m[data-id="presuncao"]') and texto(p9, '.ct-orig[data-orig="atividades.0.tipo"]') == 'conferido',
+           '"Está certa" fecha a missão e a fase, e a origem da atividade passa a "conferido"')
+        p9.close()
+        # (b) a construtora: a nota não diz se a obra é com todos os materiais — a missão decide, com a regra e o que fazer
+        pa = nova('c10', 'CONSTRUTORA FICTICIA LTDA')
+        pa.click('#pergunta .ct-opcao[data-objetivo="presumido_real"]')
+        pa.wait_for_selector('#resultado table.ct', timeout=5000)
+        mp = texto(pa, '#fase .ct-m[data-id="presuncao"]')
+        ok(pa.get_attribute('#fase .ct-m[data-id="presuncao"]', 'data-estado') == 'aberta' and 'próximo passo' in mp and 'O CNAE da empresa é de construção (4120-4/00).' in mp
+           and 'A obra por empreitada com todos os materiais por conta da empresa presume 8% no IRPJ e 12% na CSLL; só com a mão de obra, ou com parte dos materiais, 32% nos dois.' in mp
+           and 'A conta usou: Serviços, 32% no IRPJ e 32% na CSLL sobre R$ 960.000.' in mp and 'Ver a presunção' in mp and 'Está certa' in mp, f'a construtora: a missão da presunção aberta, com a regra da obra e o que fazer ({mp[:110]}…)')
+        fa = texto(pa, '#fase .ct-usar-item[data-id="atividade"]')
+        ok(pa.get_attribute('#fase .ct-usar-item[data-id="atividade"]', 'data-estado') == 'padrao' and 'CNAE de construção: falta conferir a presunção' in fa and 'a presunção depende do que as notas do Domínio não dizem. A regra e o que fazer estão na missão abaixo.' in fa,
+           f'o que usar: a linha diz o que falta e onde resolver ({fa[:90]}…)')
+        ok('Provisório' in texto(pa, '#placar') and 'a presunção' in texto(pa, '#resultado'), 'e o resultado fica provisório: a presunção pode virar a conta')
+        ok(texto(pa, '.ct-orig[data-orig="atividades.0.tipo"]') == 'Domínio, pela ponte: toda a receita das notas de out/25 a set/26 é de serviço', 'a origem da atividade: serviço, pelas notas')
+        pa.click('#fase .ct-m[data-id="presuncao"] [data-ir]')
+        ok(pa.evaluate("() => document.activeElement && document.activeElement.id") == 'f_atividades_0_presIrpj' and pa.evaluate("() => document.getElementById('f_atividades_0_presIrpj').closest('details').open"),
+           '"Ver a presunção" abre o ajuste da atividade e põe o cursor na presunção do IRPJ')
+        pa.fill('#f_atividades_0_presIrpj', '8'); pa.fill('#f_atividades_0_presCsll', '12')
+        pa.wait_for_function("() => document.querySelector('#trilha li:nth-child(1)').dataset.estado === 'feita'", timeout=4000)
+        pa.click('#trilha button[data-fase="0"]')
+        mp = texto(pa, '#fase .ct-m[data-id="presuncao"]')
+        ok('A conta usou: Serviços, 8% no IRPJ e 12% na CSLL sobre R$ 960.000.' in mp and pa.get_attribute('#fase .ct-m[data-id="presuncao"]', 'data-estado') == 'feita', f'a presunção digitada (8 e 12) fecha a missão ({mp[:110]}…)')
+        ok(varrer(pa) == [], 'e nada do Simples na tela da construtora do Presumido')
+        pa.close()
+        # (c) a empresa sem nota nenhuma no sistema: a missão diz por que pergunta e o que fazer
+        pb = nova('c12', 'LOJA FICTICIA LTDA')
+        pb.click('#pergunta .ct-opcao[data-objetivo="presumido_real"]')
+        pb.wait_for_selector('#f_atividades_0_receita', timeout=3000)
+        pb.fill('#f_atividades_0_receita', '900000')
+        pb.wait_for_selector('#resultado table.ct', timeout=5000)
+        pb.click('#trilha button[data-fase="0"]')
+        mp = texto(pb, '#fase .ct-m[data-id="presuncao"]')
+        ok('O sistema não tem as notas desta empresa: a atividade veio do CNAE do cadastro.' in mp and 'Se a empresa tem as duas receitas, separe cada uma numa atividade; se é isso mesmo, clique em Está certa.' in mp,
+           f'sem nota no sistema: a missão diz por que pergunta e o que fazer ({mp[:110]}…)')
+        fa = texto(pb, '#fase .ct-usar-item[data-id="atividade"]')
+        ok('sem notas no sistema: pelo CNAE do cadastro' in fa and 'A regra e o que fazer estão na missão abaixo.' in fa and 'Com a empresa no Domínio, a ponte traz essa divisão pelas notas, todo dia.' in fa, f'e o que usar aponta a missão ({fa[:90]}…)')
+        pb.close()
 
         ok(not erros, 'nenhum erro de JavaScript' + ('' if not erros else ': ' + ' | '.join(erros[:3])))
         b.close()

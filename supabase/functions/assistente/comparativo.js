@@ -160,7 +160,9 @@ function blocoNumeros(estudo, conta = null) {
     if (comSimples && a.presIrpj != null && Number(a.presIrpj) !== t.presIrpj) partes.push('presunção do IRPJ ' + pct(a.presIrpj) + '%');
     if (comSimples && a.presCsll != null && Number(a.presCsll) !== t.presCsll) partes.push('presunção da CSLL ' + pct(a.presCsll) + '%');
     if (comSimples && a.tipo === 'servico_r' && a.fatorR === false) partes.push('sem o fator r (fica no Anexo V)');
-    out.push('- Atividade ' + (i + 1) + ': ' + rotuloDoTipo(TIPOS[a.tipo] ? a.tipo : 'comercio', comSimples) + ' [' + (comSimples ? origemDe(o, p + 'tipo') : origemDe(o, p + 'tipo').replace(/ — confira o anexo$/, ' — confira')) + '] — ' + partes.join('; '));
+    // a origem da atividade: com o Simples na comparação, vai junto a parte que é só dele (o anexo que as notas não dizem)
+    const oTipo = o[p + 'tipo'];
+    out.push('- Atividade ' + (i + 1) + ': ' + rotuloDoTipo(TIPOS[a.tipo] ? a.tipo : 'comercio', comSimples) + ' [' + (comSimples ? origemDe(o, p + 'tipo') + (oTipo && oTipo.simples ? ' · ' + oTipo.simples : '') : origemDe(o, p + 'tipo').replace(/ — confira o anexo$/, ' — confira')) + '] — ' + partes.join('; '));
   });
   ['compras', 'aliqCreditoIcms', 'pctComprasSimples', 'despesasCredito', 'outrasDespesas', 'folha', 'proLabore'].forEach(k => out.push(linha(k)));
   // o lucro do Real: o da contabilidade (a DRE dos 12 meses), com os ajustes; sem ele, a conta estima
