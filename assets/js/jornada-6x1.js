@@ -237,7 +237,9 @@ export function salarioMedio(grupos) {
 export function simular(grupos, etapa, opcoes = {}) {
   const r = resumoDaEmpresa(grupos, { cct: !!opcoes.cct })[etapa];
   const enc = encargosDoRegime(opcoes.regime, { anexoIV: !!opcoes.anexoIV });
-  const salario = num(opcoes.salario) != null ? num(opcoes.salario) : salarioMedio((grupos || []).filter(g => diagnostico(g, etapa, opcoes).precisa));
+  // os grupos que mudam; sem o salário neles (o grupo com menos de 3 vem sem, decisão de 11/11/2026), a média da empresa
+  const salario = num(opcoes.salario) != null ? num(opcoes.salario)
+    : (salarioMedio((grupos || []).filter(g => diagnostico(g, etapa, opcoes).precisa)) ?? salarioMedio(grupos));
   const porPessoa = custoMensal(salario, enc);
   const pessoas = opcoes.presenca === false ? r.contratarPorHoras : Math.max(r.contratarPorHoras, r.contratarPorPresenca);
   const semanasNoMes = 52 / 12;

@@ -90,6 +90,8 @@ igual('hora extra: 86,67 h no mês → R$ ' + fmtReais(esperado), [s.horaExtra.h
 igual('reduzir: 20 h por semana e 5 dias-pessoa a menos', [s.reduzir.horasSemana, s.reduzir.presenca], [20, 5]);
 igual('pelas horas só (sem contar a presença), a mesma 1 pessoa', simular([seis], 'e42', { regime: 'Simples', presenca: false }).contratar.pessoas, 1);
 igual('o salário digitado na tela troca o de referência', simular([seis], 'e42', { regime: 'Simples', salario: 2500 }).porPessoa, 3225);
+igual('o grupo pequeno sem o salário (decisão de 11/11/2026): o de referência é a média da empresa', simular([{ ...seis, empregados: 2, salarios: null }, parcial], 'e42', { regime: 'Simples' }).salario, 1500);
+igual('sem salário em grupo nenhum, fica sem (o DP digita)', simular([{ ...seis, empregados: 2, salarios: null }], 'e42', { regime: 'Simples' }).salario, null);
 
 console.log('O relatório pra empresa (um jsPDF de mentira, que guarda os textos):');
 class PdfFalso {

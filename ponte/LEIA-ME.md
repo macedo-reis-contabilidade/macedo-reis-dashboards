@@ -185,7 +185,8 @@ ano, senão a ponte usa o mais recente e avisa no log) devolve **uma linha por e
 e a unidade do salário —, com a semana (segunda a domingo: T trabalhado, C compensado, F folga), os minutos da semana
 e do dia mais longo, o ciclo da escala e quantos empregados, afastados, com o sábado compensado e com o superior
 completo (e, deles, acima do salário do art. 8º), e a soma dos salários do grupo. Nome, CPF, cargo e o salário de cada
-pessoa ficam no PC. Uns 3 segundos. O que se achou no Domínio e os números do escritório inteiro em
+pessoa ficam no PC; e, desde a 0.4.1 (11/11/2026, decisão do Samuel), o grupo com menos de 3 empregados vai
+sem a soma dos salários, os afastados e o superior (em branco), que ali diriam de quem é. Uns 3 segundos. O que se achou no Domínio e os números do escritório inteiro em
 `docs/FILA-CODE-2026-11-09-JORNADAS-DUVIDAS.md`.
 
 As consultas ficam em `ponte\consultas\` (`empresas.sql`, `folha.sql`, `fiscal.sql`, `contabil.sql`,

@@ -283,7 +283,7 @@
 
       const linhasGrupos = grupos.length ? grupos.map((g, i) => {
         const p = padraoDoGrupo(g);
-        const med = g.salarios != null && g.empregados ? (Number(g.unidade) === 1 ? fmtReais(g.salarios / g.empregados) + ' /h' : fmtReais(g.salarios / g.empregados)) : '—';
+        const med = g.salarios != null && g.empregados ? (Number(g.unidade) === 1 ? fmtReais(g.salarios / g.empregados) + ' /h' : fmtReais(g.salarios / g.empregados)) : (Number(g.empregados) < 3 && e.doDominio ? '<span class="j6-dim" title="Grupo com menos de 3 empregados: o salário fica no PC do escritório, e o simulador usa a média da empresa.">— (grupo pequeno)</span>' : '—');
         return '<tr><td>' + esc(p.rotulo) + (g.jornada ? ' <span class="j6-dim">· jornada ' + esc(g.jornada) + '</span>' : '') + '</td><td class="j6-num">' + esc(g.empregados) + (g.afastados ? ' <span class="j6-dim">(' + esc(g.afastados) + ' afast.)</span>' : '') + '</td>'
           + '<td class="j6-num">' + esc(fmtNum(p.horas)) + ' h</td><td class="j6-num">' + (p.dias != null ? esc(fmtNum(p.dias)) : '—') + '</td><td>' + (p.domingo === true ? 'sim' : p.domingo === false ? 'não' : '—') + '</td>'
           + '<td class="j6-num">' + med + '</td><td>' + (e.doDominio ? '' : '<button class="btn btn-ghost btn-sm" data-tira="' + i + '" aria-label="Tirar este grupo">Tirar</button>') + '</td></tr>';

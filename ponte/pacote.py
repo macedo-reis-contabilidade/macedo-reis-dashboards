@@ -55,7 +55,7 @@ from decimal import Decimal, InvalidOperation
 
 from . import VERSAO
 from .fonte import (ANOS_ENCERRAMENTO, BLOCOS, CAMPOS_ANDAMENTO, CAMPOS_DATA, CAMPOS_ENCERRAMENTO, CAMPOS_INTEIROS,
-                    CAMPOS_JORNADAS, CAMPOS_MES, CAMPOS_NUMERO, CAMPOS_SEMANA, CAMPOS_VALOR, GRUPO_JORNADAS,
+                    CAMPOS_JORNADAS, CAMPOS_MES, CAMPOS_SO_GRUPO_GRANDE, GRUPO_MINIMO_JORNADA, CAMPOS_NUMERO, CAMPOS_SEMANA, CAMPOS_VALOR, GRUPO_JORNADAS,
                     ConsultaAConferir, teto_art8)
 
 VERSAO_PACOTE = 4
@@ -347,6 +347,17 @@ def ler_fotos(fonte, dados_ate, codigos, registro):
         faltou.append({'bloco': 'jornadas', 'motivo': motivo})
         if motivo != 'consulta a conferir':
             registro(f'bloco jornadas ficou de fora: {motivo}', 'aviso')
+    # o grupo pequeno (11/11/2026, decisão do Samuel): com menos de GRUPO_MINIMO_JORNADA empregados, a soma dos salários,
+    # os afastados e os com o superior completo são os de uma ou duas pessoas — saem em branco (null) e ficam no PC
+    pequenos = 0
+    for l in jornadas:
+        if (l.get('empregados') or 0) < GRUPO_MINIMO_JORNADA:
+            pequenos += 1
+            for c in CAMPOS_SO_GRUPO_GRANDE:
+                l[c] = None
+    if pequenos:
+        registro(f'jornadas: {pequenos} grupo(s) com menos de {GRUPO_MINIMO_JORNADA} empregados foram sem o salário, '
+                 f'os afastados e o superior (ficam no PC)')
     return andamento, encerramento, jornadas, faltou
 
 

@@ -316,7 +316,7 @@ def caso_pacote():
     hora_com_fuso = r'\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d[+-]\d\d:\d\d'
     ok(re.fullmatch(hora_com_fuso, r['inicio']) and re.fullmatch(hora_com_fuso, r['fim']) and r['inicio'] <= r['fim'],
        'inicio e fim com o fuso do PC, inicio <= fim')
-    ok(bool(r['maquina']) and r['ponte'] == '0.4.0', 'maquina preenchida, ponte 0.4.0')
+    ok(bool(r['maquina']) and r['ponte'] == '0.4.1', 'maquina preenchida, ponte 0.4.1')
 
     emp = {e['codigo']: e for e in p['empresas']}
     ok(sorted(emp) == [101, 102, 103, 104], 'as 4 empresas inventadas, pelo código')
@@ -412,7 +412,8 @@ def caso_pacote():
     jor = p['jornadas']
     ok(all(list(l) == CONTRATO_JORNADAS for l in jor), 'as jornadas: cada linha com os campos do contrato, nessa ordem')
     ok(all(l[c] is None or type(l[c]) is int for l in jor for c in INTEIROS_JORNADAS)
-       and all(type(l[c]) is float for l in jor for c in ('horas_semana', 'horas_mes', 'salarios'))
+       and all(type(l[c]) is float for l in jor for c in ('horas_semana', 'horas_mes'))
+       and all(l['salarios'] is None or type(l['salarios']) is float for l in jor)
        and all(l['semana'] is None or re.fullmatch(r'[TCF-]{7}', l['semana']) for l in jor),
        'tipos: as contagens e os códigos inteiros (ou null), as horas e a soma dos salários número, a semana em 7 letras')
     por = {(l['codigo'], l['jornada']): l for l in jor}
@@ -420,23 +421,30 @@ def caso_pacote():
        'quatro grupos: três da 101 e o da 104, na ordem do grupo')
     ok(len(jor) == 4, f'quatro linhas, uma por grupo (vieram {len(jor)})')
     seis = por.get((101, 1), {})
+    n6 = 2 + hoje().month % 3
     ok(seis.get('semana') == 'TTTTTTF' and seis.get('min_semana') == 2640 and seis.get('horas_semana') == 44.0
-       and seis.get('empregados') == 2 + hoje().month % 3 and seis.get('afastados') == 1
-       and seis.get('salarios') == 2000.0 * (2 + hoje().month % 3),
-       'a 6x1 de 44 horas: seis dias trabalhados e a folga, 2.640 minutos, os empregados, o afastado e a soma dos salários')
+       and seis.get('empregados') == n6
+       and ((seis.get('afastados') == 1 and seis.get('salarios') == 2000.0 * n6) if n6 >= 3
+            else (seis.get('afastados') is None and seis.get('salarios') is None)),
+       'a 6x1 de 44 horas: seis dias trabalhados e a folga, 2.640 minutos, os empregados, o afastado e a soma dos salários'
+       ' (com menos de 3 empregados, os dois em branco)')
     ok(seis.get('tipo') == 2 and seis.get('tipo_escala') == 0 and seis.get('forma') == 1 and seis.get('controle') == 1
        and seis.get('categoria') == 101 and seis.get('unidade') == 5 and seis.get('horas_mes') == 220.0
-       and seis.get('min_maior_dia') == 440 and seis.get('superior_teto') == 0,
+       and seis.get('min_maior_dia') == 440 and seis.get('superior_teto') == (0 if n6 >= 3 else None),
        'e o tipo, a escala, a forma, o controle, a categoria, a unidade e as horas do mês com os valores da fonte (não null)')
     cinco = por.get((101, 2), {})
-    ok(cinco.get('semana') == 'TTTTTCF' and cinco.get('compensa_sabado') == 1 and cinco.get('superior') == 1
-       and cinco.get('superior_teto') == 1 and cinco.get('salarios') == 25000.0 and cinco.get('min_maior_dia') == 528,
-       'a 5x2 com o sábado compensado: o C no sábado, o compensa_sabado e o superior completo acima do salário do art. 8º')
+    ok(cinco.get('semana') == 'TTTTTCF' and cinco.get('compensa_sabado') == 1 and cinco.get('min_maior_dia') == 528,
+       'a 5x2 com o sábado compensado: o C no sábado e o compensa_sabado')
+    ok(all(cinco.get(c) is None for c in ('salarios', 'afastados', 'superior', 'superior_teto')),
+       'o grupo de 1 empregado (a 5x2, com o salário acima do art. 8º): sem o salário, os afastados e o superior '
+       '(decisão de 11/11/2026), que diriam de quem é')
+    ok('25000' not in json.dumps(p['jornadas']) and '25.000' not in out,
+       'o salário da pessoa sozinha no grupo não sai do PC')
     doze = por.get((101, 3), {})
     ok(doze.get('semana') is None and doze.get('tipo_escala') == 1 and doze.get('ciclo_dias') == 2
        and doze.get('ciclo_trabalho') == 1 and doze.get('min_semana') == 2520 and doze.get('unidade') == 1
-       and doze.get('salarios') == 9.75,
-       'a 12x36: a semana null, o ciclo de 2 dias com 1 trabalhado, a média da semana e o horista (a hora na soma)')
+       and doze.get('salarios') is None,
+       'a 12x36: a semana null, o ciclo de 2 dias com 1 trabalhado, a média da semana (o horista sozinho, sem o salário)')
     sem = por.get((104, None), {})
     ok(all(sem.get(c) is None for c in ('tipo', 'tipo_escala', 'semana', 'min_semana', 'min_maior_dia'))
        and sem.get('empregados') == 2,
@@ -636,8 +644,8 @@ def caso_a_conferir(sis):
 
     # as jornadas que não vieram contadas: duas linhas com o mesmo grupo tiram o bloco inteiro
     cols = ['codigo'] + CONTRATO_JORNADAS[1:]
-    linha = (1, 7, 2, 0, 'TTTTTTF', 2640, 440, None, None, Decimal('44.00'), Decimal('220.00'), 1, 1, 101, 5, 1, 0, 0, 0, 0,
-             Decimal('1621.00'))
+    linha = (1, 7, 2, 0, 'TTTTTTF', 2640, 440, None, None, Decimal('44.00'), Decimal('220.00'), 1, 1, 101, 5, 3, 0, 0, 0, 0,
+             Decimal('4863.00'))
     respostas3 = dict(respostas, jornadas=(cols + ['nome'], [linha + ('FULANO (INVENTADO)',), linha + ('BELTRANO (INVENTADO)',)]))
     con = ConexaoFalsa(respostas3)
     fonte = FonteDominio(CONEXAO, consultas(p / 'c4', empresas='/*empresas*/ SELECT 1', jornadas='/*jornadas*/ SELECT 1'),
@@ -656,8 +664,8 @@ def caso_a_conferir(sis):
     fonte.fechar()
     esperada = {'codigo': 1, 'jornada': 7, 'tipo': 2, 'tipo_escala': 0, 'semana': 'TTTTTTF', 'min_semana': 2640,
                 'min_maior_dia': 440, 'ciclo_dias': None, 'ciclo_trabalho': None, 'horas_semana': 44.0, 'horas_mes': 220.0,
-                'forma': 1, 'controle': 1, 'categoria': 101, 'unidade': 5, 'empregados': 1, 'afastados': 0,
-                'compensa_sabado': 0, 'superior': 0, 'superior_teto': 0, 'salarios': 1621.0}
+                'forma': 1, 'controle': 1, 'categoria': 101, 'unidade': 5, 'empregados': 3, 'afastados': 0,
+                'compensa_sabado': 0, 'superior': 0, 'superior_teto': 0, 'salarios': 4863.0}
     ok(len(pc['jornadas']) == 1 and list(pc['jornadas'][0]) == CONTRATO_JORNADAS and pc['jornadas'][0] == esperada
        and '000.000.000-00' not in json.dumps(pc),
        'pelo banco de mentira, a linha do grupo entra inteira, campo a campo, e o CPF que veio junto fica no PC')

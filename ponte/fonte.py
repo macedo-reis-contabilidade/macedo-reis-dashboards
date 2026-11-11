@@ -74,6 +74,10 @@ CAMPOS_JORNADAS = ('jornada', 'tipo', 'tipo_escala', 'semana', 'min_semana', 'mi
                    'ciclo_trabalho', 'horas_semana', 'horas_mes', 'forma', 'controle', 'categoria', 'unidade',
                    'empregados', 'afastados', 'compensa_sabado', 'superior', 'superior_teto', 'salarios')
 GRUPO_JORNADAS = ('codigo', 'jornada', 'horas_semana', 'horas_mes', 'forma', 'controle', 'categoria', 'unidade')
+# o grupo com menos de 3 empregados (11/11/2026, decisão do Samuel): sem a soma dos salários, os afastados e o superior,
+# que num grupo de uma ou duas pessoas dizem de quem é — vão null (o sistema usa a média da empresa)
+GRUPO_MINIMO_JORNADA = 3
+CAMPOS_SO_GRUPO_GRANDE = ('salarios', 'afastados', 'superior', 'superior_teto')
 BLOCOS_FOTO = ('andamento', 'encerramento', 'jornadas')
 ANOS_ENCERRAMENTO = 2   # os dois anos antes do de hoje
 
