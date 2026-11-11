@@ -172,13 +172,20 @@ console.log('A regra da soma (LC 123, art. 3º, §4º, III a V), o que muda com 
     && /não é ME nem EPP/.test(est.grupoFora[0].motivo) && est.notas.some(n => /fica fora da soma do limite/.test(n)), JSON.stringify(est.grupoFora));
   const conta = contaDoEstudo({ ...est, aliq2027: ALIQ, hoje: '2026-11-01' });
   chk('o roteiro diz que ela ficou fora da soma', JSON.stringify(conta.roteiro).includes('fica fora da soma'));
+  // 11/11/2026: as notas das empresas dos sócios são do limite do Simples — só o Presumido contra o Real não as mostra
+  const doLimite = est.notas.find(n => /fica fora da soma do limite/.test(n));
+  const soDois = contaDoEstudo({ ...est, aliq2027: ALIQ, hoje: '2026-11-01', objetivo: 'presumido_real' });
+  chk('a nota da soma é só do Simples: com ele na comparação, está nos avisos; só com o Presumido e o Real, não (nem no roteiro)', est.notasSimples.includes(doLimite) && conta.avisos.includes(doLimite)
+    && !soDois.avisos.includes(doLimite) && !soDois.avisos.some(a => /mesmos sócios|soma do limite/.test(a)) && !JSON.stringify(soDois.roteiro).includes('fica fora da soma'), soDois.avisos);
+  chk('sem a lista das notas do Simples (a tela de antes), as notas seguem todas', contaDoEstudo({ ...est, notasSimples: undefined, aliq2027: ALIQ, hoje: '2026-11-01', objetivo: 'presumido_real' }).avisos.includes(doLimite));
   const { ler: l2 } = banco({ socios: soc({ participacao_percentual: 20, eh_administrador: false }), pgdas: grande });
   chk('com 20%, entra (inciso IV)', (await carregarEstudo({ ler: l2, cliente: RESTAURANTE })).entrada.grupo.some(g => g.cliente_id === 'c6'));
   const { ler: l3 } = banco({ socios: soc({ participacao_percentual: 5, eh_administrador: true }), pgdas: grande });
   chk('com 5%, administrando, entra (inciso V)', (await carregarEstudo({ ler: l3, cliente: RESTAURANTE })).entrada.grupo.some(g => g.cliente_id === 'c6'));
   const { ler: l4 } = banco({ socios: soc({}), pgdas: grande });
   const e4 = await carregarEstudo({ ler: l4, cliente: RESTAURANTE });
-  chk('sem a participação no cadastro: entra, com o aviso pra conferir', e4.entrada.grupo.some(g => g.cliente_id === 'c6') && e4.notas.some(n => /participação não está no cadastro/.test(n)));
+  chk('sem a participação no cadastro: entra, com o aviso pra conferir (uma nota só do Simples)', e4.entrada.grupo.some(g => g.cliente_id === 'c6') && e4.notas.some(n => /participação não está no cadastro/.test(n))
+    && e4.notasSimples.some(n => /participação não está no cadastro/.test(n)));
   const { ler: l5 } = banco({ socios: soc({ participacao_percentual: 5, eh_administrador: false }) });
   chk('a outra ME ou EPP: entra com qualquer participação (inciso III)', (await carregarEstudo({ ler: l5, cliente: RESTAURANTE })).entrada.grupo.some(g => g.cliente_id === 'c6'));
   // o que muda, quando o valor testado tem nome (o RDA)
@@ -256,9 +263,17 @@ console.log('Qual comparativo, os impedimentos do Simples, a contabilidade e a p
   chk('os números vieram do Domínio pela ponte', perto(est.entrada.atividades[0].receita, 600000) && est.origens['atividades.0.receita'].fonte === 'ponte' && est.entrada.proLabore === 19452 && est.entrada.lucroContabil === null
     && est.origens.lucroContabil.fonte === 'padrao' && est.entrada.objetivo === undefined);
   const ops = opcoesDeObjetivo(est.entrada.regimeAtual, v);
-  chk('as duas opções, com a sugerida e o porquê', ops.map(o => o.id).join() === 'presumido_real,todos' && ops[0].sugerido && !ops[1].sugerido && ops[0].rotulo === 'Presumido × Real' && ops[1].rotulo === 'Simples × Presumido × Real'
-    && ops[0].porque === 'A empresa está no Lucro Presumido e o Simples está vedado pra ela.' && ops[1].porque === '', JSON.stringify(ops));
-  chk('a do Simples sem impedimento: os três, sugerido', opcoesDeObjetivo('simples', { vedado: false }).find(o => o.sugerido).id === 'todos');
+  // pedido do Samuel, 11/11/2026 (18h25): na empresa do regime geral, o motivo da sugestão é o regime dela; o que o
+  // cadastro diz do Simples fica numa linha, só na opção com o Simples
+  chk('as duas opções, com a sugerida e o porquê (o regime dela, sem o Simples)', ops.map(o => o.id).join() === 'presumido_real,todos' && ops[0].sugerido && !ops[1].sugerido && ops[0].rotulo === 'Presumido × Real' && ops[1].rotulo === 'Simples × Presumido × Real'
+    && ops[0].porque === 'A empresa está no Lucro Presumido: a escolha de todo ano é entre o Presumido e o Real.' && ops[1].porque === '', JSON.stringify(ops));
+  chk('o que o cadastro diz do Simples: uma linha, só na opção com ele', ops[0].nota === '' && ops[1].nota === 'Hoje o cadastro veda o Simples pra ela (2 impedimentos): ele entra como simulação.'
+    && !/Simples|impediment|vedad/i.test(ops[0].texto + ops[0].porque + ops[0].nota), JSON.stringify(ops));
+  const opsS = opcoesDeObjetivo('simples', { vedado: false, impedimentos: [], conferir: [], semDado: [], secundarios: 1, comSocios: true });
+  chk('a do Simples sem impedimento: os três, sugerido, com a linha de que nada veda', opsS.find(o => o.sugerido).id === 'todos' && opsS[1].porque === 'A empresa está no Simples Nacional: ficar ou sair é a pergunta.'
+    && opsS[1].nota === 'Pelo cadastro, nada veda o Simples.' && opsS[0].nota === '', JSON.stringify(opsS));
+  chk('a do Simples vedada: o sugerido são os dois, com o Simples vedado como motivo', opcoesDeObjetivo('simples', v)[0].sugerido && opcoesDeObjetivo('simples', v)[0].porque === 'A empresa está no Simples Nacional e o Simples está vedado pra ela.');
+  chk('sem cadastro: a linha diz que os impedimentos não são conferidos', opcoesDeObjetivo(null, null)[1].nota === 'Sem cadastro, o sistema não confere os impedimentos do Simples.' && opcoesDeObjetivo(null, null)[1].sugerido);
   chk('o comparativo do estudo: o pedido, senão o escolhido, senão o sugerido', objetivoDoEstudo(est.entrada, v) === 'presumido_real' && objetivoDoEstudo({ ...est.entrada, objetivo: 'todos' }, v) === 'todos'
     && objetivoDoEstudo({ ...est.entrada, objetivo: 'todos' }, v, 'presumido_real') === 'presumido_real' && objetivoDoEstudo({ regimeAtual: 'simples' }, null) === 'todos' && objetivoDoEstudo({ objetivo: 'constructor', regimeAtual: 'simples' }, null) === 'todos');
   chk('comPadroes: o comparativo inválido que venha do banco volta à pergunta; o válido fica', !('objetivo' in comPadroes({ objetivo: 'constructor', atividades: [] })) && comPadroes({ objetivo: 'todos', atividades: [] }).objetivo === 'todos'

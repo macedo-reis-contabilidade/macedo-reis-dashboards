@@ -177,3 +177,14 @@ export function resumoDasVedacoes(v, { comBase = true } = {}) {
   const minuscula = t => (/^[A-ZÀ-Ú]{2}/.test(t) ? t : t.charAt(0).toLowerCase() + t.slice(1));
   return itens.map(i => minuscula(i.texto) + (comBase ? ' (' + i.base + ')' : '')).join(' · ');
 }
+
+// as vedações numa linha, pra opção com o Simples da pergunta "Qual comparativo" (a tela e o assistente): quantos
+// impedimentos, ou que nada veda, com o que ficou a conferir. O detalhe (cada impedimento com a base e o remédio, e o que o
+// sistema não confere) fica onde o Simples faz parte do estudo: a fase 1 do caminho com ele e o aviso do resultado
+export function linhaDasVedacoes(v) {
+  if (!v) return 'Sem cadastro, o sistema não confere os impedimentos do Simples.';
+  const n = (v.impedimentos || []).length, c = (v.conferir || []).length, sem = v.semDado || [];
+  if (v.vedado) return 'Hoje o cadastro veda o Simples pra ela (' + n + (n === 1 ? ' impedimento' : ' impedimentos') + '): ele entra como simulação.';
+  const resto = [c ? c + (c === 1 ? ' ponto a conferir' : ' pontos a conferir') : '', sem.length ? 'faltou no cadastro: ' + sem.join(', ') : ''].filter(Boolean).join('; ');
+  return (oQueConferiu(v) ? 'Pelo cadastro, nada veda o Simples' : 'O cadastro não tem o que conferir dos impedimentos do Simples') + (resto ? ' (' + resto + ')' : '') + '.';
+}

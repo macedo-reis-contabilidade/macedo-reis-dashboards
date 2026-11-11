@@ -34,12 +34,20 @@ Confere:
      a leitura que falha deixa os números como estavam;
  11. qual comparativo (11/11/2026, pedido do Samuel): escolhida a empresa, a tela pergunta qual comparativo fazer e só
      depois mostra o estudo (em todos os casos acima a escolha vem primeiro); a empresa do Presumido com pessoa jurídica
-     entre os sócios e CNAE secundário impeditivo — o Simples vedado, com o porquê (o nome com HTML entra como texto) e o
-     "Presumido × Real" sugerido; escolhido, o caminho dele: as fases (a receita e a presunção, o lucro do Real, o resto
+     entre os sócios e CNAE secundário impeditivo — o "Presumido × Real" sugerido pelo regime dela, e o que o cadastro
+     veda no Simples numa linha só, na opção com o Simples; escolhido, nada do Simples na tela (nem os impedimentos, nem
+     o PGDAS, nem o anexo das atividades) e o caminho dele: as fases (a receita e a presunção, o lucro do Real, o resto
      da conta), a tabela sem o Simples, sem as empresas dos sócios nem os prazos do Simples, o lucro da contabilidade pra
      digitar (a missão que decide, com a contabilidade feita até jul/26), a precisão do estudo no resultado e o estudo
      gravado com o comparativo; o lucro digitado cumpre a missão e a conta diz "o da contabilidade"; "Trocar" pra os três
-     regimes: o Simples volta como simulação, com o aviso e a missão dos impedimentos;
+     regimes: o Simples volta como simulação, com o aviso, a lista dos impedimentos (o nome com HTML entra como texto) e
+     a missão deles;
+ 12. o Simples só aparece quando faz parte do estudo (11/11/2026, pedido do Samuel: "se não estou querendo um comparativo
+     que envolva o simples, não é de uma empresa do simples, pra que aparecer isso?"): a empresa de serviço do Presumido
+     com o Presumido × Real — a atividade é "Serviços" (sem o anexo nem o fator r, na lista e na missão) e a tela não
+     fala do Simples; trocado o regime de hoje pra Simples na tela, a nota e o PGDAS voltam; a empresa do Simples que
+     compara só o Presumido com o Real vê que o Simples ficou fora; e a do Presumido com o Simples vedado, com o regime
+     trocado pra Simples, vê a lista dos impedimentos;
 e nenhum erro de JavaScript. No 7, também o aviso do limite no resultado: a conta põe o Simples em 2027, mas o ano de 2026
 passa do limite.
 Termina com código 1 se alguma checagem falhar. Pré-requisito: pip install playwright e python -m playwright install chromium
@@ -98,6 +106,28 @@ SEMEAR = """
   } });
 })();
 """.replace('SIM_OBS_JSON', json.dumps(SIM_OBS))
+DO_SIMPLES = r"""
+() => {
+  // (o módulo Fator R, de onde a folha pode ter vindo, é a origem do número — não o fator r do Simples)
+  const acha = t => { const x = t.replace(/fornecedor do Simples/g, '').replace(/\bFator R\b/g, ''); return /simples|fator r\b|sublimite/i.test(x) || /\bDAS\b|PGDAS|Anexo (I|II|III|IV|V)\b|[Aa]nexo do\b|confira o anexo/.test(x); };
+  const visivel = el => { for (let n = el; n && n !== document.body; n = n.parentElement) { if (n.hidden) return false; const s = getComputedStyle(n); if (s.display === 'none' || s.visibility === 'hidden') return false; } return true; };
+  // o crédito das compras de fornecedor do Simples é assunto de qualquer regime (fala do fornecedor, não da empresa)
+  const doFornecedor = el => !!el.closest('[data-orig="aliqCreditoIcms"], [data-orig="pctComprasSimples"]');
+  const out = [];
+  const w = document.createTreeWalker(document.querySelector('main'), NodeFilter.SHOW_TEXT);
+  for (let t = w.nextNode(); t; t = w.nextNode()) {
+    const el = t.parentElement; if (!el || /^(SCRIPT|STYLE)$/.test(el.tagName)) continue;
+    if (el.closest('#regimeAtual') || doFornecedor(el)) continue;   // a lista do regime de hoje e os campos do fornecedor
+    const txt = t.nodeValue.replace(/\s+/g, ' ').trim();
+    if (txt && acha(txt) && visivel(el)) out.push(txt.slice(0, 120));
+  }
+  for (const el of document.querySelectorAll('main [title], main [placeholder], main [aria-label]')) {
+    const txt = [el.getAttribute('title'), el.getAttribute('placeholder'), el.getAttribute('aria-label')].filter(Boolean).join(' · ');
+    if (txt && acha(txt) && visivel(el) && !doFornecedor(el)) out.push('[dica] ' + txt.slice(0, 120));
+  }
+  return out;
+}
+"""
 TOUR = "(() => { const g = Storage.prototype.getItem; Storage.prototype.getItem = function (k) { return String(k).startsWith('mr_tour_') ? 'ok' : g.call(this, k); }; })()"
 
 falhas = 0
@@ -450,19 +480,34 @@ def main():
         p5.goto(base + 'fiscal-comparativo.html?cliente=c7')
         p5.wait_for_function("() => document.querySelector('#escolhida h3') && document.querySelector('#escolhida h3').textContent === 'INDUSTRIA DE TESTE LTDA'", timeout=8000)
         p5.wait_for_selector('#pergunta .ct-opcao', timeout=5000)
+        # pedido do Samuel, 11/11/2026 (18h25): "escolhi o comparativo presumido x real, então por que a primeira informação é
+        # sobre vedação do Simples? … se não estou querendo um comparativo que envolva o simples, não é de uma empresa do
+        # simples, pra que aparecer isso? precisamos ser objetivos com a ferramenta" — na empresa do regime geral, o motivo
+        # da sugestão é o regime dela, o que o cadastro diz do Simples é uma linha na opção com ele, e no Presumido × Real
+        # nada do Simples aparece
         sug = texto(p5, '#pergunta .ct-opcao[data-objetivo="presumido_real"]')
-        ok('sugerido' in sug and 'A empresa está no Lucro Presumido e o Simples está vedado pra ela.' in sug, f'o sugerido é o Presumido × Real, com o porquê ({sug[-70:]!r})')
-        ved = texto(p5, '#vedado')
-        ok('O Simples está vedado pra ela hoje.' in ved and 'CNAE secundário impeditivo: 7820-5/00 (Locação de mão-de-obra temporária)' in ved and 'Anexo VI' in ved
-           and 'tirar o CNAE por alteração resolve' in ved and 'Pessoa jurídica no quadro de sócios: HOLDING <b>TESTE</b> LTDA (50% do capital)' in ved and 'LC 123, art. 3º, §4º, I' in ved,
-           f'o porquê: o CNAE secundário impeditivo (com o remédio) e a pessoa jurídica entre os sócios ({ved[:80]}…)')
-        ok(p5.locator('#vedado b').count() == 1 and '4637-1/04' not in ved and '12.345.678' not in p5.inner_text('body') and '12345678000199' not in p5.content(),
-           'o nome do sócio com HTML entra como texto, o CNAE permitido não aparece e o documento do sócio não vai pra tela')
-        ok('O sistema não confere: sócio domiciliado no exterior' in ved, 'e o que o cadastro não deixa conferir vem dito')
+        ok('sugerido' in sug and 'A empresa está no Lucro Presumido: a escolha de todo ano é entre o Presumido e o Real.' in sug and 'Simples' not in sug, f'o sugerido é o Presumido × Real, e o porquê é o regime dela, sem o Simples ({sug[-70:]!r})')
+        outra = texto(p5, '#pergunta .ct-opcao[data-objetivo="todos"]')
+        ok('Hoje o cadastro veda o Simples pra ela (2 impedimentos): ele entra como simulação.' in outra, f'o que o cadastro diz do Simples: uma linha, na opção com o Simples ({outra[-90:]!r})')
+        perg = p5.inner_text('#pergunta')
+        ok(p5.locator('#vedado').count() == 0 and 'CNAE secundário impeditivo' not in perg and 'HOLDING' not in perg and 'O sistema não confere' not in perg,
+           'na pergunta, a empresa do regime geral não vê a lista dos impedimentos')
+        ok('12.345.678' not in p5.inner_text('body') and '12345678000199' not in p5.content(), 'o documento do sócio não vai pra tela')
         ok(p5.is_hidden('#grade') and p5.is_hidden('#roteiro'), 'antes da escolha, só a pergunta')
         p5.click('#pergunta .ct-opcao[data-objetivo="presumido_real"]')
         p5.wait_for_selector('#resultado table.ct', timeout=5000)
-        ok(p5.inner_text('#objetivoAtual') == 'Presumido × Real' and 'CNAE secundário impeditivo: 7820-5/00' in p5.inner_text('#pergunta'), 'escolhido: o comparativo dito e o porquê do Simples fora, à vista')
+        perg = ' '.join(p5.inner_text('#pergunta').split())
+        ok(p5.inner_text('#objetivoAtual') == 'Presumido × Real' and p5.locator('#vedado').count() == 0 and perg == 'Qual comparativo Comparativo: Presumido × Real Trocar',
+           f'escolhido o Presumido × Real: só o comparativo e o "Trocar", sem a vedação do Simples ({perg!r})')
+        # a tela inteira: do Simples, só a opção do regime de hoje e o campo das compras de fornecedor do Simples
+        p5.evaluate("() => document.querySelectorAll('main details').forEach(d => { d.dataset.era = d.open ? '1' : ''; d.open = true; })")
+        achados = p5.evaluate(DO_SIMPLES)
+        p5.evaluate("() => document.querySelectorAll('main details').forEach(d => { d.open = d.dataset.era === '1'; })")
+        ok(achados == [], f'no Presumido × Real da empresa do Presumido, nada do Simples na tela — nem o PGDAS, o anexo, o DAS ou o fator r ({achados[:4]})')
+        ok('PGDAS' not in p5.inner_text('#dropAjuda') and 'Faturamento, acompanhamento de entradas' in p5.inner_text('#dropAjuda'), 'a caixa dos relatórios não pede o PGDAS')
+        tipos = p5.eval_on_selector_all('#f_atividades_0_tipo option', 'os => os.map(o => o.value + "=" + o.textContent + (o.selected ? "*" : ""))')
+        ok(tipos == ['comercio=Comércio (revenda de mercadorias)', 'industria=Indústria*', 'servico=Serviços'], f'as atividades: comércio, indústria e serviços, sem os anexos do Simples ({tipos})')
+        ok(texto(p5, '.ct-orig[data-orig="atividades.0.tipo"]').endswith('— confira'), 'a origem da atividade manda conferir, sem falar em anexo')
         trilha = p5.eval_on_selector_all('#trilha .ct-tr-t', 'els => els.map(e => e.textContent)')
         ok(trilha == ['A receita e a presunção', 'O lucro do Real', 'O resto da conta', 'O veredito'], f'o caminho do Presumido × Real ({trilha})')
         ok(celula(p5, 'Simples Nacional', 1) is None and celula(p5, 'Lucro Presumido', 1).startswith('R$') and celula(p5, 'Lucro Real', 1).startswith('R$'), 'a tabela só com o Presumido e o Real')
@@ -547,6 +592,16 @@ def main():
            f'com os três regimes: o Simples entra como simulação, com o aviso ({av[:80]}…)')
         ok('Sem o Simples, o mais barato em 2027 é o Lucro ' in av and p5.evaluate("() => document.querySelector('#resultado').firstElementChild.id") == 'alertaVedado' and 'HOLDING <b>TESTE</b> LTDA' in av and p5.locator('#alertaVedado b').count() == 0,
            'o aviso vem antes da frase do mais barato e diz o mais barato sem o Simples (o nome com HTML, como texto)')
+        # com o Simples no comparativo, os impedimentos aparecem em lista, com a base e o remédio
+        ved = texto(p5, '#vedado')
+        ok('O Simples entra como simulação.' in texto(p5, '#pergunta .ct-escolha') and 'O Simples está vedado pra ela hoje.' in ved and 'CNAE secundário impeditivo: 7820-5/00 (Locação de mão-de-obra temporária)' in ved and 'Anexo VI' in ved
+           and 'tirar o CNAE por alteração resolve' in ved and 'Pessoa jurídica no quadro de sócios: HOLDING <b>TESTE</b> LTDA (50% do capital)' in ved and 'LC 123, art. 3º, §4º, I' in ved,
+           f'com os três regimes, os impedimentos em lista: o CNAE secundário (com o remédio) e a pessoa jurídica entre os sócios ({ved[:80]}…)')
+        ok(p5.locator('#vedado b').count() == 1 and '4637-1/04' not in ved and '12.345.678' not in p5.inner_text('body') and '12345678000199' not in p5.content(),
+           'o nome do sócio com HTML entra como texto, o CNAE permitido não aparece e o documento do sócio não vai pra tela')
+        ok('Simples Nacional (PGDAS)' in p5.inner_text('#dropAjuda'), 'e a caixa dos relatórios volta a pedir o PGDAS')
+        tipos3 = p5.eval_on_selector_all('#f_atividades_0_tipo option', 'os => os.map(o => o.textContent)')
+        ok(tipos3 == ['Comércio (revenda de mercadorias)', 'Indústria', 'Serviços do Anexo III', 'Serviços do fator r (Anexo V ou III)', 'Serviços do Anexo IV'], f'e as atividades voltam com os anexos ({tipos3})')
         p5.click('#trilha button[data-fase="0"]')
         mv = texto(p5, '#fase .ct-m[data-id="vedacoes"]')
         ok(p5.get_attribute('#fase .ct-m[data-id="vedacoes"]', 'data-estado') == 'aberta' and 'O Simples está vedado hoje.' in mv and 'Vai tirar os impedimentos' in mv and 'Entrar no Simples' in texto(p5, '.ct-prazos')
@@ -555,6 +610,77 @@ def main():
         ok(p5.locator('#f_lucroContabil').count() == 1 and p5.locator('button[data-acao="mais-grupo"]').count() == 1, 'e os campos do Simples voltam, com o lucro da contabilidade junto')
         ok(p5.input_value('#f_atividades_0_pctAliqZero') == '100' and p5.is_checked('#f_atividades_0_aliqZeroCesta') and 'No Simples, a alíquota zero de PIS/Cofins não vale (LC 123, art. 24, §1º)' in p5.inner_text('#resultado'),
            'com o Simples na comparação, a alíquota zero informada e a marca ficam, e a tela avisa que no Simples ela paga no DAS')
+
+        print('12. O Simples só aparece quando faz parte do estudo')
+        def nova(cliente, nome):
+            q = cx.new_page()
+            q.on('pageerror', lambda e: erros.append('comparativo: ' + str(e)))
+            q.add_init_script(TOUR); q.add_init_script(SEMEAR)
+            q.clock.set_fixed_time('2026-11-01T12:00:00')
+            q.goto(base + 'fiscal-comparativo.html?cliente=' + cliente)
+            q.wait_for_function("n => document.querySelector('#escolhida h3') && document.querySelector('#escolhida h3').textContent === n", arg=nome, timeout=8000)
+            q.wait_for_selector('#pergunta .ct-opcao', timeout=5000)
+            return q
+        def varrer(q):
+            q.evaluate("() => document.querySelectorAll('main details').forEach(d => { d.dataset.era = d.open ? '1' : ''; d.open = true; })")
+            achados = q.evaluate(DO_SIMPLES)
+            q.evaluate("() => document.querySelectorAll('main details').forEach(d => { d.open = d.dataset.era === '1'; })")
+            return achados
+        linha_da_pergunta = lambda q: ' '.join(q.inner_text('#pergunta').split())
+        # a empresa de serviço do Presumido (o CNAE é do fator r), só o Presumido contra o Real
+        p6 = nova('c2', 'EMPRESA EXEMPLO LTDA')
+        outra = texto(p6, '#pergunta .ct-opcao[data-objetivo="todos"]')
+        ok('Pelo cadastro, nada veda o Simples' in outra and p6.locator('#vedado').count() == 0 and 'O sistema não confere' not in p6.inner_text('#pergunta'),
+           f'a do regime geral sem impedimento: a linha de que nada veda, na opção com o Simples ({outra[-80:]!r})')
+        p6.click('#pergunta .ct-opcao[data-objetivo="presumido_real"]')
+        p6.wait_for_selector('#f_atividades_0_receita', timeout=3000)
+        p6.fill('#f_atividades_0_receita', '600000')
+        p6.wait_for_selector('#resultado table.ct', timeout=5000)
+        tipos = p6.eval_on_selector_all('#f_atividades_0_tipo option', 'os => os.map(o => o.value + "=" + o.textContent + (o.selected ? "*" : ""))')
+        ok(tipos == ['comercio=Comércio (revenda de mercadorias)', 'industria=Indústria', 'servico_r=Serviços*'], f'a atividade é "Serviços": o tipo de serviço fica guardado, sem o anexo nem o fator r na lista ({tipos})')
+        p6.click('#trilha button[data-fase="0"]')
+        mp = texto(p6, '#fase .ct-m[data-id="presuncao"]')
+        ok('A conta usou: Serviços, 32% no IRPJ e 32% na CSLL sobre R$ 600.000' in mp, f'a missão da presunção diz "Serviços", 32% ({mp[:90]}…)')
+        achados = varrer(p6)
+        ok(achados == [] and linha_da_pergunta(p6) == 'Qual comparativo Comparativo: Presumido × Real Trocar', f'e a tela não fala do Simples, do anexo, do DAS nem do fator r ({achados[:4]})')
+        # outra atividade: o teste das premissas diz "serviços", sem o anexo
+        p6.click('button[data-acao="mais"]'); p6.wait_for_selector('#f_atividades_1_receita', timeout=2000)
+        p6.select_option('#f_atividades_1_tipo', 'comercio'); p6.wait_for_selector('#f_atividades_1_aliqIcms', timeout=2000)
+        p6.fill('#f_atividades_1_receita', '100000')
+        p6.wait_for_function("() => /o ISS \\(serviços\\)/.test(document.querySelector('#resultado').textContent)", timeout=4000)
+        ok(varrer(p6) == [], 'com duas atividades, os testes das premissas dizem "serviços", sem o anexo')
+        # o regime de hoje trocado pra Simples na tela: o Simples passa a fazer parte do estudo
+        p6.select_option('#regimeAtual', 'simples')
+        p6.wait_for_function("() => /O Simples ficou fora desta comparação/.test(document.querySelector('#pergunta').textContent)", timeout=3000)
+        ok('O Simples ficou fora desta comparação: pelo cadastro, nada o veda.' in linha_da_pergunta(p6) and 'Simples Nacional (PGDAS)' in p6.inner_text('#dropAjuda'),
+           'trocado o regime de hoje pra Simples: a nota de que ele ficou fora e o PGDAS na caixa dos relatórios')
+        p6.select_option('#regimeAtual', 'presumido')
+        p6.wait_for_function("() => !/Simples/.test(document.querySelector('#pergunta').textContent)", timeout=3000)
+        ok(linha_da_pergunta(p6) == 'Qual comparativo Comparativo: Presumido × Real Trocar' and 'PGDAS' not in p6.inner_text('#dropAjuda'), 'de volta ao Presumido, o Simples sai da tela de novo')
+        p6.close()
+        # a empresa do Simples que compara só o Presumido com o Real: o Simples é o regime dela, e a tela diz que ficou fora
+        p7 = nova('c1', 'COMÉRCIO MODELO ME')
+        todos = texto(p7, '#pergunta .ct-opcao[data-objetivo="todos"]')
+        ok('sugerido' in todos and 'A empresa está no Simples Nacional: ficar ou sair é a pergunta.' in todos and 'Pelo cadastro, nada veda o Simples' in todos and p7.locator('#vedado').count() == 0,
+           f'a do Simples: os três sugeridos, com o porquê e a linha de que nada veda ({todos[-90:]!r})')
+        p7.click('#pergunta .ct-opcao[data-objetivo="presumido_real"]')
+        p7.wait_for_selector('#trocarObjetivo', timeout=3000)
+        ok('O Simples ficou fora desta comparação: pelo cadastro, nada o veda.' in linha_da_pergunta(p7) and 'Simples Nacional (PGDAS)' in p7.inner_text('#dropAjuda'),
+           'escolhido o Presumido × Real: a tela diz que o Simples ficou fora, e a caixa segue lendo o PGDAS')
+        p7.close()
+        # a do Presumido com o Simples vedado: com o regime de hoje trocado pra Simples, a lista dos impedimentos aparece
+        p8 = nova('c7', 'INDUSTRIA DE TESTE LTDA')
+        p8.click('#pergunta .ct-opcao[data-objetivo="presumido_real"]')
+        p8.wait_for_selector('#trocarObjetivo', timeout=3000)
+        ok(p8.locator('#vedado').count() == 0, 'no Presumido × Real da empresa do Presumido, sem a lista dos impedimentos')
+        p8.select_option('#regimeAtual', 'simples')
+        p8.wait_for_selector('#vedado', timeout=3000)
+        ok('O Simples está vedado pra ela hoje.' in texto(p8, '#vedado') and 'CNAE secundário impeditivo: 7820-5/00' in texto(p8, '#vedado'), 'com o regime de hoje no Simples, os impedimentos passam a ser assunto: a lista aparece')
+        p8.click('#trocarObjetivo')
+        p8.wait_for_selector('#pergunta .ct-opcao', timeout=3000)
+        sug = texto(p8, '#pergunta .ct-opcao[data-objetivo="presumido_real"]')
+        ok('A empresa está no Simples Nacional e o Simples está vedado pra ela.' in sug and p8.locator('#vedado').count() == 1, 'e, na pergunta, o Simples vedado é o motivo da sugestão, com a lista')
+        p8.close()
 
         ok(not erros, 'nenhum erro de JavaScript' + ('' if not erros else ': ' + ' | '.join(erros[:3])))
         b.close()

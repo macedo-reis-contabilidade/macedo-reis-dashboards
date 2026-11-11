@@ -16,7 +16,7 @@
 // Testado por tests/comparativo-roteiro.test.mjs.
 // ============================================================
 
-import { LIMITE_SIMPLES, SUBLIMITE, ROTULO_REGIME, TIPOS, ehObjetivo, fraseDaDecisao } from './comparativo-motor.js';
+import { LIMITE_SIMPLES, SUBLIMITE, ROTULO_REGIME, TIPOS, ehObjetivo, fraseDaDecisao, rotuloDoTipo } from './comparativo-motor.js';
 import { DO_SISTEMA } from './comparativo-dados.js';
 import { NAO_CONFERE, oQueConferiu } from './simples-vedacoes.js';
 
@@ -193,7 +193,7 @@ export function fontesDoEstudo({ entrada = {}, origens = {}, comparacao = null, 
   const folhaOk = (!semFolha && !padrao('folha')) || conferido('folha') || fonte('folha') === 'digitado' || zeroPelaPonte;
   add(F2, { id: 'folha', info: 'A folha e o pró-labore dos 12 meses', estado: folhaOk ? 'tem' : 'falta', campo: 'folha', relatorio: true,
     situacao: folhaOk ? (zeroPelaPonte ? 'sem folha nem pró-labore no Domínio' : semFolha ? 'sem folha nem pró-labore' : como('folha')) : 'falta',
-    onde: 'Domínio Folha: o resumo da folha mês a mês dos 12 meses (salários, 13º, férias e pró-labore), lido com IA como no Fator R.',
+    onde: 'Domínio Folha: o resumo da folha mês a mês dos 12 meses (salários, 13º, férias e pró-labore), lido com IA.',
     auto: AUTOMATICO.ponte });
   if (receita > 0) {
     const comprasOk = !padrao('compras') && (num(e.compras) > 0 || conferido('compras') || fonte('compras') === 'digitado');
@@ -356,7 +356,7 @@ export function roteiroDoEstudo({ entrada = {}, origens = {}, comparacao = null,
       const com = ats.map((a, i) => ({ a, i })).filter(x => num(x.a.receita) > 0);
       const ks = com.map(x => 'atividades.' + x.i + '.tipo');
       const certa = ks.every(k => !['padrao', 'cadastro'].includes(fonte(k)));
-      const partes = com.map(x => { const t = TIPOS[x.a.tipo]; return t.rotulo + ', ' + pct(num(x.a.presIrpj, t.presIrpj)) + '% no IRPJ e ' + pct(num(x.a.presCsll, t.presCsll)) + '% na CSLL sobre ' + brl(x.a.receita); });
+      const partes = com.map(x => { const t = TIPOS[x.a.tipo]; return rotuloDoTipo(x.a.tipo, false) + ', ' + pct(num(x.a.presIrpj, t.presIrpj)) + '% no IRPJ e ' + pct(num(x.a.presCsll, t.presCsll)) + '% na CSLL sobre ' + brl(x.a.receita); });
       add({ id: 'presuncao', fase: F1, titulo: 'A atividade e a presunção', curto: 'a presunção', peso: 'importa',
         estado: certa ? 'feita' : 'aberta', como: certa ? como(ks[0]) : null,
         texto: 'A conta usou: ' + partes.join('; ') + '.' + (certa ? '' : ' A atividade veio ' + (fonte(ks[0]) === 'cadastro' ? 'do CNAE do cadastro' : 'do padrão') + ': revenda e indústria presumem 8% (12% na CSLL); serviço, 32%. Confira se cada receita está na atividade certa.'),

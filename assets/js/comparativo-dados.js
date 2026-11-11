@@ -8,7 +8,7 @@
 // tests/comparativo-dados.test.mjs.
 // ============================================================
 
-import { TIPOS, ROTULO_REGIME, ehObjetivo } from './comparativo-motor.js';
+import { TIPOS, ROTULO_REGIME, ehObjetivo, rotuloDoTipo } from './comparativo-motor.js';
 import { digitosCnae } from './dominio-relatorios.js';
 import { diaUtil, somaDias, fmtData } from './rescisao-datas.js';
 
@@ -52,13 +52,22 @@ export function regimeDoCadastro(r) {
 // simples-vedacoes.js) comparam o Presumido com o Real; a do Simples, a do MEI e a sem regime, os três.
 export function objetivoSugerido(regimeAtual, vedacoes = null) {
   if (vedacoes && vedacoes.vedado) return 'presumido_real';
-  return regimeAtual === 'presumido' || regimeAtual === 'real' ? 'presumido_real' : 'todos';
+  return doRegimeGeral(regimeAtual) ? 'presumido_real' : 'todos';
 }
-// o porquê da sugestão, numa frase (a tela mostra ao lado da opção sugerida)
+// a empresa do regime geral: hoje no Lucro Presumido ou no Lucro Real
+export const doRegimeGeral = regimeAtual => regimeAtual === 'presumido' || regimeAtual === 'real';
+// O Simples só entra no estudo quando faz parte dele: está no comparativo escolhido, ou é a situação da empresa hoje (a
+// do Simples, a do MEI, a sem regime no cadastro). No Presumido contra o Real de uma empresa do regime geral, nada do
+// Simples aparece — nem os impedimentos, nem o PGDAS, nem o anexo (pedido do Samuel, 11/11/2026: "se não estou querendo
+// um comparativo que envolva o simples, não é de uma empresa do simples, pra que aparecer isso? precisamos ser
+// objetivos com a ferramenta"). Sem comparativo escolhido (a pergunta ainda aberta), vale o regime de hoje
+export const simplesNoEstudo = (objetivo, regimeAtual) => (objetivo === 'todos' ? true : !doRegimeGeral(regimeAtual));
+// o porquê da sugestão, numa frase (a tela mostra na opção sugerida). Na empresa do regime geral, o motivo é o regime
+// dela: o que o cadastro veda no Simples não entra (fica na opção com o Simples, numa linha)
 export function porQueDoObjetivo(regimeAtual, vedacoes = null) {
   const hoje = ROTULO_REGIME[regimeAtual] ? 'A empresa está no ' + ROTULO_REGIME[regimeAtual] : null;
+  if (doRegimeGeral(regimeAtual)) return hoje + ': a escolha de todo ano é entre o Presumido e o Real.';
   if (vedacoes && vedacoes.vedado) return (hoje ? hoje + ' e o' : 'O') + ' Simples está vedado pra ela.';
-  if (regimeAtual === 'presumido' || regimeAtual === 'real') return hoje + ': a escolha de todo ano é entre o Presumido e o Real.';
   if (regimeAtual === 'simples') return hoje + ': ficar ou sair é a pergunta.';
   return 'Sem o regime de hoje no cadastro, a conta mostra os três.';
 }
@@ -225,7 +234,9 @@ function linhas(receita, mercadorias, servicos, tipoMerc, tipoServ) {
 // [{ competencia 'AAAA-MM-DD', folha_salarios, folha_outros, prolabore }] · pgdas: receita_pgdas [{ competencia, receita_mes }]
 // · dominio: as linhas de dominio_mensal da empresa, só os meses fechados (o Domínio pela ponte, 05/11/2026)
 export function entradaDoSistema({ cliente = null, caso = null, fatorR = [], pgdas = [], dominio = [] } = {}) {
-  const origens = {}, notas = [];
+  // notasSimples: as de `notas` que só interessam com o Simples na comparação (o anexo, o fator r) — só o Presumido contra
+  // o Real não as mostra
+  const origens = {}, notas = [], notasSimples = [];
   const sim = lerSim(caso);
   const inp = (sim && sim.input) || {};
   const dom = (sim && sim.dominio) || {};
@@ -280,7 +291,7 @@ export function entradaDoSistema({ cliente = null, caso = null, fatorR = [], pgd
   const atividades = linhas(receita, merc, serv, tipoMerc, tipoServ);
   atividades.forEach((a, i) => {
     origens['atividades.' + i + '.tipo'] = doAnexo[a.tipo] ? origem('ponte', 'Domínio, pela ponte: Anexo ' + doAnexo[a.tipo] + ' na apuração do Simples' + (a.tipo === 'servico_r' && doAnexo[a.tipo] === 'III' ? ' (o CNAE é do fator r)' : ''))
-      : tipoAnexo && (a.tipo === tipoAnexo) ? origem('reforma', 'Anexo ' + anexoPgdas + ' do PGDAS (caso da Reforma)') : tipoCnae && a.tipo === tipoCnae ? origem('cadastro', 'pelo CNAE do cadastro (' + (cliente && cliente.cnae_principal || '') + ') — confira o anexo') : origem('padrao');
+      : tipoAnexo && (a.tipo === tipoAnexo) ? origem('reforma', 'Anexo ' + anexoPgdas + ' do PGDAS (caso da Reforma)') : tipoCnae && a.tipo === tipoCnae ? origem('cadastro', 'pelo CNAE do cadastro (' + (cliente && cliente.cnae_principal || '') + ') — confira') : origem('padrao');
     origens['atividades.' + i + '.receita'] = receita > 0 ? origem(fonteRec, textoRec) : origem('padrao', 'falta no sistema: digite os 12 meses');
   });
   // ST e monofásico (só nas mercadorias): a apuração do Simples no Domínio (a ponte), senão as saídas do Domínio e o
@@ -402,7 +413,8 @@ export function entradaDoSistema({ cliente = null, caso = null, fatorR = [], pgd
   } else {
     origens.folha = origem('padrao', 'falta no sistema: digite', 'os salários dos 12 meses, com 13º e férias');
     origens.proLabore = origem('padrao', 'falta no sistema: digite');
-    notas.push('A folha e o pró-labore não estão no sistema: sem eles, o INSS do Presumido e do Real sai zero e o serviço do fator r fica no Anexo V.');
+    // (o serviço do fator r que cai no Anexo V sem a folha, o motor avisa, com o Simples na comparação)
+    notas.push('A folha e o pró-labore não estão no sistema: sem eles, o INSS do Presumido e do Real sai zero.');
   }
   origens.rat = origem('padrao', 'padrão: 2% e FAP 1', 'o RAT vai de 1% a 3% pelo CNAE');
   origens.terceiros = origem('padrao', 'padrão: 5,8%', 'o de terceiros da maioria dos FPAS');
@@ -423,12 +435,15 @@ export function entradaDoSistema({ cliente = null, caso = null, fatorR = [], pgd
 
   e.regimeAtual = cliente ? ['simples', 'presumido', 'real'].includes(regimeDoCadastro(cliente.regime_tributario)) ? regimeDoCadastro(cliente.regime_tributario) : null : null;
   if (cliente && regimeDoCadastro(cliente.regime_tributario) === 'mei') notas.push('A empresa é MEI hoje: o comparativo é pra quando ela passar do limite do MEI (Simples como ME × Presumido × Real).');
-  if ((tipoAnexo === 'servico' || doAnexo.servico === 'III') && (fr.length || fp)) notas.push('Serviço no Anexo III no PGDAS: se a atividade é do fator r (vai pro Anexo V quando a folha não chega a 28% da receita), troque o tipo pra "Serviços do fator r".');
+  if ((tipoAnexo === 'servico' || doAnexo.servico === 'III') && (fr.length || fp)) {
+    const n = 'Serviço no Anexo III no PGDAS: se a atividade é do fator r (vai pro Anexo V quando a folha não chega a 28% da receita), troque o tipo pra "Serviços do fator r".';
+    notas.push(n); notasSimples.push(n);
+  }
   // a conferência do Simples: a alíquota efetiva do último PGDAS lido na Reforma
   const pg = dom.pgdas || null;
   const conferencia = pg && num(pg.aliquotaEfetiva) > 0 ? { competencia: pg.competencia, aliquota: num(pg.aliquotaEfetiva), das: num(pg.dasTotal), fonte: 'reforma' } : null;
   const sd = serieDaEmpresa({ caso, pgdas, dominio: mp });
-  return { entrada: e, origens, notas, conferencia, serie: sd ? sd.serie : null, ponte: sPonte ? { de: sPonte.de, ate: sPonte.ate, n: sPonte.n } : null };
+  return { entrada: e, origens, notas, notasSimples, conferencia, serie: sd ? sd.serie : null, ponte: sPonte ? { de: sPonte.de, ate: sPonte.ate, n: sPonte.n } : null };
 }
 
 // junta duas séries datadas ([{ competencia 'AAAA-MM', total }]) — a de b vale no mês que as duas têm —, em ordem. É o que a
@@ -697,7 +712,8 @@ export function premissasParaTestar(entrada, origens, regimes = null) {
   ats.forEach((a, i) => {
     const t = TIPOS[a.tipo];
     if (!t || !(num(a.receita) > 0)) return;
-    const qual = ats.length > 1 ? ' (' + t.rotulo.toLowerCase() + ')' : '';
+    // o nome da atividade: sem o Simples na comparação, o serviço não leva o anexo
+    const qual = ats.length > 1 ? ' (' + rotuloDoTipo(a.tipo, comSimples).toLowerCase() + ')' : '';
     if (t.tributo === 'icms' && padrao('atividades.' + i + '.aliqIcms')) out.push({ campo: 'atividades.' + i + '.aliqIcms', valores: [num(a.aliqIcms, 17) === 12 ? 17 : 12], rotulo: 'o ICMS das vendas' + qual, unidade: '%' });
     if (t.tributo === 'icms' && num(a.redIcms) > 0 && padrao('atividades.' + i + '.redIcms')) out.push({ campo: 'atividades.' + i + '.redIcms', valores: [0], rotulo: 'a redução da base do ICMS no regime geral' + qual, unidade: '%' });
     if (comSimples && t.tributo === 'icms' && num(a.redIcmsSimples) > 0 && padrao('atividades.' + i + '.redIcmsSimples')) out.push({ campo: 'atividades.' + i + '.redIcmsSimples', valores: [0], rotulo: 'a redução do ICMS no DAS' + qual, unidade: '%' });
@@ -706,7 +722,7 @@ export function premissasParaTestar(entrada, origens, regimes = null) {
     // Presumido ou do Real (no Simples, a alíquota zero não sai do DAS). O teste é com toda a venda sem PIS/Cofins
     if ((!comSimples || geralHoje) && t.tributo === 'icms' && padrao('atividades.' + i + '.pctAliqZero') && !(num(a.pctAliqZero) > 0) && num(a.pctMonofasico) < 100) out.push({ campo: 'atividades.' + i + '.pctAliqZero', valores: [100], rotulo: 'as vendas com alíquota zero de PIS/Cofins' + qual, unidade: '%',
       confira: 'A conta supõe que toda a venda paga PIS/Cofins — confira se o produto tem alíquota zero (a Lei 10.925/2004: óleos vegetais, arroz, carnes, leite, higiene…) ou é monofásico.' });
-    if (t.tributo === 'iss' && padrao('atividades.' + i + '.aliqIss')) out.push({ campo: 'atividades.' + i + '.aliqIss', valores: [2, 5], rotulo: 'o ISS' + (ats.length > 1 ? ' (' + t.rotulo.toLowerCase() + ')' : ''), unidade: '%' });
+    if (t.tributo === 'iss' && padrao('atividades.' + i + '.aliqIss')) out.push({ campo: 'atividades.' + i + '.aliqIss', valores: [2, 5], rotulo: 'o ISS' + qual, unidade: '%' });
   });
   if (padrao('rat') && num(e.folha) > 0) out.push({ campo: 'rat', valores: [1, 3], rotulo: 'o RAT', unidade: '%' });
   if (temIcms && e.rda === 'melhor' && padrao('rda')) out.push({ campo: 'rda', valores: [null], rotulo: 'o ICMS do restaurante no Presumido e no Real', nomes: { null: 'sem o RDA' }, confira: 'A conta supõe que a empresa pode optar pelo RDA (alimentação em 60% ou mais das vendas, sem dívida ativa) — confira.' });

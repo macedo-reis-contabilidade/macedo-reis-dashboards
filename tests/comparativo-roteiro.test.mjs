@@ -126,7 +126,7 @@ const fGr = fonte(rF, 'simples', 'grupo');
 ok('as outras empresas: somadas até o mês que todas têm, com os que faltam', fGr.estado === 'antigo' && /as 2 empresas somadas até jul\/26 — faltam ago\/26 e set\/26/.test(fGr.situacao), fGr.situacao);
 ok('a outra sem a receita: falta, com o nome', /falta a receita de PADARIA INVENTADA/.test(fonte(rodar(ent, { ...ori, 'grupo.0.receita': { fonte: 'padrao' } }, { ...base, hoje: '2026-11-01' }), 'simples', 'grupo').situacao));
 const fFolha = fonte(rF, 'numeros', 'folha');
-ok('a folha: o resumo da folha do Domínio, que falta, pra soltar (lido com IA, como no Fator R)', fFolha.estado === 'falta' && /Domínio Folha: o resumo da folha mês a mês/.test(fFolha.onde) && /lido com IA como no Fator R/.test(fFolha.onde) && fFolha.relatorio === true && fFolha.campo === 'folha' && fFolha.auto === AUTOMATICO.ponte && /a ponte do Domínio traz todo dia/.test(AUTOMATICO.ponte), fFolha.onde);
+ok('a folha: o resumo da folha do Domínio, que falta, pra soltar (lido com IA)', fFolha.estado === 'falta' && /Domínio Folha: o resumo da folha mês a mês/.test(fFolha.onde) && /, lido com IA\.$/.test(fFolha.onde) && !/Fator R/.test(fFolha.onde) && fFolha.relatorio === true && fFolha.campo === 'folha' && fFolha.auto === AUTOMATICO.ponte && /a ponte do Domínio traz todo dia/.test(AUTOMATICO.ponte), fFolha.onde);
 ok('as compras: o Acompanhamento de Entradas, cumpridas pelo caso da Reforma', fonte(rF, 'numeros', 'compras').estado === 'tem' && /Acompanhamento de Entradas/.test(fonte(rF, 'numeros', 'compras').onde));
 ok('o PGDAS: de jul/26; as pontes trazem a receita, o RBT12, o ST e o monofásico, e a alíquota efetiva segue pelo relatório', fonte(rF, 'numeros', 'pgdas').estado === 'tem' && /jul\/26/.test(fonte(rF, 'numeros', 'pgdas').situacao) && /o ST e o monofásico; a alíquota efetiva e a redução do ICMS seguem pelo relatório/.test(fonte(rF, 'numeros', 'pgdas').auto));
 ok('as despesas: o balancete ou a DRE do Domínio Contabilidade', /balancete ou a DRE/.test(fonte(rF, 'numeros', 'despesas').onde) && ['falta', 'dispensa'].includes(fonte(rF, 'numeros', 'despesas').estado));
@@ -174,6 +174,12 @@ console.log('=== qual comparativo: as fases de cada caminho (11/11/2026) ===');
   const pres = missao(g0, 'presuncao');
   ok('a presunção: pelo CNAE do cadastro, a conferir, com o que a conta usou', pres.fase === 'presuncao' && pres.estado === 'aberta' && pres.peso === 'importa' && pres.conferir.join() === 'atividades.0.tipo' && pres.conferirRotulo === 'Está certa'
     && /^A conta usou: Comércio \(revenda de mercadorias\), 8% no IRPJ e 12% na CSLL sobre R\$\s1\.000\.000\. A atividade veio do CNAE do cadastro/.test(pres.texto), pres.texto);
+  // 11/11/2026: só o Presumido contra o Real, o serviço é "Serviços" — o anexo e o fator r são do Simples e não aparecem
+  // em nenhuma missão, fase ou fonte do caminho
+  const gServ = rodarC(comP({ atividades: [{ tipo: 'servico_r', receita: 600000 }], compras: 0, regimeAtual: 'presumido', objetivo: 'presumido_real' }), ORI, base);
+  ok('o serviço do fator r no Presumido × Real: a missão diz "Serviços", 32%', /^A conta usou: Serviços, 32% no IRPJ e 32% na CSLL sobre R\$\s600\.000\./.test(missao(gServ, 'presuncao').texto), missao(gServ, 'presuncao').texto);
+  ok('nada do Simples no caminho do Presumido × Real (nem o anexo, nem o fator r, nem o DAS, nem o PGDAS)', [g0, gServ].every(r => !/Anexo [IV]|fator r|\bDAS\b|PGDAS|Simples Nacional|no Simples|do Simples\b(?! bem)/.test(JSON.stringify(r).replace(/fornecedor do Simples/g, ''))),
+    (JSON.stringify(gServ).replace(/fornecedor do Simples/g, '').match(/.{60}(Anexo [IV]|fator r|\bDAS\b|PGDAS|Simples Nacional|no Simples|do Simples).{60}/) || [''])[0]);
   const luc = missao(g0, 'lucro');
   ok('o lucro da contabilidade falta e decide: digitar o da DRE ou seguir com a estimativa', luc.fase === 'lucro' && luc.estado === 'aberta' && luc.falta && luc.peso === 'decide' && luc.campo === 'lucroContabil' && luc.irRotulo === 'Digitar o lucro da DRE'
     && luc.conferir.join() === 'lucroContabil' && luc.conferirRotulo === 'Seguir com a estimativa');

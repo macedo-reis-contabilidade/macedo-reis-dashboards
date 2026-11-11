@@ -4,7 +4,7 @@
 // Leis 9.718, 10.637 e 10.833; Lei 8.212; LC 224/2025; Lei 14.973/2024; LC 214 e Res. CGSN 190/2026), escritas
 // do lado de cada caso. Tolerância: R$ 0,01 por linha. Se não bater, o motor está errado, não o teste.
 
-import { comparar, calcularAno, normalizar, testarPremissas, irpjCsllReal, fraseDaDecisao, excessosLc224, OBJETIVOS, regimesDoObjetivo, REGIMES } from '../assets/js/comparativo-motor.js';
+import { comparar, calcularAno, normalizar, testarPremissas, irpjCsllReal, fraseDaDecisao, excessosLc224, OBJETIVOS, regimesDoObjetivo, REGIMES, TIPOS, rotuloDoTipo, ehServico } from '../assets/js/comparativo-motor.js';
 
 let falhas = 0, total = 0;
 function igual(nome, esperado, obtido, tol = 0.01) {
@@ -364,6 +364,12 @@ verdade('mix que não soma 100: erro', /mix/.test(erro || ''));
 console.log('=== S · qual comparativo: só o Presumido contra o Real (11/11/2026) ===');
 verdade('os dois comparativos e os regimes de cada um', Object.keys(OBJETIVOS).join() === 'presumido_real,todos' && regimesDoObjetivo('presumido_real').join() === 'presumido,real'
   && regimesDoObjetivo('todos').join() === REGIMES.join() && regimesDoObjetivo('qualquer').join() === REGIMES.join() && regimesDoObjetivo(null).join() === REGIMES.join());
+// o nome da atividade (11/11/2026): com o Simples na comparação, o serviço leva o anexo; só com o Presumido e o Real, é "Serviços"
+verdade('o nome da atividade com o Simples na comparação: o do tipo, com o anexo', Object.keys(TIPOS).every(k => rotuloDoTipo(k) === TIPOS[k].rotulo && rotuloDoTipo(k, true) === TIPOS[k].rotulo));
+verdade('sem o Simples: os três serviços são "Serviços"; comércio e indústria, iguais', ['servico', 'servico_r', 'servico_iv'].every(k => rotuloDoTipo(k, false) === 'Serviços' && ehServico(k))
+  && rotuloDoTipo('comercio', false) === TIPOS.comercio.rotulo && rotuloDoTipo('industria', false) === 'Indústria' && !ehServico('comercio') && !ehServico('industria') && !ehServico(null)
+  && !Object.keys(TIPOS).some(k => /anexo|fator r|simples/i.test(rotuloDoTipo(k, false))));
+verdade('tipo que não existe: sem nome', rotuloDoTipo('constructor') === '' && rotuloDoTipo(null, false) === '' && rotuloDoTipo('__proto__', false) === '');
 verdade('sem dizer os regimes, os três (como antes)', normalizar({ atividades: [{ tipo: 'comercio', receita: 1000 }] }).regimes.join() === REGIMES.join());
 // comércio do Presumido, R$ 1 milhão, compras de R$ 500 mil (ICMS 17% nas vendas, crédito de 12% das compras), sem folha
 const S = { atividades: [{ tipo: 'comercio', receita: 1000000, aliqIcms: 17 }], compras: 500000, aliqCreditoIcms: 12, regimeAtual: 'presumido', regimes: ['presumido', 'real'] };

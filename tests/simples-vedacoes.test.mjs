@@ -4,7 +4,7 @@
 // que a tela e o assistente mostram. Rodar com: node tests/simples-vedacoes.test.mjs — dados inventados (o repositório é público).
 
 import { LISTAS_CONFERIDAS_EM, CNAES_IMPEDITIVOS, CNAES_AMBIGUOS, codigoCnae, cnaeImpeditivo, cnaeAmbiguo, BASE_CNAE_IMPEDITIVO, BASE_CNAE_AMBIGUO, NAO_CONFERE,
-  vedacoesDoSimples, oQueConferiu, resumoDasVedacoes } from '../assets/js/simples-vedacoes.js';
+  vedacoesDoSimples, oQueConferiu, resumoDasVedacoes, linhaDasVedacoes } from '../assets/js/simples-vedacoes.js';
 import { digitosCnae } from '../assets/js/dominio-relatorios.js';
 
 let falhas = 0, total = 0;
@@ -97,6 +97,14 @@ ok('o resumo numa frase: a primeira letra minúscula, menos na sigla; com e sem 
   && resumoDasVedacoes(tudo, { comBase: false }) === 'CNAE secundário impeditivo: 7820-5/00 (Locação de mão-de-obra temporária) · pessoa jurídica no quadro de sócios: HOLDING INVENTADA LTDA (50% do capital)', resumoDasVedacoes(tudo));
 ok('o que o sistema não confere: dito, com a base de cada um', NAO_CONFERE.length === 5 && NAO_CONFERE.every(t => /\((LC 123, )?art\. /.test(t)) && /sócio domiciliado no exterior/.test(NAO_CONFERE[0]) && /cessão ou locação de mão de obra de fato/.test(NAO_CONFERE.join()));
 ok('sem argumento: tudo falta, nada veda', (() => { const v = vedacoesDoSimples(); return !v.vedado && v.semDado.join() === 'o CNAE,os sócios,a natureza jurídica' && oQueConferiu(v) === ''; })());
+// a linha da opção com o Simples, na pergunta "Qual comparativo" (11/11/2026): quantos impedimentos, ou que nada veda
+ok('numa linha: vedado, com quantos impedimentos (no singular e no plural)', linhaDasVedacoes(tudo) === 'Hoje o cadastro veda o Simples pra ela (2 impedimentos): ele entra como simulação.'
+  && linhaDasVedacoes(nat('2054')) === 'Hoje o cadastro veda o Simples pra ela (1 impedimento): ele entra como simulação.', linhaDasVedacoes(tudo));
+ok('numa linha: nada veda; com as pendências a conferir; e com o que faltou no cadastro', linhaDasVedacoes(limpo) === 'Pelo cadastro, nada veda o Simples.' && linhaDasVedacoes(pend) === 'Pelo cadastro, nada veda o Simples (1 ponto a conferir).'
+  && linhaDasVedacoes(nat(null)) === 'Pelo cadastro, nada veda o Simples (faltou no cadastro: a natureza jurídica).', [linhaDasVedacoes(limpo), linhaDasVedacoes(pend), linhaDasVedacoes(nat(null))]);
+ok('numa linha: sem cadastro, e com o cadastro sem nada pra olhar', linhaDasVedacoes(null) === 'Sem cadastro, o sistema não confere os impedimentos do Simples.'
+  && linhaDasVedacoes(vedacoesDoSimples()) === 'O cadastro não tem o que conferir dos impedimentos do Simples (faltou no cadastro: o CNAE, os sócios, a natureza jurídica).', linhaDasVedacoes(vedacoesDoSimples()));
+ok('a linha não traz nome de sócio nem base legal (o detalhe fica onde o Simples está no estudo)', !/HOLDING|LC 123|CGSN|7820/.test(linhaDasVedacoes(tudo)));
 
 console.log('\n' + (total - falhas) + ' de ' + total + ' conferências ok' + (falhas ? ' — ' + falhas + ' FALHA(S)' : ''));
 process.exit(falhas ? 1 : 0);

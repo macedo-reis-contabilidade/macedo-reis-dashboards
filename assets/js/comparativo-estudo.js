@@ -14,7 +14,7 @@ import { comparar, testarPremissas, REGIMES, ROTULO_REGIME, TIPOS, OBJETIVOS, re
 import { entradaDoSistema, empresasDosSocios, receitaDaEmpresa, situacaoDoGrupo, premissasParaTestar, prazosDaEscolha, foraDaSoma, avisoDaSoma, mesclarSerie, CAMPOS_PONTE,
   objetivoSugerido, objetivoValido, porQueDoObjetivo, rotuloComp } from './comparativo-dados.js';
 import { roteiroDoEstudo, ultimoMesFechado, precisaoDoEstudo } from './comparativo-roteiro.js';
-import { vedacoesDoSimples, resumoDasVedacoes } from './simples-vedacoes.js';
+import { vedacoesDoSimples, resumoDasVedacoes, linhaDasVedacoes } from './simples-vedacoes.js';
 import { resumoDaEmpresa as resumoDoControle } from './contabil-controle.js';
 
 const brl = v => (Number(v) || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
@@ -90,10 +90,13 @@ export function entradaDoMotor(entrada, aliq2027 = null, objetivo = null) {
 export function objetivoDoEstudo(entrada, vedacoes = null, objetivo = null) {
   return objetivoValido(objetivo) || objetivoValido(entrada && entrada.objetivo) || objetivoSugerido(entrada && entrada.regimeAtual, vedacoes);
 }
-// as duas opções, como a tela pergunta: [{ id, rotulo, texto, sugerido, porque }]
+// as duas opções, como a tela pergunta: [{ id, rotulo, texto, sugerido, porque, nota }] — porque: o motivo da sugerida ·
+// nota: só na opção com o Simples, o que o cadastro diz dos impedimentos dele, numa linha (linhaDasVedacoes): é ali que
+// isso ajuda a escolher; fora dela, o Simples não entra na conversa
 export function opcoesDeObjetivo(regimeAtual, vedacoes = null) {
   const sug = objetivoSugerido(regimeAtual, vedacoes);
-  return Object.entries(OBJETIVOS).map(([id, x]) => ({ id, rotulo: x.rotulo, texto: x.texto, sugerido: id === sug, porque: id === sug ? porQueDoObjetivo(regimeAtual, vedacoes) : '' }));
+  return Object.entries(OBJETIVOS).map(([id, x]) => ({ id, rotulo: x.rotulo, texto: x.texto, sugerido: id === sug, porque: id === sug ? porQueDoObjetivo(regimeAtual, vedacoes) : '',
+    nota: x.regimes.includes('simples') ? linhaDasVedacoes(vedacoes) : '' }));
 }
 
 // ---------- abrir a empresa: o que o sistema sabe e o estudo gravado ----------
@@ -175,8 +178,9 @@ export async function carregarEstudo({ ler, cliente, cadastroDe = null, hoje = n
   const caso = (rCaso && rCaso.data && rCaso.data[0]) || null;
   const pg = (rPg && rPg.data) || [];
   const sis = entradaDoSistema({ cliente: c, caso, fatorR: fr, pgdas: pg, dominio });
-  grupoFora.forEach(g => sis.notas.push(g.nome + ' é dos mesmos sócios, mas fica fora da soma do limite: ' + g.motivo + '.'));
-  sis.notas.push(...notasGrupo);
+  // as notas das empresas dos sócios são do limite do Simples: só com ele na comparação (notasSimples)
+  const doLimite = [...grupoFora.map(g => g.nome + ' é dos mesmos sócios, mas fica fora da soma do limite: ' + g.motivo + '.'), ...notasGrupo];
+  sis.notas.push(...doLimite); sis.notasSimples.push(...doLimite);
   sis.entrada.grupo = grupo.map(({ origem, ...g }) => g);
   grupo.forEach((g, i) => { sis.origens['grupo.' + i + '.receita'] = g.origem; });
   // o que o cadastro veda no Simples (o CNAE principal e os secundários, pessoa jurídica entre os sócios, a natureza
@@ -199,7 +203,7 @@ export async function carregarEstudo({ ler, cliente, cadastroDe = null, hoje = n
   if (contabil) fontes.push({ ok: !!contabil.feitaAte, txt: contabil.faz === false ? 'contabilidade fora do escritório' : contabil.feitaAte ? 'contabilidade feita até ' + rotuloComp(contabil.feitaAte) : 'contabilidade sem mês feito' });
   const semTabela = erroSemTabela(rEst && rEst.error);
   const salvo = !semTabela && rEst && rEst.data && rEst.data[0];
-  const est = { cliente: c, nome: c.nome_principal, notas: sis.notas, serie: sis.serie, serieRel: null, folhaRel: null, grupoSeries, grupoFora, socios: nSocios, sistema: sis, fontes, semTabela,
+  const est = { cliente: c, nome: c.nome_principal, notas: sis.notas, notasSimples: sis.notasSimples, serie: sis.serie, serieRel: null, folhaRel: null, grupoSeries, grupoFora, socios: nSocios, sistema: sis, fontes, semTabela,
     vedacoes, contabil, estudoId: null, gravadoEm: null, gravadoPor: null };
   if (salvo && salvo.entrada && salvo.entrada.entrada) {
     Object.assign(est, { estudoId: salvo.id, gravadoEm: salvo.atualizado_em, gravadoPor: salvo.atualizado_por });
@@ -221,7 +225,7 @@ export function estudoGravado(linha) {
   const serieRel = Array.isArray(g.serieRel) && g.serieRel.length ? g.serieRel : null;
   const folhaRel = Array.isArray(g.folhaRel) && g.folhaRel.length ? g.folhaRel : null;
   return { cliente: null, nome: (linha && linha.nome) || 'empresa sem cadastro', entrada: comPadroes(g.entrada || {}), origens: g.origens || {}, conferencia: g.conferencia || null,
-    notas: [], serie: serieRel ? mesclarSerie(null, serieRel) : null, serieRel, folhaRel, grupoSeries: [], grupoFora: [], socios: null, sistema: null, fontes: [], semTabela: false,
+    notas: [], notasSimples: [], serie: serieRel ? mesclarSerie(null, serieRel) : null, serieRel, folhaRel, grupoSeries: [], grupoFora: [], socios: null, sistema: null, fontes: [], semTabela: false,
     vedacoes: null, contabil: null,
     estudoId: (linha && linha.id) || null, gravadoEm: (linha && linha.atualizado_em) || null, gravadoPor: (linha && linha.atualizado_por) || null };
 }
@@ -306,7 +310,7 @@ export function alertaDasVedacoes(c, vedacoes, regimes = null) {
 // veda no Simples (carregarEstudo) · contabil: o Controle das contabilidades ({ faz, feitaAte }). A volta diz o objetivo e
 // os regimes da conta, as vedações (e `vedado`: o aviso de que a linha do Simples é simulação) e a precisão (o que já está
 // na conta e o que falta, com o efeito de cada item).
-export function contaDoEstudo({ entrada, origens = {}, conferencia = null, notas = [], serie = null, grupoSeries = [], grupoFora = [], socios = null, aliq2027 = null, hoje = null,
+export function contaDoEstudo({ entrada, origens = {}, conferencia = null, notas = [], notasSimples = [], serie = null, grupoSeries = [], grupoFora = [], socios = null, aliq2027 = null, hoje = null,
   objetivo = null, vedacoes = null, contabil = null } = {}) {
   const achadas = (grupoSeries || []).length;
   const obj = objetivoDoEstudo(entrada, vedacoes, objetivo);
@@ -330,7 +334,8 @@ export function contaDoEstudo({ entrada, origens = {}, conferencia = null, notas
     roteiro, precisao: precisaoDoEstudo(roteiro),
     prazos: prazosDaEscolha(hoje, entrada.regimeAtual, comparacao.anoDecisao, situacao, { objetivo: obj, vedado: !!(vedacoes && vedacoes.vedado) }),
     muda: oQueMuda(comparacao, testes),
-    avisos: avisosDoEstudo({ notas, entrada, comparacao })
+    // sem o Simples na comparação, as notas que são só dele (o limite com as empresas dos sócios, o anexo) ficam de fora
+    avisos: avisosDoEstudo({ notas: comSimples ? notas : (notas || []).filter(n => !(notasSimples || []).includes(n)), entrada, comparacao })
   };
 }
 // o resumo gravado com o estudo (comparativos.resultado): o ano da decisão, o mais barato, a distância pro segundo e os

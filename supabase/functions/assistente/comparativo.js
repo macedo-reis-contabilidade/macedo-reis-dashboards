@@ -8,14 +8,15 @@
 // sócios como na tela, é lido só dentro de carregarEstudo e não sai no texto. Desde 11/11/2026, o comparativo escolhido na
 // tela (só o Presumido contra o Real, ou com o Simples; sem escolha, o que o sistema sugere — e `objetivo` pede o outro),
 // o que o cadastro veda no Simples, o lucro da contabilidade no Real e a precisão do estudo (o que falta e o efeito de cada
-// item). Testado em tests/assistente-funcao.test.mjs.
+// item). No Presumido contra o Real de uma empresa do regime geral, o Simples não entra no texto (simplesNoEstudo: nem os
+// impedimentos, nem o anexo) — só uma linha pra quando perguntarem. Testado em tests/assistente-funcao.test.mjs.
 // ============================================================
 
-import { REGIMES, ROTULO_REGIME, TIPOS, OBJETIVOS, fraseDaDecisao } from '../../../assets/js/comparativo-motor.js';
-import { FONTES, rotuloComp, objetivoValido, porQueDoObjetivo } from '../../../assets/js/comparativo-dados.js';
+import { REGIMES, ROTULO_REGIME, TIPOS, OBJETIVOS, fraseDaDecisao, rotuloDoTipo } from '../../../assets/js/comparativo-motor.js';
+import { FONTES, rotuloComp, objetivoValido, porQueDoObjetivo, simplesNoEstudo } from '../../../assets/js/comparativo-dados.js';
 import { CAMPOS, carregarEstudo, estudoGravado, contaDoEstudo, aplicarESe } from '../../../assets/js/comparativo-estudo.js';
 import { NIVEL_DA_PRECISAO, PESO_DA_PRECISAO } from '../../../assets/js/comparativo-roteiro.js';
-import { NAO_CONFERE, oQueConferiu } from '../../../assets/js/simples-vedacoes.js';
+import { NAO_CONFERE, oQueConferiu, resumoDasVedacoes } from '../../../assets/js/simples-vedacoes.js';
 import { nomePorEmail } from '../../../assets/js/equipe.js';
 
 const enc = v => encodeURIComponent(String(v));
@@ -93,7 +94,8 @@ function blocoResultado(c, conta) {
   });
   if (motivos.length) out.push('- Por que o Simples fica fora: ' + motivos.join(' | '));
   const fora = REGIMES.filter(g => !regimesDe(conta).includes(g));
-  if (fora.length) out.push('- Fora desta comparação: ' + fora.map(g => ROTULO_REGIME[g]).join(' e ') + ' (o comparativo é ' + OBJETIVOS[conta.objetivo].rotulo + '; com objetivo "todos", a conta põe os três).');
+  // (na empresa do regime geral que compara só o Presumido com o Real, o Simples não é assunto: a linha dele vem mais abaixo)
+  if (fora.length && simplesNoEstudo(conta.objetivo, c.entrada.regimeAtual)) out.push('- Fora desta comparação: ' + fora.map(g => ROTULO_REGIME[g]).join(' e ') + ' (o comparativo é ' + OBJETIVOS[conta.objetivo].rotulo + '; com objetivo "todos", a conta põe os três).');
   return out;
 }
 function blocoTributos(c, conta) {
@@ -158,7 +160,7 @@ function blocoNumeros(estudo, conta = null) {
     if (comSimples && a.presIrpj != null && Number(a.presIrpj) !== t.presIrpj) partes.push('presunção do IRPJ ' + pct(a.presIrpj) + '%');
     if (comSimples && a.presCsll != null && Number(a.presCsll) !== t.presCsll) partes.push('presunção da CSLL ' + pct(a.presCsll) + '%');
     if (comSimples && a.tipo === 'servico_r' && a.fatorR === false) partes.push('sem o fator r (fica no Anexo V)');
-    out.push('- Atividade ' + (i + 1) + ': ' + t.rotulo + ' [' + origemDe(o, p + 'tipo') + '] — ' + partes.join('; '));
+    out.push('- Atividade ' + (i + 1) + ': ' + rotuloDoTipo(TIPOS[a.tipo] ? a.tipo : 'comercio', comSimples) + ' [' + (comSimples ? origemDe(o, p + 'tipo') : origemDe(o, p + 'tipo').replace(/ — confira o anexo$/, ' — confira')) + '] — ' + partes.join('; '));
   });
   ['compras', 'aliqCreditoIcms', 'pctComprasSimples', 'despesasCredito', 'outrasDespesas', 'folha', 'proLabore'].forEach(k => out.push(linha(k)));
   // o lucro do Real: o da contabilidade (a DRE dos 12 meses), com os ajustes; sem ele, a conta estima
@@ -238,9 +240,17 @@ function linhaDoObjetivo(estudo, conta, pedido) {
     : 'ainda não escolhido na tela (ela abre perguntando "Qual comparativo você quer fazer?"): o sistema sugere este — ' + porQueDoObjetivo(estudo.entrada && estudo.entrada.regimeAtual, estudo.vedacoes);
   return ['Comparativo: ' + OBJETIVOS[obj].rotulo + ' (' + de + '). O outro é ' + OBJETIVOS[outro].rotulo + ': outra chamada, com objetivo "' + outro + '".'];
 }
-// o que o cadastro veda no Simples (o CNAE principal e os secundários, pessoa jurídica entre os sócios, a natureza jurídica)
-function blocoVedacoes(estudo) {
+// o que o cadastro veda no Simples (o CNAE principal e os secundários, pessoa jurídica entre os sócios, a natureza jurídica).
+// Só com o Simples no estudo (está no comparativo, ou é o regime da empresa hoje): no Presumido contra o Real de uma
+// empresa do regime geral ele não é assunto — fica uma linha, pra quando perguntarem, e o detalhe vem com objetivo "todos"
+function blocoVedacoes(estudo, conta = null) {
   const v = estudo.vedacoes;
+  const regime = estudo.entrada && estudo.entrada.regimeAtual;
+  if (conta && !simplesNoEstudo(conta.objetivo, regime)) {
+    return ['O SIMPLES NÃO ENTRA NESTE ESTUDO (empresa do ' + ROTULO_REGIME[regime] + ', só o Presumido contra o Real): não fale dele na resposta, nem dos impedimentos. Só se perguntarem: '
+      + (!v ? 'sem cadastro, o sistema não confere os impedimentos' : v.vedado ? 'hoje o cadastro veda o Simples pra ela (' + resumoDasVedacoes(v, { comBase: false }) + ')' : 'pelo cadastro, nada veda o Simples')
+      + ' — o detalhe e a conta com ele são outra chamada, com objetivo "todos".'];
+  }
   if (!v) return ['IMPEDIMENTOS DO SIMPLES: não conferidos (empresa sem cadastro: o sistema não tem o CNAE, os sócios nem a natureza jurídica).'];
   const item = i => '- ' + i.texto + ' (' + i.base + ')' + (i.remedio ? ' ' + i.remedio : '');
   const sem = v.semDado && v.semDado.length ? ['- Faltou no cadastro pra conferir: ' + v.semDado.join(', ') + '.'] : [];
@@ -288,7 +298,7 @@ export function textoDoComparativo({ estudo, conta, pedido = null }) {
   const comSimples = regimesDe(conta).includes('simples');
   if (!conta.comparacao) {
     out.push('A CONTA NÃO RODA: ' + conta.erro);
-    out.push(...blocoNumeros(estudo, conta), '', ...blocoVedacoes(estudo), '', ...blocoFases(conta.roteiro));
+    out.push(...blocoNumeros(estudo, conta), '', ...blocoVedacoes(estudo, conta), '', ...blocoFases(conta.roteiro));
     out.push('Na resposta: diga o que falta (a receita dos 12 meses, na tela Comparativo tributário — digitada ou pelo faturamento do Domínio) e o que o sistema já tem.');
     return out.join('\n');
   }
@@ -299,7 +309,7 @@ export function textoDoComparativo({ estudo, conta, pedido = null }) {
   out.push('', ...blocoPrecisao(conta));
   out.push('', 'POR TRIBUTO (R$ no ano: ' + c.anos.map(rotAno).join(' · ') + ')', ...blocoTributos(c, conta));
   if (conta.muda.length) out.push('', 'O QUE MUDA O RESULTADO', ...conta.muda.map(m => '- ' + (m.alerta ? '[premissa no padrão que vira o resultado] ' : '') + m.txt));
-  out.push('', ...blocoVedacoes(estudo));
+  out.push('', ...blocoVedacoes(estudo, conta));
   // o limite do Simples com as empresas dos sócios só interessa com o Simples na comparação
   if (comSimples) out.push('', ...blocoGrupo(estudo, conta));
   out.push('', ...blocoNumeros(estudo, conta));

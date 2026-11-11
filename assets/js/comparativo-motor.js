@@ -39,6 +39,10 @@ export const TIPOS = {
   servico_r:  { rotulo: 'Serviços do fator r (Anexo V ou III)', anexo: 'V', fatorR: true,  presIrpj: 32, presCsll: 32, tributo: 'iss' },
   servico_iv: { rotulo: 'Serviços do Anexo IV',               anexo: 'IV',  fatorR: false, presIrpj: 32, presCsll: 32, tributo: 'iss' }
 };
+// O nome da atividade como a tela e o assistente dizem: com o Simples na comparação, o serviço leva o anexo (é ele que
+// escolhe a tabela); só com o Presumido e o Real, é "Serviços" — o anexo e o fator r são do Simples e não entram na conversa
+export const ehServico = tipo => /^servico/.test(String(tipo || ''));
+export const rotuloDoTipo = (tipo, comSimples = true) => (!Object.prototype.hasOwnProperty.call(TIPOS, String(tipo)) ? '' : !comSimples && ehServico(tipo) ? 'Serviços' : TIPOS[tipo].rotulo);
 export const ANEXOS = ['I', 'II', 'III', 'IV', 'V'];
 export const REGIMES = ['simples', 'presumido', 'real'];
 export const ROTULO_REGIME = { simples: 'Simples Nacional', presumido: 'Lucro Presumido', real: 'Lucro Real' };

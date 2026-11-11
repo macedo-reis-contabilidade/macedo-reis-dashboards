@@ -5,7 +5,7 @@
 
 import { entradaDoSistema, aplicarRelatorios, premissasParaTestar, prazosDaEscolha, exclusaoObrigatoria, ultimoDiaUtil, serieDosMeses, tipoPeloCnae, tipoPeloAnexo, regimeDoCadastro,
   ehRefeicaoRS, ehRdaRS, empresasDosSocios, receitaDaEmpresa, situacaoDoGrupo, serieDaEmpresa, foraDaSoma, avisoDaSoma, mesclarSerie,
-  pareceFolha, cnpjsDoCabecalho, juntarFolha, folhaDoAno, aplicarFolha, mesesDaPonte, seriePonte, somaDaPonte, objetivoSugerido, porQueDoObjetivo, objetivoValido } from '../assets/js/comparativo-dados.js';
+  pareceFolha, cnpjsDoCabecalho, juntarFolha, folhaDoAno, aplicarFolha, mesesDaPonte, seriePonte, somaDaPonte, objetivoSugerido, porQueDoObjetivo, objetivoValido, doRegimeGeral, simplesNoEstudo } from '../assets/js/comparativo-dados.js';
 import { comparar, testarPremissas } from '../assets/js/comparativo-motor.js';
 
 let falhas = 0, total = 0;
@@ -62,6 +62,11 @@ const semNada = entradaDoSistema({ cliente: { regime_tributario: 'Lucro Presumid
 ok('sem caso: uma linha do fator r pelo CNAE, sem receita', semNada.entrada.atividades.length === 1 && semNada.entrada.atividades[0].tipo === 'servico_r' && semNada.entrada.atividades[0].receita === 0);
 ok('sem caso: a origem pede a receita', /digite/.test(semNada.origens['atividades.0.receita'].texto));
 ok('sem folha: a nota avisa', semNada.notas.some(n => /folha/.test(n)));
+// 11/11/2026: a nota da folha fala só do INSS do Presumido e do Real (o fator r no Anexo V, o motor avisa com o Simples na
+// comparação), e a origem da atividade pelo CNAE manda conferir, sem falar em anexo
+ok('a nota da folha não fala do Simples', semNada.notas.some(n => n === 'A folha e o pró-labore não estão no sistema: sem eles, o INSS do Presumido e do Real sai zero.') && !semNada.notas.some(n => /fator r|Anexo|Simples/.test(n)), semNada.notas);
+ok('a atividade pelo CNAE: a origem manda conferir, sem o anexo', semNada.origens['atividades.0.tipo'].fonte === 'cadastro' && semNada.origens['atividades.0.tipo'].texto === 'pelo CNAE do cadastro (6201-5/01) — confira', semNada.origens['atividades.0.tipo']);
+ok('as notas só do Simples vêm à parte (aqui, nenhuma)', Array.isArray(semNada.notasSimples) && semNada.notasSimples.length === 0);
 
 const pg = Array.from({ length: 12 }, (_, i) => ({ competencia: '2026-' + String(i + 1).padStart(2, '0'), receita_mes: 50000 }));
 const comPgdas = entradaDoSistema({ cliente: { regime_tributario: 'Simples Nacional', cnae_principal: '4711-3/02' }, caso: { anexo: 'I', sim_obs: simObs }, pgdas: pg });
@@ -288,6 +293,7 @@ console.log('=== o Domínio pela ponte (05/11/2026, a versão 2) ===');
     && /\(o CNAE é do fator r\)/.test(fr.origens['atividades.0.tipo'].texto) && !fr.notas.some(n => /Serviço no Anexo III/.test(n)), [fr.entrada.atividades, fr.origens['atividades.0.tipo']]);
   const so3 = entradaDoSistema({ cliente: { regime_tributario: 'Simples Nacional', cnae_principal: '8211-3/00' }, dominio: simp.map(l => ({ ...l, receita_anexo_1: 0, receita_anexo_2: 0, receita_anexo_3: 120000, receita_mercadorias: 0, receita_servicos: 100000, receita_st: 0, receita_monofasica: 0 })) });
   ok('o serviço no Anexo III com outro CNAE: serviço do III, com a nota de conferir o fator r', so3.entrada.atividades[0].tipo === 'servico' && so3.notas.some(n => /Serviço no Anexo III/.test(n)), so3.entrada.atividades);
+  ok('a nota do anexo é só do Simples: sai da lista quando ele não está na comparação', so3.notasSimples.length === 1 && /^Serviço no Anexo III no PGDAS/.test(so3.notasSimples[0]) && so3.notas.includes(so3.notasSimples[0]) && fr.notasSimples.length === 0);
   const semSt = entradaDoSistema({ cliente: { regime_tributario: 'Simples Nacional', cnae_principal: '4711-3/02' }, dominio: simp.map(l => ({ ...l, receita_st: 0, receita_exportacao: 5000 })),
     caso: { anexo: 'I', sim_obs: JSON.stringify({ v: 1, input: { anexo: 'I' }, dominio: { vendas: { mercadorias: 100, st: 30, meses: [] } } }) } });
   ok('a ponte sem venda com ST: valem as saídas do caso da Reforma (a venda com ST não separada na apuração)', perto(semSt.entrada.atividades[0].pctST, 30) && semSt.origens['atividades.0.pctST'].fonte === 'reforma');
@@ -309,7 +315,16 @@ console.log('=== qual comparativo: a sugestão do sistema (11/11/2026) ===');
   ok('a do Simples, a do MEI e a sem regime no cadastro: os três', objetivoSugerido('simples') === 'todos' && objetivoSugerido('mei', livre) === 'todos' && objetivoSugerido(null) === 'todos');
   ok('com o Simples vedado pelo cadastro, só os dois — mesmo sem o regime', objetivoSugerido('simples', vedado) === 'presumido_real' && objetivoSugerido(null, vedado) === 'presumido_real');
   ok('o porquê: o regime de hoje', porQueDoObjetivo('presumido') === 'A empresa está no Lucro Presumido: a escolha de todo ano é entre o Presumido e o Real.' && porQueDoObjetivo('simples') === 'A empresa está no Simples Nacional: ficar ou sair é a pergunta.');
-  ok('o porquê: o Simples vedado, com e sem o regime', porQueDoObjetivo('presumido', vedado) === 'A empresa está no Lucro Presumido e o Simples está vedado pra ela.' && porQueDoObjetivo(null, vedado) === 'O Simples está vedado pra ela.');
+  ok('o porquê: o Simples vedado, na empresa do Simples e na sem regime', porQueDoObjetivo('simples', vedado) === 'A empresa está no Simples Nacional e o Simples está vedado pra ela.' && porQueDoObjetivo(null, vedado) === 'O Simples está vedado pra ela.');
+  // pedido do Samuel, 11/11/2026: "se não estou querendo um comparativo que envolva o simples, não é de uma empresa do
+  // simples, pra que aparecer isso?" — na empresa do regime geral, o motivo da sugestão é o regime dela, não o Simples
+  ok('o porquê na empresa do regime geral: o regime dela, mesmo com o Simples vedado', porQueDoObjetivo('presumido', vedado) === 'A empresa está no Lucro Presumido: a escolha de todo ano é entre o Presumido e o Real.'
+    && porQueDoObjetivo('real', vedado) === 'A empresa está no Lucro Real: a escolha de todo ano é entre o Presumido e o Real.' && !/Simples/.test(porQueDoObjetivo('presumido', vedado)));
+  ok('a empresa do regime geral: Presumido ou Real', doRegimeGeral('presumido') && doRegimeGeral('real') && !doRegimeGeral('simples') && !doRegimeGeral('mei') && !doRegimeGeral(null) && !doRegimeGeral(undefined));
+  ok('o Simples no estudo: com ele no comparativo, sempre', simplesNoEstudo('todos', 'presumido') && simplesNoEstudo('todos', 'real') && simplesNoEstudo('todos', 'simples') && simplesNoEstudo('todos', null));
+  ok('só o Presumido contra o Real: o Simples só é assunto se for o regime de hoje (ou sem regime)', !simplesNoEstudo('presumido_real', 'presumido') && !simplesNoEstudo('presumido_real', 'real')
+    && simplesNoEstudo('presumido_real', 'simples') && simplesNoEstudo('presumido_real', 'mei') && simplesNoEstudo('presumido_real', null));
+  ok('com a pergunta ainda aberta, vale o regime de hoje', !simplesNoEstudo(null, 'presumido') && !simplesNoEstudo(undefined, 'real') && simplesNoEstudo(null, 'simples') && simplesNoEstudo(null, null));
   ok('o porquê sem o regime no cadastro', porQueDoObjetivo(null) === 'Sem o regime de hoje no cadastro, a conta mostra os três.');
   ok('só os dois comparativos valem', objetivoValido('todos') === 'todos' && objetivoValido('presumido_real') === 'presumido_real' && objetivoValido('simples') === null && objetivoValido(null) === null && objetivoValido('__proto__') === null);
 
@@ -339,6 +354,11 @@ console.log('=== qual comparativo: a sugestão do sistema (11/11/2026) ===');
   const zero = tG.find(t => t.campo === 'atividades.0.pctAliqZero');
   ok('Presumido × Real: sem o que só mexe no DAS, e com as vendas com alíquota zero de PIS/Cofins (100%), com o que conferir', !tG.some(t => /redIcmsSimples|pctMonofasico/.test(t.campo)) && zero && zero.valores.join() === '100'
     && zero.rotulo === 'as vendas com alíquota zero de PIS/Cofins' && /confira se o produto tem alíquota zero \(a Lei 10\.925\/2004: óleos vegetais, arroz, carnes, leite, higiene…\) ou é monofásico\.$/.test(zero.confira), tG.map(t => t.campo));
+  // com duas atividades, o teste diz de qual é: com o Simples na comparação, o serviço leva o anexo; sem ele, é "serviços"
+  const eDuas = { ...eG, atividades: [eG.atividades[0], { tipo: 'servico_r', receita: 200000, aliqIss: 3 }] };
+  const issG = premissasParaTestar(eDuas, {}, ['presumido', 'real']).find(t => t.campo === 'atividades.1.aliqIss'), issT = premissasParaTestar(eDuas, {}).find(t => t.campo === 'atividades.1.aliqIss');
+  ok('o nome da atividade no teste do ISS: "serviços" no Presumido × Real, com o anexo quando o Simples está na comparação', issG && issG.rotulo === 'o ISS (serviços)' && issT && issT.rotulo === 'o ISS (serviços do fator r (anexo v ou iii))'
+    && !premissasParaTestar(eDuas, {}, ['presumido', 'real']).some(t => /anexo|fator r/i.test(t.rotulo) || /\bDAS\b/.test(t.rotulo)), premissasParaTestar(eDuas, {}, ['presumido', 'real']).map(t => t.rotulo));
   const comAtiv = a => ({ ...eG, atividades: [{ ...eG.atividades[0], ...a }] });
   ok('informada, já com parte em alíquota zero ou com toda a venda monofásica, a alíquota zero não entra no teste; com parte monofásica, entra',
     !premissasParaTestar(eG, { 'atividades.0.pctAliqZero': { fonte: 'confirmado' } }, ['presumido', 'real']).some(t => /pctAliqZero/.test(t.campo))
