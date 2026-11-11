@@ -7,15 +7,18 @@
 // Samuel, 01/11/2026: "o assistente sabe tirar dúvidas sobre o comparativo?"), com o "e se" do assistente (os números
 // trocados só na conta, nada gravado). Desde 11/11/2026, o comparativo escolhido (entrada.objetivo: só o Presumido contra o
 // Real, ou os três), o que o cadastro veda no Simples (simples-vedacoes.js), a contabilidade feita até que mês (o Controle
-// das contabilidades) e a precisão do estudo. Testado por tests/comparativo-estudo.test.mjs.
+// das contabilidades) e a precisão do estudo. Também de 11/11/2026: o lucro da contabilidade até onde ela está feita (o
+// período da DRE e o fator que o leva aos 12 meses: periodoDaDre) e o que o Domínio mostra desses meses (contabil.meses:
+// a folha ou a escrita fiscal que não entraram, a conta transitória com saldo, o caixa negativo), pra confirmação de quem
+// cuida da contabilidade. Testado por tests/comparativo-estudo.test.mjs.
 // ============================================================
 
 import { comparar, testarPremissas, REGIMES, ROTULO_REGIME, TIPOS, OBJETIVOS, regimesDoObjetivo } from './comparativo-motor.js';
 import { entradaDoSistema, empresasDosSocios, receitaDaEmpresa, situacaoDoGrupo, premissasParaTestar, prazosDaEscolha, foraDaSoma, avisoDaSoma, mesclarSerie, CAMPOS_PONTE,
-  objetivoSugerido, objetivoValido, porQueDoObjetivo, rotuloComp } from './comparativo-dados.js';
+  objetivoSugerido, objetivoValido, porQueDoObjetivo, rotuloComp, periodoDaDre } from './comparativo-dados.js';
 import { roteiroDoEstudo, ultimoMesFechado, precisaoDoEstudo } from './comparativo-roteiro.js';
 import { vedacoesDoSimples, resumoDasVedacoes, linhaDasVedacoes } from './simples-vedacoes.js';
-import { resumoDaEmpresa as resumoDoControle } from './contabil-controle.js';
+import { resumoDaEmpresa as resumoDoControle, mapaDosMeses, estadoDoMes, dominioPorMes, andamentoDaEmpresa, problemasDoMes, folhaCalculada, CAMPOS_DOMINIO, ultimoFechavel } from './contabil-controle.js';
 
 const brl = v => (Number(v) || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 const pct = (v, d = 1) => (Number(v) || 0).toLocaleString('pt-BR', { maximumFractionDigits: d });
@@ -42,7 +45,7 @@ export const ORIGENS_PADRAO = {
   difalSimples: { fonte: 'padrao', texto: 'padrão: nada', dica: 'diferencial de alíquota e antecipação do ICMS que o optante paga fora do DAS no ano' },
   despesasCredito: { fonte: 'padrao', texto: 'falta no sistema' },
   cprb: { fonte: 'padrao', texto: 'vazio: sem desoneração', dica: 'preencha a alíquota cheia da CPRB se a empresa está na desoneração da folha' },
-  lucroContabil: { fonte: 'padrao', texto: 'vazio: a conta estima o lucro', dica: 'o resultado da DRE dos 12 meses antes do IRPJ e da CSLL (prejuízo, com o sinal de menos). Sem ele, a conta estima o lucro do Real pelas compras, a folha e as despesas' },
+  lucroContabil: { fonte: 'padrao', texto: 'vazio: a conta estima o lucro', dica: 'o resultado da DRE antes do IRPJ e da CSLL, até onde a contabilidade está feita (prejuízo, com o sinal de menos). Sem ele, a conta estima o lucro do Real pelas compras, a folha e as despesas' },
   ajustesLalur: { fonte: 'padrao', texto: 'padrão: sem ajustes', dica: 'adições (despesa indedutível: multa, brinde, doação) menos exclusões (receita que não é tributada) do lucro real' }
 };
 
@@ -53,7 +56,7 @@ export const CAMPOS = {
   pctComprasSimples: { rotulo: 'Compras de fornecedor do Simples', un: '%' },
   despesasCredito: { rotulo: 'Despesas com crédito (energia, aluguel de empresa, frete)', un: 'R$' },
   outrasDespesas: { rotulo: 'Outras despesas (o resto dos custos)', un: 'R$' },
-  lucroContabil: { rotulo: 'Lucro contábil antes do IRPJ e da CSLL (a DRE dos 12 meses)', un: 'R$' },
+  lucroContabil: { rotulo: 'Lucro contábil antes do IRPJ e da CSLL (a DRE)', un: 'R$' },
   ajustesLalur: { rotulo: 'Adições menos exclusões do lucro real', un: 'R$' },
   difalSimples: { rotulo: 'ICMS pago fora do DAS (diferencial e antecipação)', un: 'R$' },
   folha: { rotulo: 'Folha (salários, 13º e férias)', un: 'R$' },
@@ -118,16 +121,19 @@ const soFechados = (linhas, fechado) => (linhas || []).filter(l => l && fechado 
 export async function carregarEstudo({ ler, cliente, cadastroDe = null, hoje = null }) {
   const c = cliente;
   const fechado = ultimoMesFechado(hoje || hojeEmBrasilia());
-  const [rCaso, rFr, rPg, rEst, rDom, rRec, rCtb, rCtbM] = await Promise.all([
+  // o Domínio do mês: os números do estudo (CAMPOS_PONTE) e o andamento da contabilidade (CAMPOS_DOMINIO, a versão 3)
+  const colsDominio = [...new Set([...CAMPOS_PONTE, ...CAMPOS_DOMINIO, 'ultimo_lancamento', 'incluido_ate'])].join(', ');
+  const [rCaso, rFr, rPg, rEst, rDom, rRec, rCtb, rCtbM, rFoto] = await Promise.all([
     ler('rt_casos', { cols: 'id, anexo, rbt12, receita_mensal, sim_obs, atualizado_em', eq: { cliente_id: c.id }, ordem: { coluna: 'atualizado_em', desc: true }, limite: 1 }),
     ler('fr_empresas', { cols: 'id', eq: { cliente_id: c.id }, limite: 1 }),
     ler('receita_pgdas', { cols: 'competencia, receita_mes', eq: { cliente_id: c.id }, ordem: { coluna: 'competencia', desc: true }, limite: 12 }),
     ler('comparativos', { cols: 'id, entrada, atualizado_em, atualizado_por', eq: { cliente_id: c.id }, ordem: { coluna: 'atualizado_em', desc: true }, limite: 1 }),
-    ler('dominio_mensal', { cols: 'codigo, competencia, ' + CAMPOS_PONTE.join(', '), eq: { cliente_id: c.id }, ordem: { coluna: 'competencia', desc: true }, limite: 48 }),
+    ler('dominio_mensal', { cols: 'codigo, competencia, ' + colsDominio, eq: { cliente_id: c.id }, ordem: { coluna: 'competencia', desc: true }, limite: 48 }),
     // o que o cadastro não diz das vedações do Simples (as pendências na Receita) e a contabilidade feita até que mês
     ler('receita_empresas', { cols: 'pendencias, situacao_fiscal_em', eq: { cliente_id: c.id }, limite: 1 }),
-    ler('contabil_empresas', { cols: 'faz, inicio, fim', eq: { cliente_id: c.id }, limite: 1 }),
-    ler('contabil_meses', { cols: 'competencia, situacao, feita_em', eq: { cliente_id: c.id } })
+    ler('contabil_empresas', { cols: 'faz, inicio, fim, responsavel', eq: { cliente_id: c.id }, limite: 1 }),
+    ler('contabil_meses', { cols: 'competencia, situacao, feita_em', eq: { cliente_id: c.id } }),
+    ler('dominio_andamento', { cols: COLS_FOTO, eq: { cliente_id: c.id } })
   ]);
   const dominio = soFechados(rDom && !rDom.error ? rDom.data : [], fechado);
   let fr = [];
@@ -190,8 +196,8 @@ export async function carregarEstudo({ ler, cliente, cadastroDe = null, hoje = n
     pendencias: rec ? rec.pendencias : null, pendenciasEm: rec ? rec.situacao_fiscal_em : null });
   // a contabilidade feita até que mês (o Controle das contabilidades): o lucro da DRE só vale até lá
   const ctbEmp = rCtb && !rCtb.error && rCtb.data && rCtb.data[0];
-  const contabil = !ctbEmp ? null : ctbEmp.faz === false ? { faz: false, feitaAte: null }
-    : { faz: true, feitaAte: resumoDoControle(ctbEmp, (rCtbM && !rCtbM.error && rCtbM.data) || [], hoje || hojeEmBrasilia()).feitaAte };
+  // e o que o Domínio mostra de cada mês (todos os que ele leu, não só os fechados do estudo), pra confirmação dela
+  const contabil = contabilDoEstudo(ctbEmp, (rCtbM && !rCtbM.error && rCtbM.data) || [], rDom && !rDom.error ? rDom.data : [], (rFoto && !rFoto.error && rFoto.data) || [], hoje);
   // a campanha da Reforma, o Fator R e o PGDAS são do Simples: na empresa do Presumido ou do Real, a falta deles não é notícia
   const geral = sis.entrada.regimeAtual === 'presumido' || sis.entrada.regimeAtual === 'real';
   const fontes = [
@@ -228,6 +234,34 @@ export async function carregarEstudo({ ler, cliente, cadastroDe = null, hoje = n
   }
   return est;
 }
+// ---------- a contabilidade da empresa, pro lucro do Real ----------
+// O Controle das contabilidades diz até que mês ela está feita e quem cuida; o Domínio (a versão 3 da ponte) diz o que
+// cada mês mostra. O Samuel, 11/11/2026: "eu ainda confirmaria com a Adaini se é confiável usar esse número até essa
+// data" — o sistema faz a primeira leitura, pra pergunta chegar a ela com o que olhar.
+// emp: a linha de contabil_empresas · linhasMeses: as de contabil_meses · linhasDominio: as de dominio_mensal (com as
+// colunas de CAMPOS_DOMINIO) · linhasFoto: as de dominio_andamento. Volta { faz, feitaAte, responsavel, meses, bancoAte }:
+// meses: [{ competencia, estado, problemas: [{ tipo, valor }] }] — os que o Domínio leu, até o último que dá pra fechar,
+// só com os problemas fortes (problemasDoMes, a regra do Controle das contabilidades) · bancoAte: o dia até onde a conta de
+// banco mais atrasada está lançada. Null sem a empresa no Controle.
+const COLS_FOTO = 'banco_contas, banco_ate, banco_ultimo, banco_ultimo_geral, caixa_ate, caixa_contador_ate, extrato_contas, extrato_ate, extrato_pendentes, conciliadas, conciliado_ate, fechamento_em, dados_ate';
+export function contabilDoEstudo(emp, linhasMeses = [], linhasDominio = [], linhasFoto = [], hoje = null) {
+  if (!emp) return null;
+  const responsavel = String(emp.responsavel || '').trim() || null;
+  if (emp.faz === false) return { faz: false, feitaAte: null, responsavel, meses: [], bancoAte: null };
+  const dia = hoje || hojeEmBrasilia();
+  const mapa = mapaDosMeses(linhasMeses);
+  const dom = dominioPorMes(linhasDominio);
+  const foto = andamentoDaEmpresa(linhasFoto);
+  const ultimo = ultimoFechavel(dia);
+  const valorDe = (tipo, d) => (tipo === 'transitoria' ? (d.transitorias_valor != null ? Number(d.transitorias_valor) : null) : tipo === 'folha' ? folhaCalculada(d) : null);
+  const meses = [...dom.keys()].filter(c => c <= ultimo).sort().map(c => {
+    const d = dom.get(c);
+    return { competencia: c, estado: estadoDoMes(emp, mapa, c, dia).tipo,
+      problemas: problemasDoMes(d, c, foto, dom).filter(p => p.forte).map(p => ({ tipo: p.tipo, valor: valorDe(p.tipo, d) })) };
+  });
+  return { faz: true, feitaAte: resumoDoControle(emp, mapa, dia).feitaAte, responsavel, meses, bancoAte: foto && foto.banco_contas > 0 ? foto.banco_ate || null : null };
+}
+
 // o estudo de uma empresa sem cadastro (só o que foi gravado: a linha de comparativos, com o nome)
 export function estudoGravado(linha) {
   const g = (linha && linha.entrada) || {};
@@ -318,8 +352,9 @@ export function alertaDasVedacoes(c, vedacoes, regimes = null) {
 // objetivo: o comparativo escolhido (sem ele, o da entrada; sem nenhum, o que o sistema sugere) · vedacoes: o que o cadastro
 // veda no Simples (carregarEstudo) · contabil: o Controle das contabilidades ({ faz, feitaAte }) · atividade: o que o
 // sistema apurou da atividade ({ divisao, especial }: as notas do Domínio e o CNAE — carregarEstudo). A volta diz o objetivo e
-// os regimes da conta, as vedações (e `vedado`: o aviso de que a linha do Simples é simulação) e a precisão (o que já está
-// na conta e o que falta, com o efeito de cada item).
+// os regimes da conta, as vedações (e `vedado`: o aviso de que a linha do Simples é simulação), a precisão (o que já está
+// na conta e o que falta, com o efeito de cada item) e `dre`: o período da DRE do lucro informado e o fator que o levou aos
+// 12 meses (periodoDaDre; null sem o lucro).
 export function contaDoEstudo({ entrada, origens = {}, conferencia = null, notas = [], notasSimples = [], serie = null, grupoSeries = [], grupoFora = [], socios = null, aliq2027 = null, hoje = null,
   objetivo = null, vedacoes = null, contabil = null, atividade = null } = {}) {
   const achadas = (grupoSeries || []).length;
@@ -327,18 +362,21 @@ export function contaDoEstudo({ entrada, origens = {}, conferencia = null, notas
   const regimes = regimesDoObjetivo(obj);
   const comSimples = regimes.includes('simples');
   let comparacao = null, testes = [], erro = null;
+  // o lucro da contabilidade até onde ela está feita: o período da DRE e o fator que o leva aos 12 meses da receita
+  const dre = num(entrada && entrada.lucroContabil) != null ? periodoDaDre(serie, entrada) : null;
+  const doMotor = () => ({ ...entradaDoMotor(entrada, aliq2027, obj), lucroFator: dre ? dre.fator : 1 });
   try {
-    comparacao = comparar(entradaDoMotor(entrada, aliq2027, obj));
-    testes = testarPremissas(entradaDoMotor(entrada, aliq2027, obj), premissasParaTestar(entrada, origens, regimes));
+    comparacao = comparar(doMotor());
+    testes = testarPremissas(doMotor(), premissasParaTestar(entrada, origens, regimes));
   } catch (e) { comparacao = null; testes = []; erro = (e && e.message) || 'A conta não rodou.'; }
   if (!comparacao) {
     const roteiro = roteiroDoEstudo({ entrada, origens, serie, socios, achadas, grupoFora, conferencia, hoje, objetivo: obj, vedacoes, contabil, atividade });
-    return { comparacao: null, testes: [], situacao: null, erro, prazos: [], muda: [], avisos: [], limite: null, vedado: null, objetivo: obj, regimes, vedacoes, roteiro, precisao: precisaoDoEstudo(roteiro) };
+    return { comparacao: null, testes: [], situacao: null, erro, prazos: [], muda: [], avisos: [], limite: null, vedado: null, objetivo: obj, regimes, vedacoes, dre, roteiro, precisao: precisaoDoEstudo(roteiro) };
   }
   const situacao = comSimples ? situacaoComGrupo(serie, entrada.grupo, grupoSeries) : null;
   const roteiro = roteiroDoEstudo({ entrada, origens, comparacao, testes, situacao, serie, socios, achadas, grupoFora, conferencia, hoje, objetivo: obj, vedacoes, contabil, atividade });
   return {
-    comparacao, testes, situacao, erro: null, objetivo: obj, regimes, vedacoes,
+    comparacao, testes, situacao, erro: null, objetivo: obj, regimes, vedacoes, dre,
     limite: comSimples ? alertaDoLimite(comparacao, situacao, entrada.grupo) : null,
     vedado: alertaDasVedacoes(comparacao, vedacoes, regimes),
     roteiro, precisao: precisaoDoEstudo(roteiro),
@@ -388,13 +426,25 @@ export const E_SE = {
 };
 const receitaDe = e => ((e && e.atividades) || []).reduce((s, a) => s + (Number(a.receita) || 0), 0);
 const tributoDe = a => a.tributo || (TIPOS[a.tipo] || TIPOS.comercio).tributo;
-export function aplicarESe(entrada, origens, eSe, { aliq2027 = null } = {}) {
+export function aplicarESe(entrada, origens, eSe, { aliq2027 = null, serie = null } = {}) {
   const e = JSON.parse(JSON.stringify(entrada || {}));
   if (!Array.isArray(e.atividades) || !e.atividades.length) e.atividades = [PADRAO_ATIV({ tipo: 'comercio', receita: 0 })];
   const o = { ...(origens || {}) };
   const x = eSe && typeof eSe === 'object' ? eSe : {};
   const mudancas = [], avisos = [];
   const marca = campo => { o[campo] = { fonte: 'digitado', texto: 'e se (assistente)' }; };
+  // o lucro do "e se" é sempre o dos 12 meses: o da DRE de só uma parte deles (a contabilidade feita até antes do fim da
+  // receita) vai primeiro aos 12 meses, pelo fator do período (serie: a série do estudo), e a conta não o leva de novo
+  const lucroAosDoze = () => {
+    if (e.lucroAnual) return;
+    const dre = num(e.lucroContabil) != null ? periodoDaDre(serie, e) : null;
+    if (dre && Math.abs(dre.fator - 1) > 0.0005) {
+      e.lucroContabil = Number(e.lucroContabil) * dre.fator;
+      if (num(e.ajustesLalur)) e.ajustesLalur = Number(e.ajustesLalur) * dre.fator;
+    }
+    e.lucroAnual = true; delete e.lucroDe; delete e.lucroAte; delete e.lucroReceita;
+  };
+  if (num(x.lucro_contabil_12_meses) != null || num(x.margem_lucro_real) != null) lucroAosDoze();
   // a receita: as atividades na mesma proporção; as compras e as despesas acompanham
   const rec = num(x.receita_12_meses);
   if (rec != null && rec >= 0) {

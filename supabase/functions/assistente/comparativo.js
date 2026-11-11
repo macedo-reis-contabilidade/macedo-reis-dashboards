@@ -15,7 +15,7 @@
 import { REGIMES, ROTULO_REGIME, TIPOS, OBJETIVOS, fraseDaDecisao, rotuloDoTipo } from '../../../assets/js/comparativo-motor.js';
 import { FONTES, rotuloComp, objetivoValido, porQueDoObjetivo, simplesNoEstudo } from '../../../assets/js/comparativo-dados.js';
 import { CAMPOS, carregarEstudo, estudoGravado, contaDoEstudo, aplicarESe } from '../../../assets/js/comparativo-estudo.js';
-import { NIVEL_DA_PRECISAO, PESO_DA_PRECISAO } from '../../../assets/js/comparativo-roteiro.js';
+import { NIVEL_DA_PRECISAO, PESO_DA_PRECISAO, lucroDoEstudo } from '../../../assets/js/comparativo-roteiro.js';
 import { NAO_CONFERE, oQueConferiu, resumoDasVedacoes } from '../../../assets/js/simples-vedacoes.js';
 import { nomePorEmail } from '../../../assets/js/equipe.js';
 
@@ -165,13 +165,24 @@ function blocoNumeros(estudo, conta = null) {
     out.push('- Atividade ' + (i + 1) + ': ' + rotuloDoTipo(TIPOS[a.tipo] ? a.tipo : 'comercio', comSimples) + ' [' + (comSimples ? origemDe(o, p + 'tipo') + (oTipo && oTipo.simples ? ' · ' + oTipo.simples : '') : origemDe(o, p + 'tipo').replace(/ — confira o anexo$/, ' — confira')) + '] — ' + partes.join('; '));
   });
   ['compras', 'aliqCreditoIcms', 'pctComprasSimples', 'despesasCredito', 'outrasDespesas', 'folha', 'proLabore'].forEach(k => out.push(linha(k)));
-  // o lucro do Real: o da contabilidade (a DRE dos 12 meses), com os ajustes; sem ele, a conta estima
+  // o lucro do Real: o da contabilidade (a DRE até onde ela está feita, levada aos 12 meses pela receita), com os ajustes;
+  // sem ele, a conta estima. E a confirmação de quem cuida da contabilidade, com o que o Domínio mostra daqueles meses
+  const L = lucroDoEstudo({ entrada: e, origens: o, serie: estudo.serie, contabil: estudo.contabil });
+  const mm = c => rotuloComp(c);
   if (fin(e.lucroContabil)) {
-    out.push(linha('lucroContabil'));
+    const dre = L.dre, parcial = !!(dre && Math.abs(dre.fator - 1) > 0.0005);
+    out.push(linha('lucroContabil') + (dre ? ' — a DRE de ' + mm(dre.de) + ' a ' + mm(dre.ate) + (parcial ? ' (' + dre.meses + (dre.janela ? ' dos ' + dre.janela.meses : '') + ' meses da receita): levado aos 12 meses pela receita (a margem dos meses que a DRE tem), ' + brl(Number(e.lucroContabil) * dre.fator) : '') : ''));
     out.push(linha('ajustesLalur'));
-  } else out.push('- ' + CAMPOS.lucroContabil.rotulo + ': não informado — a conta estima o lucro do Real pela receita menos as compras, a folha e as despesas [' + origemDe(o, 'lucroContabil') + ']');
+  } else {
+    const s = L.sug;
+    out.push('- ' + CAMPOS.lucroContabil.rotulo + ': não informado — a conta estima o lucro do Real pela receita menos as compras, a folha e as despesas [' + origemDe(o, 'lucroContabil') + ']'
+      + (s && !s.antes && s.faltam.length ? '. A DRE a pedir: de ' + mm(s.de) + ' a ' + mm(s.ate) + ' (' + s.meses + ' dos ' + s.total + ' meses da receita, até onde a contabilidade está feita); os que faltam entram pela margem dos outros' : ''));
+  }
   const ctb = estudo.contabil;
-  if (ctb) out.push('- A contabilidade, pelo Controle das contabilidades: ' + (ctb.faz === false ? 'o escritório não faz a desta empresa' : ctb.feitaAte ? 'feita até ' + rotuloComp(ctb.feitaAte) + ' (a DRE só fecha até lá)' : 'nenhum mês feito') + '.');
+  if (ctb) out.push('- A contabilidade, pelo Controle das contabilidades: ' + (ctb.faz === false ? 'o escritório não faz a desta empresa' : ctb.feitaAte ? 'feita até ' + rotuloComp(ctb.feitaAte) : 'nenhum mês feito')
+    + (ctb.responsavel && ctb.faz !== false ? ' · quem cuida: ' + ctb.responsavel : '') + '.');
+  if (L.ate && L.sinais && L.sinais.lidos) out.push('- O que o Domínio mostra da contabilidade de ' + mm(L.de) + ' a ' + mm(L.ate) + ': ' + (L.sinais.itens.length ? L.sinais.itens.join('; ') + ' (' + L.sinais.comProblema + ' de ' + L.sinais.lidos + ' meses com problema)' : 'nenhum problema') + '.');
+  if (L.ate) out.push('- A confirmação de ' + L.quem + ' de que o resultado até ' + mm(L.ate) + ' é confiável: ' + (L.conf && L.conf.vale ? 'feita' + (L.conf.nome ? ' por ' + L.conf.nome : '') + (L.conf.em ? ' em ' + L.conf.em.split('-').reverse().join('/') : '') : 'falta (na tela, a missão "A confirmação da contabilidade")') + '.');
   if (e.rda || o.rda) out.push('- ICMS do restaurante no Presumido e no Real: ' + (e.rda === 'sim' ? 'optante do RDA (3,5% de todas as vendas de mercadoria, sem crédito)' : e.rda === 'melhor' ? 'o mais barato entre o RDA (3,5% das vendas, sem crédito) e o débito e crédito — os avisos dizem qual a conta usou' : 'débito e crédito, sem o RDA') + ' [' + origemDe(o, 'rda') + ']');
   if (comSimples && Number(e.difalSimples) > 0) out.push(linha('difalSimples'));
   out.push('- RAT ' + pct(e.rat) + '% · FAP ' + pct(e.fap) + ' · terceiros ' + pct(e.terceiros) + '% [' + origemDe(o, 'rat') + ']' + (Number(e.cprb) > 0 ? ' · CPRB ' + pct(e.cprb) + '% (desoneração da folha)' : ''));
@@ -291,7 +302,7 @@ const LIMITE_PRIMEIRO = 'o aviso do limite vem na primeira frase, junto com o re
 // com o Simples vedado pelo cadastro e na comparação, a linha dele é simulação: vem na frente, com o mais barato sem ele
 const VEDADO_PRIMEIRO = 'o Simples está vedado hoje pelo cadastro e a linha dele é simulação: diga isso na primeira frase, com os impedimentos e o mais barato sem ele; depois, ';
 // só o Presumido contra o Real: de 2027 em diante a diferença é o IRPJ e a CSLL — a presunção de um lado, o lucro do outro
-const GERAL = ' Entre o Presumido e o Real, de 2027 em diante a diferença é só o IRPJ e a CSLL (a presunção contra o lucro): diga o lucro em que os dois empatam e de onde veio o lucro da conta — o da contabilidade (a DRE) ou a estimativa, que não serve pra decidir quando as compras passam da receita.';
+const GERAL = ' Entre o Presumido e o Real, de 2027 em diante a diferença é só o IRPJ e a CSLL (a presunção contra o lucro): diga o lucro em que os dois empatam e de onde veio o lucro da conta — o da contabilidade (a DRE, até que mês ela vai e se quem cuida da contabilidade já confirmou; se o Domínio mostra problema naqueles meses, diga quais) ou a estimativa, que não serve pra decidir quando as compras passam da receita.';
 const fim = conta => 'Na resposta: ' + (conta.limite ? LIMITE_PRIMEIRO : conta.vedado ? VEDADO_PRIMEIRO : '') + 'o resultado em uma ou duas frases (o mais barato no ano da decisão e quanto), o porquê pelos tributos que mais pesam e, se ainda pode virar, o quê (as missões que decidem, as premissas no padrão — diga que são padrão a conferir).'
   + (conta.regimes && !conta.regimes.includes('simples') ? GERAL : '') + ' Perguntaram o que falta pra o estudo ficar mais preciso: a precisão do estudo, com o efeito de cada item, o que decide primeiro. Use os números daqui, sem refazer conta: outro cenário é outra chamada, com e_se. Mudar o estudo é na tela Comparativo tributário.';
 
@@ -363,7 +374,7 @@ export async function comparativoDaEmpresa({ banco, termo, eSe = null, objetivo 
   const conta = contaDoEstudo({ ...estudo, aliq2027, hoje, objetivo: pedido });
   const troca = eSe && typeof eSe === 'object' && Object.keys(eSe).length ? eSe : null;
   if (!troca) return textoDoComparativo({ estudo, conta, pedido });
-  const e2 = aplicarESe(estudo.entrada, estudo.origens, troca, { aliq2027 });
+  const e2 = aplicarESe(estudo.entrada, estudo.origens, troca, { aliq2027, serie: estudo.serie });
   // o "e se" fica no mesmo comparativo da conta de antes (trocar o regime de hoje não troca o caminho no meio)
   const contaESe = contaDoEstudo({ ...estudo, entrada: e2.entrada, origens: e2.origens, aliq2027, hoje, objetivo: conta.objetivo });
   return textoDoESe({ estudo, conta, eSe: e2, contaESe, pedido });

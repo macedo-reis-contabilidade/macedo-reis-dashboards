@@ -986,7 +986,7 @@ console.log('O comparativo tributário (a mesma conta da tela, com o "e se"):');
   chk('a precisão do estudo: o nível, o que falta com o efeito (o que decide primeiro) e o que já está na conta', /PRECISÃO DO ESTUDO: falta o que pode virar o resultado\nFalta, pra ficar mais preciso \(o que decide primeiro\):\n- [^\n]* \[decide o resultado\]: /.test(t)
     && /- A folha e o pró-labore \[decide o resultado\]: sem ela o INSS patronal sai zero e o lucro estimado do Real, maior\./.test(t) && /Já está na conta: a receita dos 12 meses \(veio do caso da Reforma\)/.test(t), (t.match(/PRECISÃO DO ESTUDO[\s\S]{0,400}/) || [''])[0]);
   chk('a decisão provisória diz o que ainda pode virar, logo depois dela', /A decisão \(2027\): [^\n]*\nPROVISÓRIO, ainda pode virar — missões que faltam: [^\n]*a folha e o pró-labore/.test(t));
-  chk('o lucro da contabilidade nos números: não informado, a conta estima', /- Lucro contábil antes do IRPJ e da CSLL \(a DRE dos 12 meses\): não informado — a conta estima o lucro do Real pela receita menos as compras, a folha e as despesas \[/.test(t));
+  chk('o lucro da contabilidade nos números: não informado, a conta estima', /- Lucro contábil antes do IRPJ e da CSLL \(a DRE\): não informado — a conta estima o lucro do Real pela receita menos as compras, a folha e as despesas \[/.test(t));
   chk('o aviso do limite: a soma com a padaria passa em dezembro e o Simples sai em 2027 — e ele abre a resposta', /ATENÇÃO, O LIMITE DO SIMPLES: .*passa do limite de R\$ 4,8 milhões em dezembro: a saída do Simples vale a partir de 01\/01\/2027/.test(t)
     && /Na resposta: o aviso do limite vem na primeira frase/.test(t));
   chk('as empresas dos sócios, com o sócio em comum pelo nome', /EMPRESAS DOS MESMOS SÓCIOS/.test(t) && /- PADARIA IRMA LTDA — sócio em comum: FULANO DE TAL: R\$\s?2\.165\.000,00 nos 12 meses \[caso da Reforma: faturamento do Domínio/.test(t));
@@ -1002,7 +1002,7 @@ console.log('O comparativo tributário (a mesma conta da tela, com o "e se"):');
   chk('o "e se": o que mudou, nada gravado, o resultado com a mudança e o de antes', /— E SE\nSó nesta conta: nada foi gravado\. Pra valer, a pessoa muda o campo na tela Comparativo tributário\./.test(es)
     && /- Folha \(salários, 13º e férias\): R\$\s?0,00 → R\$\s?480\.000,00/.test(es) && /pra o lucro do Real antes do IR dar 6% da receita em 2027/.test(es)
     && /RESULTADO COM A MUDANÇA/.test(es) && /SEM A MUDANÇA \(o estudo\), em 2027: Simples Nacional R\$/.test(es) && /2027 R\$\s?144\.300,00/.test(es), es.slice(0, 900));
-  chk('o "e se" só lê', log.slice(nEscritas).every(x => /^(clientes|rt_casos|fr_empresas|fr_lancamentos|receita_pgdas|comparativos|socios|rt_parametros|dominio_mensal|receita_empresas|contabil_empresas|contabil_meses)\?/.test(x.caminho)), log.slice(nEscritas).map(x => x.caminho.split('?')[0]).join());
+  chk('o "e se" só lê', log.slice(nEscritas).every(x => /^(clientes|rt_casos|fr_empresas|fr_lancamentos|receita_pgdas|comparativos|socios|rt_parametros|dominio_mensal|dominio_andamento|receita_empresas|contabil_empresas|contabil_meses)\?/.test(x.caminho)), log.slice(nEscritas).map(x => x.caminho.split('?')[0]).join());
   chk('a leitura do cadastro pede os CNAEs secundários e a natureza jurídica (os impedimentos do Simples), e nunca as credenciais', log.some(x => /^clientes\?select=[^&]*cnae_principal,cnaes_secundarios,natureza_juridica/.test(x.caminho)) && !log.some(x => /credenciais/.test(x.caminho)));
   const fsP = criarFerramentas({ banco, hoje: '2026-11-01', contexto: {}, usuario: { socio: true } });
   const gr = await fsP.comparativo({ empresa: ID_P });
@@ -1033,7 +1033,7 @@ console.log('O comparativo tributário (a mesma conta da tela, com o "e se"):');
   const scL = await fsS.comparativo({ e_se: { lucro_contabil_12_meses: 100000 } });
   // a DRE de R$ 100.000 no Presumido de serviço (ISS 3% e PIS/Cofins 3,65% já descontados): em 2027 saem o PIS/Cofins e
   // entra a CBS/IBS; o "e se" fica no mesmo comparativo (Presumido × Real)
-  chk('o "e se" com o lucro da contabilidade: de vazio pra R$ 100.000, no mesmo comparativo, com o lucro do Real pela contabilidade', /- Lucro contábil antes do IRPJ e da CSLL \(a DRE dos 12 meses\): — → R\$\s?100\.000,00/.test(scL)
+  chk('o "e se" com o lucro da contabilidade: de vazio pra R$ 100.000, no mesmo comparativo, com o lucro do Real pela contabilidade', /- Lucro contábil antes do IRPJ e da CSLL \(a DRE\): — → R\$\s?100\.000,00/.test(scL)
     && /\nComparativo: Presumido × Real \(/.test(scL) && /lucro antes do IR, o da contabilidade com os tributos de hoje trocados pelos do Real: últimos 12 meses R\$/.test(scL)
     && /SEM A MUDANÇA \(o estudo\), em 2027: Lucro Presumido R\$\s?[\d.]+,\d\d · Lucro Real R\$\s?[\d.]+,\d\d — o mais barato: /.test(scL) && !/SEM A MUDANÇA[^\n]*Simples Nacional/.test(scL), scL.slice(0, 700));
   chk('o resumo gravado, numa linha: só os regimes do comparativo do estudo (o de antes de 11/11/2026, os três)',
@@ -1062,10 +1062,14 @@ console.log('O comparativo tributário (a mesma conta da tela, com o "e se"):');
     dominio_mensal: Array.from({ length: 12 }, (_, i) => ({ codigo: 800, cliente_id: ID_I, competencia: mes(9 + i), receita_bruta: 50000, receita_mercadorias: 50000, receita_servicos: 0, receita_simples: null,
       compras: 30000, servicos_tomados: 2000, ativo_e_consumo: 0, salarios: 0, decimo_terceiro: 0, pro_labore_valor: 1621 })),
     receita_empresas: [{ cliente_id: ID_I, pendencias: [{ orgao: 'RFB', titulo: 'Débito' }], situacao_fiscal_em: '2026-11-03' }],
-    contabil_empresas: [{ cliente_id: ID_I, faz: true, inicio: '2025-01', fim: null }],
+    contabil_empresas: [{ cliente_id: ID_I, faz: true, inicio: '2025-01', fim: null, responsavel: 'Adaini' }],
     contabil_meses: Array.from({ length: 19 }, (_, i) => ({ cliente_id: ID_I, competencia: mes(i), situacao: 'feita', feita_em: '2026-08-10' })),
+    dominio_andamento: [{ cliente_id: ID_I, banco_contas: 2, banco_ate: '2026-06-11', banco_ultimo: '2026-07-31' }],
     rt_casos: [], rt_parametros: [{ chave: 'aliq_ref_2027', valor: { cbs: 11.3, cbs_aplicada: 11.2, ibs: 0.1 } }], fr_empresas: [], fr_lancamentos: [], receita_pgdas: [], comparativos: []
   };
+  // o andamento da contabilidade no Domínio (a versão 3 da ponte): de maio a julho de 2026, uma conta transitória com saldo
+  extras.dominio_mensal.forEach(l => { Object.assign(l, { notas_saida: 10, notas_entrada: 5, lanc_fiscal: 15, lanc_folha: 1, folha_lancada: 1621, receita_lancada: 50000, caixa_negativo: 0,
+    transitorias: l.competencia >= '2026-05' ? 1 : 0, transitorias_valor: l.competencia >= '2026-05' ? 9000 : 0 }); });
   const { banco } = bancoFalso({ extras });
   const fs = criarFerramentas({ banco, hoje: '2026-11-11', contexto: { cliente_id: ID_I }, usuario: { email: 'fiscal@macedoereis.com.br', nome: 'Thalia', socio: false } });
   const t = await fs.comparativo({});
@@ -1084,8 +1088,17 @@ console.log('O comparativo tributário (a mesma conta da tela, com o "e se"):');
   chk('os números do Domínio pela ponte e a conta à mão do Presumido (IRPJ 7.200,00, CSLL 6.480,00; o empate em R$ 57.000,00)', /receita R\$\s?600\.000,00 \[Domínio, pela ponte: /.test(t) && /- Lucro Presumido: IRPJ 7\.200,00 · 7\.200,00 · 7\.200,00; CSLL 6\.480,00 · /.test(t)
     && /O Real empata com o Presumido em 2027 com lucro de R\$\s?57\.000,00 antes do IR \(9,5% da receita\)/.test(t), (t.match(/- Lucro Presumido: IRPJ[^;]*;[^;]*/) || [''])[0]);
   chk('a precisão: o lucro da contabilidade é o que falta e decide; a contabilidade feita até julho nos números e na missão', /PRECISÃO DO ESTUDO: falta o que pode virar o resultado\nFalta, pra ficar mais preciso \(o que decide primeiro\):\n- O lucro da contabilidade \[decide o resultado\]: é o número que decide entre o Presumido e o Real/.test(t)
-    && /- A contabilidade, pelo Controle das contabilidades: feita até jul\/26 \(a DRE só fecha até lá\)\./.test(t) && /\[falta · decide o resultado\] O lucro da contabilidade: Falta o lucro da DRE de out\/25 a set\/26, antes do IRPJ e da CSLL\./.test(t)
+    && /- A contabilidade, pelo Controle das contabilidades: feita até jul\/26 · quem cuida: Adaini\./.test(t)
+    && /\[falta · decide o resultado\] O lucro da contabilidade: Falta o lucro da DRE, antes do IRPJ e da CSLL\. Pelo Controle das contabilidades, ela está feita até jul\/26: use a DRE de out\/25 a jul\/26 \(10 dos 12 meses da receita\): ago\/26 e set\/26 entram pela margem desses 10\./.test(t)
     && /\(na tela: digitar o lucro da DRE, ou marcar "Seguir com a estimativa"\)/.test(t) && /Já está na conta: a receita dos 12 meses \(veio do Domínio pela ponte\)/.test(t), (t.match(/PRECISÃO DO ESTUDO[\s\S]{0,300}/) || [''])[0]);
+  // pedido do Samuel, 11/11/2026 (20h11): a DRE até onde a contabilidade está feita, e a confirmação de quem cuida dela,
+  // com o que o Domínio mostra daqueles meses
+  chk('a DRE a pedir (até julho), o que o Domínio mostra da contabilidade e a confirmação que falta', /- Lucro contábil antes do IRPJ e da CSLL \(a DRE\): não informado — [^\n]*\]\. A DRE a pedir: de out\/25 a jul\/26 \(10 dos 12 meses da receita, até onde a contabilidade está feita\); os que faltam entram pela margem dos outros/.test(t)
+    && /- O que o Domínio mostra da contabilidade de out\/25 a jul\/26: conta transitória ou a classificar com saldo de mai\/26 a jul\/26 \(R\$\s?9\.000 em jul\/26\); a conta de banco mais atrasada está lançada até 11\/06\/2026 \(3 de 10 meses com problema\)\./.test(t)
+    && /- A confirmação de quem cuida da contabilidade dela \(Adaini\) de que o resultado até jul\/26 é confiável: falta \(na tela, a missão "A confirmação da contabilidade"\)\./.test(t)
+    && /\[a conferir · decide o resultado\] A confirmação da contabilidade: Antes de apresentar, confirme com quem cuida da contabilidade dela \(Adaini\)/.test(t)
+    && /- A confirmação da contabilidade \[decide o resultado\]: o lucro errado troca o resultado entre o Presumido e o Real/.test(t), (t.match(/- O que o Domínio mostra[^\n]*\n[^\n]*/) || [''])[0]);
+  chk('a resposta do Presumido contra o Real pede o mês da DRE, a confirmação e os problemas do Domínio', /de onde veio o lucro da conta — o da contabilidade \(a DRE, até que mês ela vai e se quem cuida da contabilidade já confirmou; se o Domínio mostra problema naqueles meses, diga quais\)/.test(t));
   chk('as fases do caminho (a receita e a presunção, o lucro do Real, o resto da conta, o veredito), sem prazo do Simples', /\n1\. A receita e a presunção — /.test(t) && /\n2\. O lucro do Real — /.test(t) && /\n3\. O resto da conta — /.test(t) && /\n4\. O veredito — /.test(t)
     && /PRAZOS PRA DECIDIR\n- Presumido ou Real em 2027: [^\n]*A escolha vale pro ano inteiro/.test(t) && !/Entrar no Simples/.test(t));
   // pedido do Samuel, 11/11/2026 (19h12): a atividade e a presunção, o próprio sistema apura pelas notas do Domínio
@@ -1093,6 +1106,22 @@ console.log('O comparativo tributário (a mesma conta da tela, com o "e se"):');
     && /- Fonte: A atividade de cada receita \(a presunção\) \[apurado pelas notas do Domínio, de out\/25 a set\/26\] — onde buscar: As notas de saída e de serviço do Domínio: toda a receita é venda de mercadoria\. Venda de mercadoria presume 8% no IRPJ e 12% na CSLL; serviço, 32% nos dois\. Automático: a ponte do Domínio traz todo dia/.test(t)
     && /- Atividade 1: Indústria \[Domínio, pela ponte: toda a receita das notas de out\/25 a set\/26 é venda de mercadoria\] — /.test(t) && /Já está na conta: [^\n]*a atividade e a presunção \(apurado pelas notas do Domínio\)/.test(t)
     && !/pelo CNAE do cadastro[^\n]*confira/.test(t), (t.match(/\] A atividade e a presunção: [^\n]*/) || [''])[0]);
+  // o estudo gravado com a DRE de outubro a julho (R$ 40.000 em 10 dos 12 meses: R$ 48.000 nos 12) e a confirmação de quem
+  // cuida da contabilidade
+  {
+    const gravado = { id: 'eeee1111-2222-4333-8444-555566667777', cliente_id: ID_I, nome: null, atualizado_em: '2026-11-11T23:00:00Z', atualizado_por: 'fiscal@macedoereis.com.br',
+      entrada: { v: 1, entrada: { atividades: [{ tipo: 'industria', receita: 600000 }], compras: 360000, proLabore: 19452, regimeAtual: 'presumido', objetivo: 'presumido_real', lucroContabil: 40000, lucroDe: '2025-10', lucroAte: '2026-07', lucroReceita: 500000 },
+        origens: { lucroContabil: { fonte: 'digitado', texto: 'digitado' }, lucroConfirmado: { fonte: 'confirmado', ate: '2026-07', nome: 'Samuel', em: '2026-11-11' } } } };
+    const fsG = criarFerramentas({ banco: bancoFalso({ extras: { ...extras, comparativos: [gravado] } }).banco, hoje: '2026-11-11', contexto: { cliente_id: ID_I }, usuario: { email: 'fiscal@macedoereis.com.br', nome: 'Thalia', socio: false } });
+    const tg = await fsG.comparativo({});
+    chk('com a DRE de 10 dos 12 meses: o período, o lucro levado aos 12 meses e a confirmação feita', /- Lucro contábil antes do IRPJ e da CSLL \(a DRE\): R\$\s?40\.000,00 \[digitado\] — a DRE de out\/25 a jul\/26 \(10 dos 12 meses da receita\): levado aos 12 meses pela receita \(a margem dos meses que a DRE tem\), R\$\s?48\.000,00/.test(tg)
+      && /- A confirmação de quem cuida da contabilidade dela \(Adaini\) de que o resultado até jul\/26 é confiável: feita por Samuel em 11\/11\/2026\./.test(tg)
+      && /\[cumprida: confirmado por Samuel em 11\/11\/2026\] A confirmação da contabilidade: Samuel confirmou com quem cuida da contabilidade dela \(Adaini\) que o resultado até jul\/26 é confiável, em 11\/11\/2026\./.test(tg)
+      && /\[cumprida: digitado\] O lucro da contabilidade: Lucro de R\$\s?40\.000 na DRE de out\/25 a jul\/26 \(10 dos 12 meses da receita\): com ago\/26 e set\/26 pela mesma margem, lucro de R\$\s?48\.000 nos 12 meses\./.test(tg)
+      && /O lucro do Real parte do lucro da contabilidade \(R\$\s?40\.000,00 na DRE: R\$\s?48\.000,00 nos 12 meses, pela receita\)/.test(tg), (tg.match(/- Lucro contábil[^\n]*/) || [''])[0]);
+    const tge = await fsG.comparativo({ e_se: { lucro_contabil_12_meses: 60000 } });
+    chk('o "e se" sobre a DRE de 10 meses: o de antes é o dos 12 meses (R$ 48.000), e o novo entra como o dos 12 meses', /- Lucro contábil antes do IRPJ e da CSLL \(a DRE\): R\$\s?48\.000,00 → R\$\s?60\.000,00/.test(tge), (tge.match(/- Lucro contábil[^\n]*/) || [''])[0]);
+  }
   const tt = await fs.comparativo({ objetivo: 'todos' });
   chk('com os três, a origem da atividade leva a parte que é só do Simples (o anexo que as notas não dizem)', /- Atividade 1: Indústria \[Domínio, pela ponte: toda a receita das notas de out\/25 a set\/26 é venda de mercadoria · o anexo, pelo CNAE do cadastro \(1091-1\/02 - [^\]]*\): confira\] — /.test(tt), (tt.match(/- Atividade 1: [^\n]{0,260}/) || [''])[0]);
   chk('com os três: os impedimentos, cada um com a base (e o remédio do CNAE secundário), as pendências na Receita a conferir e o que o sistema não confere', /IMPEDIMENTOS DO SIMPLES, PELO CADASTRO: o Simples está vedado pra ela hoje\n- CNAE secundário impeditivo: 7820-5\/00 \(Locação de mão-de-obra temporária\) \(Res\. CGSN 140\/2018, art\. 8º, §1º, I, e Anexo VI\) Basta constar no CNPJ pra impedir a opção\./.test(tt)

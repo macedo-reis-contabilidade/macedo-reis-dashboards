@@ -7,7 +7,7 @@
 // Rodar com: node tests/comparativo-estudo.test.mjs
 import { comparar } from '../assets/js/comparativo-motor.js';
 import { PADROES, comPadroes, ORIGENS_PADRAO, CAMPOS, erroSemTabela, entradaDoMotor, carregarEstudo, estudoGravado, contaDoEstudo, situacaoComGrupo,
-  oQueMuda, avisosDoEstudo, alertaDoLimite, resumoParaGravar, aplicarESe, E_SE, objetivoDoEstudo, opcoesDeObjetivo, alertaDasVedacoes } from '../assets/js/comparativo-estudo.js';
+  oQueMuda, avisosDoEstudo, alertaDoLimite, resumoParaGravar, aplicarESe, E_SE, objetivoDoEstudo, opcoesDeObjetivo, alertaDasVedacoes, contabilDoEstudo } from '../assets/js/comparativo-estudo.js';
 
 let falhas = 0;
 const chk = (nome, cond, extra) => { if (!cond) falhas++; console.log((cond ? '  ✓ ' : '  ✗ ') + nome + (!cond && extra !== undefined ? ' → ' + extra : '')); };
@@ -245,14 +245,24 @@ console.log('Qual comparativo, os impedimentos do Simples, a contabilidade e a p
     dominio_mensal: Array.from({ length: 12 }, (_, i) => ({ codigo: 800, cliente_id: 'c8', competencia: mes(9 + i), receita_bruta: 50000, receita_mercadorias: 50000, receita_servicos: 0, receita_simples: null,
       compras: 30000, servicos_tomados: 2000, ativo_e_consumo: 0, salarios: 0, decimo_terceiro: 0, pro_labore_valor: 1621 })),
     receita_empresas: [{ cliente_id: 'c8', pendencias: [{ orgao: 'RFB', titulo: 'Débito em cobrança' }, { orgao: 'PGFN', titulo: 'Inscrição' }], situacao_fiscal_em: '2026-11-03' }],
-    contabil_empresas: [{ cliente_id: 'c8', faz: true, inicio: '2025-01', fim: null }],
-    contabil_meses: Array.from({ length: 19 }, (_, i) => ({ cliente_id: 'c8', competencia: mes(i), situacao: 'feita', feita_em: '2026-08-10' }))
+    contabil_empresas: [{ cliente_id: 'c8', faz: true, inicio: '2025-01', fim: null, responsavel: 'Adaini' }],
+    contabil_meses: Array.from({ length: 19 }, (_, i) => ({ cliente_id: 'c8', competencia: mes(i), situacao: 'feita', feita_em: '2026-08-10' })),
+    dominio_andamento: [{ cliente_id: 'c8', banco_contas: 2, banco_ate: '2026-06-11', banco_ultimo: '2026-07-31' }]
   };
+  // o andamento da contabilidade no Domínio (a versão 3 da ponte): de maio a julho de 2026, uma conta transitória com saldo
+  extras.dominio_mensal.forEach(l => { Object.assign(l, { notas_saida: 10, notas_entrada: 5, lanc_fiscal: 15, lanc_folha: 1, folha_lancada: 1621, receita_lancada: 50000, caixa_negativo: 0, contra_natureza: 1,
+    transitorias: l.competencia >= '2026-05' ? 1 : 0, transitorias_valor: l.competencia >= '2026-05' ? 9000 : 0 }); });
   const SOC = [{ cliente_id: 'c8', nome: 'SOCIA DE TESTE', cpf: '999.888.777-66', participacao_percentual: 50 }, { cliente_id: 'c8', nome: 'HOLDING INVENTADA LTDA', cpf: '12.345.678/0001-99', participacao_percentual: 50 }];
   const { ler, log } = banco({ socios: SOC, extras });
   const est = await carregarEstudo({ ler, cliente: IND, hoje: '2026-11-11' });
   chk('a leitura pede as pendências na Receita e o Controle das contabilidades', log.some(x => x.t === 'receita_empresas' && x.o.cols === 'pendencias, situacao_fiscal_em' && x.o.eq.cliente_id === 'c8')
-    && log.some(x => x.t === 'contabil_empresas' && x.o.cols === 'faz, inicio, fim') && log.some(x => x.t === 'contabil_meses' && x.o.eq.cliente_id === 'c8'));
+    && log.some(x => x.t === 'contabil_empresas' && x.o.cols === 'faz, inicio, fim, responsavel') && log.some(x => x.t === 'contabil_meses' && x.o.eq.cliente_id === 'c8'));
+  chk('e o andamento da contabilidade no Domínio: as colunas da versão 3 da ponte e a foto do dia', log.some(x => x.t === 'dominio_mensal' && x.o.eq && x.o.eq.cliente_id === 'c8' && /\btransitorias_valor\b/.test(x.o.cols) && /\bfolha_lancada\b/.test(x.o.cols) && /\breceita_bruta\b/.test(x.o.cols) && /\binss_rat\b/.test(x.o.cols))
+    && log.some(x => x.t === 'dominio_andamento' && x.o.eq.cliente_id === 'c8' && /\bbanco_ate\b/.test(x.o.cols)));
+  chk('a contabilidade do estudo: quem cuida, a conta de banco mais atrasada e o que o Domínio mostra de cada mês (só o forte)', est.contabil.responsavel === 'Adaini' && est.contabil.bancoAte === '2026-06-11'
+    && est.contabil.meses.length === 12 && est.contabil.meses[0].competencia === '2025-10' && est.contabil.meses[0].estado === 'feita' && est.contabil.meses[0].problemas.length === 0
+    && JSON.stringify(est.contabil.meses.find(m => m.competencia === '2026-07').problemas) === '[{"tipo":"transitoria","valor":9000}]'
+    && est.contabil.meses.find(m => m.competencia === '2026-08').estado === 'afazer', JSON.stringify(est.contabil.meses.map(m => m.competencia + ':' + m.estado + ':' + m.problemas.map(p => p.tipo))));
   const v = est.vedacoes;
   chk('o Simples vedado pelo cadastro: o CNAE secundário e a pessoa jurídica entre os sócios, com a participação', v.vedado && v.impedimentos.length === 2 && v.impedimentos[0].texto === 'CNAE secundário impeditivo: 7820-5/00 (Locação de mão-de-obra temporária)'
     && v.impedimentos[1].texto === 'Pessoa jurídica no quadro de sócios: HOLDING INVENTADA LTDA (50% do capital)' && v.semDado.length === 0 && v.secundarios === 2, JSON.stringify(v.impedimentos));
@@ -318,7 +328,14 @@ console.log('Qual comparativo, os impedimentos do Simples, a contabilidade e a p
   chk('o que a equipe conferiu fica como está; a atividade que não é a do sistema não ganha a origem das notas', conferido.origens['atividades.0.tipo'].fonte === 'confirmado' && trocado.origens['atividades.0.tipo'].fonte === 'cadastro'
     && contaDoEstudo({ ...trocado, aliq2027: ALIQ, hoje: '2026-11-11' }).roteiro.fases[0].missoes.find(m => m.id === 'presuncao').estado === 'aberta');
   chk('o estudo de empresa sem cadastro: sem a medida da atividade', estudoGravado({ id: 'x', nome: 'SEM CADASTRO', entrada: { entrada: { atividades: [{ tipo: 'comercio', receita: 1 }] } } }).atividade === null);
-  chk('a missão do lucro diz até onde a contabilidade vai', /Pelo Controle das contabilidades, ela está feita até jul\/26: a DRE até set\/26 ainda não fecha\.$/.test(conta.roteiro.fases[1].missoes.find(m => m.id === 'lucro').texto));
+  // 11/11/2026, 20h11: a contabilidade feita até julho não trava o estudo — a missão pede a DRE até julho, e a confirmação
+  // de quem cuida dela já diz o que o Domínio mostra
+  chk('a missão do lucro pede a DRE até onde a contabilidade vai', /Pelo Controle das contabilidades, ela está feita até jul\/26: use a DRE de out\/25 a jul\/26 \(10 dos 12 meses da receita\): ago\/26 e set\/26 entram pela margem desses 10\./.test(conta.roteiro.fases[1].missoes.find(m => m.id === 'lucro').texto)
+    && conta.dre === null, conta.roteiro.fases[1].missoes.find(m => m.id === 'lucro').texto);
+  const mConf = conta.roteiro.fases[1].missoes.find(m => m.id === 'contabil');
+  chk('a missão da confirmação: com quem cuida da contabilidade, até julho, e o que o Domínio mostra', mConf && mConf.estado === 'aberta' && mConf.peso === 'decide' && mConf.confirmar.ate === '2026-07'
+    && /confirme com quem cuida da contabilidade dela \(Adaini\) se o resultado até jul\/26 é confiável/.test(mConf.texto)
+    && /O que o Domínio mostra de out\/25 a jul\/26: conta transitória ou a classificar com saldo de mai\/26 a jul\/26 \(R\$\s9\.000 em jul\/26\); a conta de banco mais atrasada está lançada até 11\/06\/2026\.$/.test(mConf.texto), mConf && mConf.texto);
   const res = resumoParaGravar(conta.comparacao);
   chk('o resumo gravado diz os regimes do comparativo; o Simples vai nulo', res.regimes.join() === 'presumido,real' && res.totais['2027'].simples === null && res.totais['2027'].presumido > 0 && res.melhor === d27.melhor);
   chk('o resumo de um estudo com os três diz os três', resumoParaGravar(comparar(entradaDoMotor({ atividades: [{ tipo: 'comercio', receita: 500000 }] }, ALIQ))).regimes.join() === 'simples,presumido,real');
@@ -343,6 +360,28 @@ console.log('Qual comparativo, os impedimentos do Simples, a contabilidade e a p
     && comLucro.muda.some(m => /, pela contabilidade\.$/.test(m.txt)) && comLucro.avisos.some(a => /^O lucro do Real parte do lucro da contabilidade \(R\$\s40\.000,00 nos 12 meses\)/.test(a)));
   chk('com a DRE, a precisão já tem o lucro (digitado)', comLucro.precisao.tem.some(x => x.id === 'lucro' && x.como === 'digitado') && !comLucro.precisao.falta.some(x => x.id === 'lucro'));
 
+  // a DRE até onde a contabilidade está feita: R$ 40.000 de outubro a julho (10 de 12 meses de R$ 50.000: fator 1,2)
+  const eDre = { ...est.entrada, lucroContabil: 40000, lucroDe: '2025-10', lucroAte: '2026-07', lucroReceita: 500000 };
+  const oDre = { ...est.origens, lucroContabil: { fonte: 'digitado', texto: 'digitado' } };
+  const parcial = contaDoEstudo({ ...est, entrada: eDre, origens: oDre, aliq2027: ALIQ, hoje: '2026-11-11' });
+  const p27 = parcial.comparacao.anos[1];
+  chk('a DRE de outubro a julho: o período, o fator 1,2 e o lucro do Real com os R$ 48.000 dos 12 meses', parcial.dre.de === '2025-10' && parcial.dre.ate === '2026-07' && parcial.dre.meses === 10 && perto(parcial.dre.fator, 1.2, 1e-9)
+    && perto(p27.real.lucro, 48000 + p27.real.trocaTributos) && perto(p27.real.trocaTributos, l27.real.trocaTributos) && perto(parcial.comparacao.decisao.real.doze, 48000)
+    && parcial.avisos.some(a => /^O lucro do Real parte do lucro da contabilidade \(R\$\s40\.000,00 na DRE: R\$\s48\.000,00 nos 12 meses, pela receita\)/.test(a)), JSON.stringify(parcial.dre));
+  chk('as premissas testadas usam o mesmo lucro levado aos 12 meses', parcial.testes.every(x => x.melhorBase === parcial.comparacao.decisao.melhor));
+  chk('sem a confirmação de quem cuida da contabilidade, o estudo segue provisório; com ela, o lucro deixa de segurar', parcial.roteiro.provisorio && parcial.precisao.falta.some(x => x.id === 'contabil' && x.peso === 'decide')
+    && !contaDoEstudo({ ...est, entrada: eDre, origens: { ...oDre, lucroConfirmado: { fonte: 'confirmado', ate: '2026-07', nome: 'Samuel', em: '2026-11-11' } }, aliq2027: ALIQ, hoje: '2026-11-11' }).precisao.falta.some(x => ['lucro', 'contabil'].includes(x.id)));
+  chk('sem a série (o estudo de empresa sem cadastro), o lucro entra como o dos 12 meses', contaDoEstudo({ ...est, serie: null, entrada: { ...est.entrada, lucroContabil: 40000 }, origens: oDre, aliq2027: ALIQ, hoje: '2026-11-11' }).dre === null);
+
+  // a contabilidade do estudo, direto (contabilDoEstudo)
+  const cDir = contabilDoEstudo({ faz: true, inicio: '2026-01', fim: null, responsavel: ' Adaini ' }, [{ competencia: '2026-01', situacao: 'feita' }, { competencia: '2026-02', situacao: 'feita' }, { competencia: '2026-03', situacao: 'andamento' }],
+    [{ competencia: '2026-01', notas_saida: 4, notas_entrada: 0, lanc_fiscal: 0, salarios: 2000, folha_lancada: 0 }, { competencia: '2026-02', notas_saida: 4, lanc_fiscal: 9, salarios: 2000, folha_lancada: 2000, caixa_negativo: 1, contra_natureza: 3 },
+      { competencia: '2026-03', notas_saida: 4, lanc_fiscal: 9 }, { competencia: '2026-11', notas_saida: 1 }], [], '2026-11-11');
+  chk('contabilDoEstudo: feita até fevereiro, os problemas fortes de cada mês e só os meses que dá pra fechar', cDir.faz === true && cDir.feitaAte === '2026-02' && cDir.responsavel === 'Adaini' && cDir.bancoAte === null
+    && cDir.meses.map(m => m.competencia + ':' + m.estado + ':' + m.problemas.map(p => p.tipo).join('+')).join(' ') === '2026-01:feita:fiscal+folha 2026-02:feita:caixa 2026-03:andamento:'
+    && cDir.meses[0].problemas[1].valor === 2000, JSON.stringify(cDir));
+  chk('contabilDoEstudo: fora do escritório e fora do Controle', contabilDoEstudo(null) === null && JSON.stringify(contabilDoEstudo({ faz: false, responsavel: null })) === '{"faz":false,"feitaAte":null,"responsavel":null,"meses":[],"bancoAte":null}');
+
   // o "e se" com o lucro da contabilidade
   const e1 = aplicarESe(est.entrada, est.origens, { lucro_contabil_12_meses: 30000 }, { aliq2027: ALIQ });
   chk('e se o lucro da contabilidade fosse R$ 30.000: entra no campo, de vazio pra 30.000', e1.entrada.lucroContabil === 30000 && e1.origens.lucroContabil.fonte === 'digitado'
@@ -366,6 +405,18 @@ console.log('Qual comparativo, os impedimentos do Simples, a contabilidade e a p
   const c3 = comparar(entradaDoMotor(e3.entrada, ALIQ, 'presumido_real')), r3 = c3.anos.find(a => a.ano === c3.anoDecisao);
   chk('com a DRE no estudo, a margem do lucro do Real acha o lucro contábil (as outras despesas não mudam)', perto(r3.real.lucro, 0.05 * r3.receita, 0.01) && e3.entrada.outrasDespesas === eL.outrasDespesas
     && e3.mudancas.some(m => /^Lucro contábil.*pra o lucro do Real antes do IR dar 5% da receita em 2027$/.test(m.rotulo) && m.antes === 40000), JSON.stringify(e3.mudancas));
+
+  // o "e se" sobre a DRE de 10 dos 12 meses: o lucro do "e se" é sempre o dos 12 meses (o da DRE vai a eles antes)
+  const e4 = aplicarESe(eDre, oDre, { lucro_contabil_12_meses: 30000 }, { aliq2027: ALIQ, serie: est.serie });
+  chk('e se o lucro dos 12 meses fosse R$ 30.000, com a DRE de 10 meses no estudo: antes R$ 48.000 (a dos 12 meses), e a conta não o leva de novo', e4.entrada.lucroContabil === 30000 && e4.entrada.lucroAnual === true && !('lucroAte' in e4.entrada)
+    && e4.mudancas.some(m => m.rotulo === CAMPOS.lucroContabil.rotulo && perto(m.antes, 48000) && m.depois === 30000)
+    && contaDoEstudo({ ...est, entrada: e4.entrada, origens: e4.origens, aliq2027: ALIQ, hoje: '2026-11-11' }).dre.fator === 1, JSON.stringify(e4.mudancas));
+  const e5 = aplicarESe(eDre, oDre, { margem_lucro_real: 5 }, { aliq2027: ALIQ, serie: est.serie });
+  const c5 = contaDoEstudo({ ...est, entrada: e5.entrada, origens: e5.origens, aliq2027: ALIQ, hoje: '2026-11-11' }), r5 = c5.comparacao.anos.find(a => a.ano === c5.comparacao.anoDecisao);
+  chk('a margem do lucro do Real com a DRE de 10 meses: a conta inteira (com a série) dá os 5% da receita', perto(r5.real.lucro, 0.05 * r5.receita, 0.01) && e5.entrada.lucroAnual === true && e5.mudancas.some(m => /^Lucro contábil/.test(m.rotulo) && perto(m.antes, 48000)), JSON.stringify(e5.mudancas));
+  const e6 = aplicarESe(eDre, oDre, { receita_12_meses: 1200000 }, { aliq2027: ALIQ, serie: est.serie });
+  chk('a receita em dobro, com a DRE de 10 meses: o lucro dela dobra e o período fica', perto(e6.entrada.lucroContabil, 80000) && e6.entrada.lucroAte === '2026-07' && !e6.entrada.lucroAnual
+    && perto(contaDoEstudo({ ...est, entrada: e6.entrada, origens: e6.origens, aliq2027: ALIQ, hoje: '2026-11-11' }).comparacao.decisao.real.doze, 96000));
 
   // a contabilidade de fora e a empresa sem cadastro
   const { ler: lf } = banco({ socios: SOC, extras: { ...extras, contabil_empresas: [{ cliente_id: 'c8', faz: false, inicio: '2025-01', fim: null }] } });

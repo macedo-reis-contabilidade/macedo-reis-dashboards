@@ -2,12 +2,13 @@
 // o que falta e o que conferir, na ordem do que pesa na decisão, o próximo passo, as fases concluídas e o que cada uma
 // conquistou, e o estudo provisório até as missões que decidem estarem cumpridas.
 // Desde 11/11/2026, o caminho pelo comparativo escolhido (só o Presumido contra o Real: a receita e a presunção, o lucro
-// do Real pela contabilidade, o resto da conta), os impedimentos do Simples pelo cadastro e a precisão do estudo.
+// do Real pela contabilidade, o resto da conta), os impedimentos do Simples pelo cadastro e a precisão do estudo. Também de
+// 11/11/2026: a DRE até onde a contabilidade está feita (e não até o fim da receita) e a confirmação de quem cuida dela.
 // Rodar com: node tests/comparativo-roteiro.test.mjs — dados inventados (o repositório é público).
 
 import { roteiroDoEstudo, crescimentoMedido, FASES, FASES_GERAL, fasesDoObjetivo, fontesDoEstudo, ultimoMesFechado, AUTOMATICO, precisaoDoEstudo, NIVEL_DA_PRECISAO, PESO_DA_PRECISAO, LIMITE_PRESUMIDO,
-  presuncaoDoEstudo } from '../assets/js/comparativo-roteiro.js';
-import { entradaDoSistema, premissasParaTestar, situacaoDoGrupo, presuncaoPeloCnae } from '../assets/js/comparativo-dados.js';
+  presuncaoDoEstudo, faixasDeMeses, sinaisDaContabilidade, confirmacaoDaContabilidade, lucroDoEstudo } from '../assets/js/comparativo-roteiro.js';
+import { entradaDoSistema, premissasParaTestar, situacaoDoGrupo, presuncaoPeloCnae, periodoDaDre } from '../assets/js/comparativo-dados.js';
 import { comparar, testarPremissas, fraseDaDecisao } from '../assets/js/comparativo-motor.js';
 
 let falhas = 0, total = 0;
@@ -159,7 +160,10 @@ console.log('=== qual comparativo: as fases de cada caminho (11/11/2026) ===');
   const comP = e => ({ ...comPadroes(e), lucroContabil: null, ajustesLalur: 0, ...Object.fromEntries(Object.entries(e).filter(([k]) => k === 'lucroContabil' || k === 'ajustesLalur')) });
   function rodarC(entrada, origens, extra = {}) {
     const regs = entrada.objetivo === 'presumido_real' ? ['presumido', 'real'] : ['simples', 'presumido', 'real'];
-    const c = comparar({ ...entrada, regimes: regs }), t = testarPremissas({ ...entrada, regimes: regs }, premissasParaTestar(entrada, origens, regs));
+    // o lucro da DRE de só uma parte dos 12 meses vai a eles pelo fator do período (o contaDoEstudo faz igual)
+    const dre = entrada.lucroContabil != null ? periodoDaDre(extra.serie, entrada) : null;
+    const eM = { ...entrada, regimes: regs, lucroFator: dre ? dre.fator : 1 };
+    const c = comparar(eM), t = testarPremissas(eM, premissasParaTestar(entrada, origens, regs));
     return roteiroDoEstudo({ entrada, origens, comparacao: c, testes: t, ...extra });
   }
   // comércio do Presumido, R$ 1 milhão, compras de R$ 500 mil, sem folha nem pró-labore (o Domínio, pela ponte, diz)
@@ -187,9 +191,9 @@ console.log('=== qual comparativo: as fases de cada caminho (11/11/2026) ===');
   ok('o lucro da contabilidade falta e decide: digitar o da DRE ou seguir com a estimativa', luc.fase === 'lucro' && luc.estado === 'aberta' && luc.falta && luc.peso === 'decide' && luc.campo === 'lucroContabil' && luc.irRotulo === 'Digitar o lucro da DRE'
     && luc.conferir.join() === 'lucroContabil' && luc.conferirRotulo === 'Seguir com a estimativa');
   // o empate: IRPJ e CSLL do Presumido 22.800 = 24% × 95.000; a estimativa de 2027: 1.000.000 − 500.000 − 110.000 − 44.070 = 345.930
-  ok('o texto: os meses da DRE, a estimativa, o empate e a contabilidade feita até julho (a DRE até setembro ainda não fecha)', /^Falta o lucro da DRE de out\/25 a set\/26, antes do IRPJ e da CSLL\. Sem ele, a conta estima o lucro do Real \(a receita menos as compras, a folha e as despesas\): R\$\s345\.930 em 2027\./.test(luc.texto)
-    && /O Real empata com o Presumido com lucro de R\$\s95\.000 antes do IR \(9,5% da receita\): abaixo disso, o Real sai mais barato\./.test(luc.texto)
-    && /Pelo Controle das contabilidades, ela está feita até jul\/26: a DRE até set\/26 ainda não fecha\.$/.test(luc.texto), luc.texto);
+  // 11/11/2026, 20h11: a contabilidade feita até julho não trava mais o estudo — a missão pede a DRE até julho
+  ok('o texto: a DRE até onde a contabilidade está feita (julho: 10 dos 12 meses), a estimativa e o empate', /^Falta o lucro da DRE, antes do IRPJ e da CSLL\. Pelo Controle das contabilidades, ela está feita até jul\/26: use a DRE de out\/25 a jul\/26 \(10 dos 12 meses da receita\): ago\/26 e set\/26 entram pela margem desses 10\. Sem ele, a conta estima o lucro do Real \(a receita menos as compras, a folha e as despesas\): R\$\s345\.930 em 2027\./.test(luc.texto)
+    && /O Real empata com o Presumido com lucro de R\$\s95\.000 antes do IR \(9,5% da receita\): abaixo disso, o Real sai mais barato\.$/.test(luc.texto) && !/ainda não fecha/.test(luc.texto), luc.texto);
   ok('a folha zerada pelo Domínio (a ponte leu e deu zero) não é dado que falta', missao(g0, 'folha').estado === 'feita' && missao(g0, 'folha').como === 'veio do Domínio pela ponte' && /^Pelo Domínio, a empresa não tem folha nem pró-labore calculados nos 12 meses\./.test(missao(g0, 'folha').texto));
   ok('sem a ponte dizer, a folha zerada segue faltando', missao(rodarC(G, { ...ORI, folha: { fonte: 'padrao' }, proLabore: { fonte: 'padrao' } }, base), 'folha').estado === 'aberta');
   const pc = missao(g0, 'piscofins');
@@ -212,11 +216,12 @@ console.log('=== qual comparativo: as fases de cada caminho (11/11/2026) ===');
   ok('com a revenda monofásica do sistema e a alíquota zero no padrão: aberta, com o monofásico já fora', pcM.estado === 'aberta' && pcM.conferirRotulo === 'Sem venda com alíquota zero'
     && /^No padrão, sem venda com alíquota zero \(R\$\s300\.000 de revenda monofásica já fora\): em 2026, R\$\s21\.20[67] no Presumido/.test(pcM.texto), pcM.texto);
   ok('as compras vão pro resto da conta (o crédito), cumpridas pela ponte', missao(g0, 'compras').fase === 'premissas' && missao(g0, 'compras').estado === 'feita');
-  ok('provisório: falta o lucro, que decide; o próximo passo é a presunção, da fase de agora', g0.provisorio && g0.decidem === 1 && g0.faseAtual === 0 && g0.proximo.id === 'presuncao' && !g0.pronto);
+  ok('provisório: faltam o lucro e a confirmação da contabilidade, que decidem; o próximo passo é a presunção, da fase de agora', g0.provisorio && g0.decidem === 2 && g0.faseAtual === 0 && g0.proximo.id === 'presuncao' && !g0.pronto);
   ok('a estimativa que não serve: as compras e as despesas passam da receita', /As compras, as despesas com nota e a folha passam da receita: a empresa formou estoque, investiu ou teve prejuízo, e a estimativa não serve pra decidir\./.test(
     missao(rodarC({ ...G, compras: 900000, despesasCredito: 300000 }, { ...ORI, despesasCredito: { fonte: 'ponte' } }, base), 'lucro').texto));
-  ok('sem o Controle das contabilidades, a missão não fala dele; fora do escritório, diz', !/Controle das contabilidades/.test(missao(rodarC(G, ORI, base), 'lucro').texto)
-    && /O escritório não faz a contabilidade dela: o lucro vem do contador de lá ou do cliente\.$/.test(missao(rodarC(G, ORI, { ...base, contabil: { faz: false, feitaAte: null } }), 'lucro').texto));
+  ok('sem o Controle das contabilidades, a missão não fala dele e pede a DRE dos 12 meses; fora do escritório, diz', !/Controle das contabilidades/.test(missao(rodarC(G, ORI, base), 'lucro').texto)
+    && /^Falta o lucro da DRE de out\/25 a set\/26, antes do IRPJ e da CSLL\. Sem ele/.test(missao(rodarC(G, ORI, base), 'lucro').texto)
+    && /antes do IRPJ e da CSLL\. O escritório não faz a contabilidade dela: o lucro vem do contador de lá ou do cliente\. Sem ele/.test(missao(rodarC(G, ORI, { ...base, contabil: { faz: false, feitaAte: null } }), 'lucro').texto));
 
   console.log('=== seguir com a estimativa ===');
   const gE = rodarC(G, { ...ORI, lucroContabil: { fonte: 'confirmado' } }, base);
@@ -225,7 +230,9 @@ console.log('=== qual comparativo: as fases de cada caminho (11/11/2026) ===');
 
   console.log('=== com o lucro da contabilidade ===');
   const oriL = { ...ORI, lucroContabil: { fonte: 'digitado' } };
-  const gL = rodarC({ ...G, lucroContabil: 100000 }, oriL, { ...base, contabil: { faz: true, feitaAte: '2026-09' } });
+  // com a confirmação de quem cuida da contabilidade (até setembro): sem ela, o estudo segue provisório (abaixo)
+  const oriLC = { ...oriL, lucroConfirmado: { fonte: 'confirmado', ate: '2026-09', nome: 'Samuel', em: '2026-11-11' } };
+  const gL = rodarC({ ...G, lucroContabil: 100000 }, oriLC, { ...base, contabil: { faz: true, feitaAte: '2026-09' } });
   const lucL = missao(gL, 'lucro');
   // a troca de 2027: os tributos de hoje (PIS/Cofins 30.295 + ICMS 110.000) menos os do Real (ICMS 110.000 + CBS/IBS 44.070) = −13.775
   ok('cumprida, com a DRE, o lucro do Real e a troca dos tributos', lucL.estado === 'feita' && lucL.como === 'digitado' && lucL.peso === 'decide'
@@ -243,7 +250,7 @@ console.log('=== qual comparativo: as fases de cada caminho (11/11/2026) ===');
   ok('prejuízo na DRE: a missão diz prejuízo', /^Prejuízo de R\$\s50\.000 na DRE de out\/25 a set\/26\./.test(missao(rodarC({ ...G, lucroContabil: -50000 }, oriL, base), 'lucro').texto));
 
   console.log('=== o estudo pronto, só Presumido × Real ===');
-  const tudo = { ...oriL, ajustesLalur: { fonte: 'confirmado' }, 'atividades.0.tipo': { fonte: 'confirmado' }, 'atividades.0.pctAliqZero': { fonte: 'confirmado' }, crescimentoReceita: { fonte: 'confirmado' },
+  const tudo = { ...oriLC, ajustesLalur: { fonte: 'confirmado' }, 'atividades.0.tipo': { fonte: 'confirmado' }, 'atividades.0.pctAliqZero': { fonte: 'confirmado' }, crescimentoReceita: { fonte: 'confirmado' },
     aliqCreditoIcms: { fonte: 'confirmado' }, 'atividades.0.aliqIcms': { fonte: 'confirmado' }, pctComprasSimples: { fonte: 'confirmado' } };
   const gP = rodarC({ ...G, lucroContabil: 100000 }, tudo, base);
   ok('pronto pra apresentar, com as quatro fases fechadas', gP.pronto && !gP.provisorio && gP.faseAtual === 3 && gP.fases.every(f => f.concluida) && gP.proximo === null);
@@ -255,18 +262,22 @@ console.log('=== qual comparativo: as fases de cada caminho (11/11/2026) ===');
 
   console.log('=== as fontes de cada fase, só Presumido × Real ===');
   const fo = fontesDoEstudo({ entrada: G, origens: ORI, comparacao: comparar({ ...G, regimes: ['presumido', 'real'] }), serie, hoje: '2026-11-11', objetivo: 'presumido_real', contabil: { faz: true, feitaAte: '2026-07' } });
-  ok('as fontes por fase do caminho', Object.keys(fo).join() === 'presuncao,lucro,premissas,veredito' && fo.presuncao.map(x => x.id).join() === 'receita,atividade' && fo.lucro.map(x => x.id).join() === 'dre,folha'
+  ok('as fontes por fase do caminho', Object.keys(fo).join() === 'presuncao,lucro,premissas,veredito' && fo.presuncao.map(x => x.id).join() === 'receita,atividade' && fo.lucro.map(x => x.id).join() === 'dre,ctbconf,folha'
     && fo.premissas.map(x => x.id).join() === 'compras,credito,icms,piscofins,crescimento' && fo.veredito.map(x => x.id).join() === 'conversa', Object.entries(fo).map(([k, l]) => k + ':' + l.map(x => x.id)));
   const dre = fo.lucro[0];
-  ok('a DRE: falta, no Domínio Contabilidade, com os meses que faltam da contabilidade — e a ponte ainda não traz', dre.estado === 'falta' && dre.campo === 'lucroContabil' && /^Domínio Contabilidade: a DRE \(ou o balancete\) dos mesmos 12 meses da receita/.test(dre.onde)
-    && /Pelo Controle das contabilidades, ela está feita até jul\/26: faltam ago\/26 e set\/26 pra DRE dos 12 meses fechar\.$/.test(dre.onde) && /A ponte do Domínio ainda não traz o resultado da contabilidade: digite o lucro da DRE\./.test(dre.auto), dre);
+  ok('a DRE: falta, no Domínio Contabilidade, até onde a contabilidade está feita (os outros meses pela margem) — e a ponte ainda não traz', dre.estado === 'falta' && dre.campo === 'lucroContabil'
+    && dre.onde === 'Domínio Contabilidade: a DRE (ou o balancete) de out/25 a jul/26, até onde a contabilidade está feita — o resultado antes do IRPJ e da CSLL. Ago/26 e set/26 entram pela margem dos outros meses. Pelo Controle das contabilidades, ela está feita até jul/26.'
+    && dre.auto === 'A ponte do Domínio ainda não traz o resultado da contabilidade: por enquanto, digite o lucro da DRE.', dre);
+  ok('a confirmação da contabilidade: falta, com quem confirmar e até que mês', fo.lucro[1].estado === 'falta' && fo.lucro[1].situacao === 'falta confirmar' && fo.lucro[1].onde === 'Quem faz a contabilidade dela: se o resultado até jul/26 é confiável.'
+    && fo.lucro[1].auto === 'Nenhum sistema tem: é a palavra de quem fecha a contabilidade.', fo.lucro[1]);
   ok('a atividade sem as notas: pelo CNAE do cadastro, e a linha diz onde resolver', fo.presuncao[1].estado === 'padrao' && fo.presuncao[1].situacao === 'sem notas no sistema: pelo CNAE do cadastro'
     && fo.presuncao[1].onde === 'O sistema não tem as notas desta empresa: a atividade veio do CNAE do cadastro. A regra e o que fazer estão na missão abaixo.'
     && fo.presuncao[1].auto === 'Com a empresa no Domínio, a ponte traz essa divisão pelas notas, todo dia.', fo.presuncao[1]);
-  ok('a folha zerada pela ponte: "sem folha nem pró-labore no Domínio"', fo.lucro[1].estado === 'tem' && fo.lucro[1].situacao === 'sem folha nem pró-labore no Domínio');
+  ok('a folha zerada pela ponte: "sem folha nem pró-labore no Domínio"', fo.lucro[2].id === 'folha' && fo.lucro[2].estado === 'tem' && fo.lucro[2].situacao === 'sem folha nem pró-labore no Domínio');
   ok('o veredito: a reunião, com o Real trimestral ou anual e a distribuição de lucros', /a projeção do lucro e as escolhas — o Real trimestral ou anual e a distribuição de lucros aos sócios\.$/.test(fo.veredito[0].onde), fo.veredito[0].onde);
   const foL = fontesDoEstudo({ entrada: { ...G, lucroContabil: 100000 }, origens: oriL, comparacao: comparar({ ...G, lucroContabil: 100000, regimes: ['presumido', 'real'] }), serie, hoje: '2026-11-11', objetivo: 'presumido_real', contabil: { faz: true, feitaAte: '2026-07' } });
-  ok('com a DRE digitada e a contabilidade atrás: "faltam meses", e as adições e exclusões no padrão', foL.lucro[0].estado === 'antigo' && /a contabilidade vai até jul\/26/.test(foL.lucro[0].situacao) && foL.lucro[1].id === 'lalur' && foL.lucro[1].estado === 'padrao');
+  ok('com a DRE dos 12 meses digitada e a contabilidade atrás: a linha diz que ela vai além do que está feito, e as adições e exclusões no padrão', foL.lucro[0].estado === 'antigo'
+    && foL.lucro[0].situacao === 'digitado: a DRE de out/25 a set/26, além do que a contabilidade tem feito (jul/26)' && foL.lucro.map(x => x.id).join() === 'dre,ctbconf,lalur,folha' && foL.lucro[2].estado === 'padrao', foL.lucro[0]);
 
   console.log('=== a atividade e a presunção pelas notas do Domínio (11/11/2026) ===');
   {
@@ -372,7 +383,7 @@ console.log('=== qual comparativo: as fases de cada caminho (11/11/2026) ===');
     && /^Pelo cadastro, nada veda o Simples: o CNAE principal \(sem secundário no cadastro\) e a natureza jurídica\. Faltou no cadastro pra conferir: os sócios\./.test(missao(tS, 'vedacoes').texto) && tS.fases[0].concluida, missao(tS, 'vedacoes').texto);
   ok('sem as vedações (empresa sem cadastro), sem a missão', !missao(rodarC(T, ORI, { ...base, socios: null }), 'vedacoes'));
   ok('no caminho com o Simples, o lucro da contabilidade também entra (missão cumprida, com a DRE)', (() => { const m = missao(rodarC({ ...T, lucroContabil: 100000 }, oriL, { ...base, vedacoes: limpo, socios: 2 }), 'lucro');
-    return m.estado === 'feita' && m.como === 'digitado' && /^Lucro de R\$\s100\.000 na DRE dos 12 meses: no Real de 2027, R\$\s86\.225 antes do IR, com os tributos de hoje trocados pelos do Real\.$/.test(m.texto); })());
+    return m.estado === 'feita' && m.como === 'digitado' && /^Lucro de R\$\s100\.000 na DRE de out\/25 a set\/26: no Real de 2027, R\$\s86\.225 antes do IR, com os tributos de hoje trocados pelos do Real\.$/.test(m.texto); })());
 
   // com o Simples na comparação, as vendas com alíquota zero de PIS/Cofins não têm missão própria: sem a DRE, ficam entre
   // os outros padrões (só mexem no Presumido e no Real de 2026); com a DRE em R$ 115.000 na empresa do Presumido, viram o
@@ -394,13 +405,94 @@ console.log('=== qual comparativo: as fases de cada caminho (11/11/2026) ===');
     pz && pz.peso === 'decide' && pz.estado === 'aberta' && /^Está no padrão \(0%\)\. Com 100%, o mais barato passa a ser o Lucro Real\.$/.test(pz.texto) && pz.conferir.join() === 'atividades.0.pctAliqZero'
     && !((missao(t6, 'resto') || {}).conferir || []).includes('atividades.0.pctAliqZero') && t6.provisorio, pz && pz.texto);
 
+  console.log('=== o lucro até onde a contabilidade está feita, e a confirmação de quem cuida dela (11/11/2026, 20h11) ===');
+  {
+    ok('os meses em faixas: um, dois, seguidos e misturados', faixasDeMeses(['2026-02']) === 'fev/26' && faixasDeMeses(['2025-12', '2025-11']) === 'nov/25 e dez/25'
+      && faixasDeMeses(['2026-01', '2026-02', '2026-03', '2026-04']) === 'jan/26 a abr/26' && faixasDeMeses(['2025-10', '2026-01', '2026-02', '2026-03', '2026-07', '2026-03', 'x']) === 'out/25, jan/26 a mar/26 e jul/26'
+      && faixasDeMeses(['2025-12', '2026-01', '2026-02']) === 'dez/25 a fev/26' && faixasDeMeses([]) === '');
+    // a contabilidade da empresa, como o estudo lê (contabilDoEstudo): feita até julho, quem cuida, e o que o Domínio mostra
+    const mesesC = ['2025-10', '2025-11', '2025-12', '2026-01', '2026-02', '2026-03', '2026-04', '2026-05', '2026-06', '2026-07', '2026-08', '2026-09'];
+    const prob = { '2025-11': [{ tipo: 'folha', valor: 1518 }], '2025-12': [{ tipo: 'folha', valor: 1518 }], '2026-01': [{ tipo: 'transitoria', valor: 2225.17 }], '2026-02': [{ tipo: 'caixa', valor: null }, { tipo: 'transitoria', valor: 7756.83 }],
+      '2026-03': [{ tipo: 'transitoria', valor: 17950 }], '2026-04': [{ tipo: 'transitoria', valor: 51082 }], '2026-05': [{ tipo: 'transitoria', valor: 54531 }], '2026-06': [{ tipo: 'transitoria', valor: 63838 }], '2026-07': [{ tipo: 'transitoria', valor: 75170.81 }],
+      '2026-08': [{ tipo: 'folha', valor: 1621 }, { tipo: 'transitoria', valor: 75170.81 }, { tipo: 'banco', valor: null }], '2026-09': [{ tipo: 'folha', valor: 1621 }, { tipo: 'transitoria', valor: 75170.81 }, { tipo: 'banco', valor: null }] };
+    const ctb = { faz: true, feitaAte: '2026-07', responsavel: 'Adaini', bancoAte: '2026-06-11', meses: mesesC.map(c => ({ competencia: c, estado: c <= '2026-07' ? 'feita' : 'afazer', problemas: prob[c] || [] })) };
+    const s = sinaisDaContabilidade(ctb, '2025-10', '2026-07');
+    ok('o que o Domínio mostra de outubro a julho: por tipo, com os meses, o saldo do último e o banco mais atrasado', s.lidos === 10 && s.comProblema === 9 && s.naoFeitos.length === 0
+      && s.itens.length === 4 && /^conta transitória ou a classificar com saldo de jan\/26 a jul\/26 \(R\$\s75\.171 em jul\/26\)$/.test(s.itens[0]) && s.itens[1] === 'a folha não entrou na contabilidade em nov/25 e dez/25'
+      && s.itens[2] === 'o caixa fechou o mês negativo em fev/26' && s.itens[3] === 'a conta de banco mais atrasada está lançada até 11/06/2026', s);
+    const s9 = sinaisDaContabilidade(ctb, '2025-10', '2026-09');
+    ok('até setembro: os dois meses que o Controle não dá como feitos, e o banco sem lançamento neles', s9.naoFeitos.join() === '2026-08,2026-09' && s9.itens.includes('o banco ficou sem lançamento em ago/26 e set/26')
+      && s9.itens.includes('a folha não entrou na contabilidade em nov/25, dez/25, ago/26 e set/26'), s9);
+    ok('o banco lançado até o fim do período não é sinal; sem o Controle, fora do escritório ou sem o período, nada', !sinaisDaContabilidade({ ...ctb, bancoAte: '2026-07-31' }, '2025-10', '2026-07').itens.some(x => /banco/.test(x))
+      && sinaisDaContabilidade(null, '2025-10', '2026-07') === null && sinaisDaContabilidade({ faz: false }, '2025-10', '2026-07') === null && sinaisDaContabilidade(ctb, null, null) === null
+      && sinaisDaContabilidade({ faz: true, feitaAte: '2026-07', meses: [] }, '2025-10', '2026-07').lidos === 0);
+    ok('a confirmação vale até o mês confirmado (e sem a marca, não existe)', confirmacaoDaContabilidade({ lucroConfirmado: { fonte: 'confirmado', ate: '2026-07', nome: 'Samuel', em: '2026-11-11' } }, '2026-07').vale === true
+      && confirmacaoDaContabilidade({ lucroConfirmado: { fonte: 'confirmado', ate: '2026-07' } }, '2026-09').vale === false && confirmacaoDaContabilidade({ lucroConfirmado: { fonte: 'confirmado', ate: '2026-09' } }, '2026-07').vale === true
+      && confirmacaoDaContabilidade({}, '2026-07') === null && confirmacaoDaContabilidade({ lucroConfirmado: { fonte: 'digitado' } }, '2026-07') === null);
+
+    // sem o lucro: o estudo pede a DRE até julho, e a confirmação já mostra o que olhar
+    const cx = { ...base, contabil: ctb };
+    const L0 = lucroDoEstudo({ entrada: G, origens: ORI, serie, contabil: ctb });
+    ok('o lucro do estudo, sem a DRE: a pedida vai de outubro a julho, e é com quem cuida da contabilidade que se confirma', L0.dre === null && L0.sug.ate === '2026-07' && L0.sug.meses === 10 && L0.de === '2025-10' && L0.ate === '2026-07'
+      && L0.quem === 'quem cuida da contabilidade dela (Adaini)' && L0.conf === null && L0.sinais.comProblema === 9, L0);
+    const h0 = rodarC(G, ORI, cx), c0 = missao(h0, 'contabil');
+    ok('a missão da confirmação: aberta, decide, com o botão e o que o Domínio mostra', c0 && c0.fase === 'lucro' && c0.estado === 'aberta' && c0.peso === 'decide' && c0.confirmar.ate === '2026-07' && c0.confirmarRotulo === 'Confirmado com a contabilidade' && !c0.desfazer
+      && /^Antes de apresentar, confirme com quem cuida da contabilidade dela \(Adaini\) se o resultado até jul\/26 é confiável: os meses conciliados e fechados, sem lançamento por fazer\. O que o Domínio mostra de out\/25 a jul\/26: conta transitória ou a classificar com saldo de jan\/26 a jul\/26 \(R\$\s75\.171 em jul\/26\); a folha não entrou na contabilidade em nov\/25 e dez\/25; o caixa fechou o mês negativo em fev\/26; a conta de banco mais atrasada está lançada até 11\/06\/2026\.$/.test(c0.texto)
+      && c0.efeito === 'o lucro errado troca o resultado entre o Presumido e o Real', c0 && c0.texto);
+    ok('a ordem na fase: o lucro, a confirmação e a folha', h0.fases[1].missoes.map(m => m.id).join() === 'lucro,contabil,folha', h0.fases[1].missoes.map(m => m.id));
+    ok('quem segue com a estimativa não tem o que confirmar', !missao(rodarC(G, { ...ORI, lucroContabil: { fonte: 'confirmado' } }, cx), 'contabil'));
+    ok('sem problema no Domínio, a missão diz; sem a leitura dele, não fala do Domínio', / O Domínio não aponta problema de out\/25 a jul\/26\.$/.test(missao(rodarC(G, ORI, { ...base, contabil: { ...ctb, bancoAte: null, meses: ctb.meses.map(m => ({ ...m, problemas: [] })) } }), 'contabil').texto)
+      && !/Domínio/.test(missao(rodarC(G, ORI, { ...base, contabil: { faz: true, feitaAte: '2026-07', responsavel: 'Adaini' } }), 'contabil').texto));
+
+    // a DRE de outubro a julho digitada: R$ 80.000 em 10 dos 12 meses (a receita é igual nos 12: fator 1,2)
+    const eP = { ...G, lucroContabil: 80000, lucroDe: '2025-10', lucroAte: '2026-07', lucroReceita: 1000000 * 10 / 12 };
+    const hP = rodarC(eP, oriL, cx), lP = missao(hP, 'lucro'), cP = missao(hP, 'contabil');
+    // 80.000 × 1,2 = 96.000; a troca de 2027 é a mesma (−13.775): 82.225 no Real
+    ok('com a DRE até julho: os 10 dos 12 meses, os dois que faltam pela mesma margem e o lucro do Real', lP.estado === 'feita' && lP.como === 'digitado'
+      && /^Lucro de R\$\s80\.000 na DRE de out\/25 a jul\/26 \(10 dos 12 meses da receita\): com ago\/26 e set\/26 pela mesma margem, lucro de R\$\s96\.000 nos 12 meses\. No Real de 2027, lucro de R\$\s82\.225 antes do IR: o da DRE menos R\$\s13\.775 da troca dos tributos de hoje pelos do Real\./.test(lP.texto)
+      && /Pelo Controle das contabilidades, ela está feita até jul\/26\.$/.test(lP.texto), lP.texto);
+    ok('sem a confirmação, o estudo segue provisório e a fase 2 não fecha', hP.provisorio && !hP.fases[1].concluida && cP.estado === 'aberta' && cP.peso === 'decide' && hP.fases[1].missoes.map(m => m.id).join() === 'lucro,contabil,ajustes,folha', hP.fases[1].missoes.map(m => m.id));
+    const hC = rodarC(eP, { ...oriL, lucroConfirmado: { fonte: 'confirmado', ate: '2026-07', por: 'financeiro@macedoereis.com.br', nome: 'Samuel', em: '2026-11-11' } }, cx), cC = missao(hC, 'contabil');
+    ok('confirmada: cumprida, com quem e quando, e o Desfazer', cC.estado === 'feita' && cC.como === 'confirmado por Samuel em 11/11/2026' && cC.confirmar === null && cC.desfazer === true && cC.desfazerRotulo === 'Desfazer a confirmação'
+      && /^Samuel confirmou com quem cuida da contabilidade dela \(Adaini\) que o resultado até jul\/26 é confiável, em 11\/11\/2026\. O que o Domínio mostra de out\/25 a jul\/26: /.test(cC.texto), cC.texto);
+    ok('com a confirmação, a fase 2 fecha e o lucro deixa de segurar o estudo', hC.fases[1].concluida && !hC.passos.some(p => p.estado !== 'feito' && p.peso === 'decide' && ['lucro', 'contabil'].includes(p.id))
+      && /^No Real, lucro de R\$\s82\.225 em 2027, pela contabilidade: /.test(hC.fases[1].conquista), hC.fases[1].conquista);
+    // a contabilidade andou até setembro e a DRE foi trocada pela dos 12 meses: a confirmação de julho não cobre
+    const hN = rodarC({ ...G, lucroContabil: 100000, lucroDe: '2025-10', lucroAte: '2026-09' }, { ...oriL, lucroConfirmado: { fonte: 'confirmado', ate: '2026-07', nome: 'Samuel', em: '2026-11-11' } }, { ...base, contabil: { ...ctb, feitaAte: '2026-09' } });
+    ok('a DRE passou do mês confirmado: a confirmação reabre, dizendo até onde ela foi', missao(hN, 'contabil').estado === 'aberta' && / A confirmação de 11\/11\/2026 foi até jul\/26, e a DRE agora vai até set\/26: confirme de novo\.$/.test(missao(hN, 'contabil').texto), missao(hN, 'contabil').texto);
+    // a DRE dos 12 meses com a contabilidade feita só até julho: a missão do lucro e a da confirmação dizem
+    const hA = rodarC({ ...G, lucroContabil: 100000 }, oriL, cx);
+    ok('a DRE além do que o Controle dá como feito: as duas missões dizem', /Pelo Controle das contabilidades, ela está feita só até jul\/26: a DRE usada vai além disso\.$/.test(missao(hA, 'lucro').texto)
+      && / Pelo Controle das contabilidades, ago\/26 e set\/26 ainda não estão feitos\.$/.test(missao(hA, 'contabil').texto) && missao(hA, 'contabil').confirmar.ate === '2026-09', missao(hA, 'contabil').texto);
+    // a contabilidade andou e a DRE ficou pra trás: a missão do lucro manda atualizar
+    ok('a contabilidade andou até setembro e a DRE ficou em julho: atualizar', / A contabilidade já está feita até set\/26: atualize o lucro com a DRE até lá\.$/.test(missao(rodarC(eP, oriL, { ...base, contabil: { ...ctb, feitaAte: '2026-09' } }), 'lucro').texto));
+    // a contabilidade parada antes dos meses da receita: não há DRE a pedir
+    const hZ = rodarC(G, ORI, { ...base, contabil: { faz: true, feitaAte: '2024-12', responsavel: 'Adaini', meses: [] } });
+    ok('a contabilidade feita só até dez/24: nenhum dos meses da receita, e sem a missão da confirmação', /^Falta o lucro da DRE, antes do IRPJ e da CSLL\. Pelo Controle das contabilidades, ela está feita até dez\/24: nenhum dos meses da receita \(out\/25 a set\/26\)\. Sem ele, a conta estima/.test(missao(hZ, 'lucro').texto)
+      && !missao(hZ, 'contabil') && /nenhum mês está feito: nenhum dos meses da receita/.test(missao(rodarC(G, ORI, { ...base, contabil: { faz: true, feitaAte: null, meses: [] } }), 'lucro').texto), missao(hZ, 'lucro').texto);
+    // a contabilidade feita até dezembro: só 3 dos 12 meses da receita — a missão pede, e avisa que é pouco
+    const hD = rodarC(G, ORI, { ...base, contabil: { ...ctb, feitaAte: '2025-12' } });
+    ok('a contabilidade feita até dez/25: a DRE de 3 dos 12 meses, com o aviso de que é pouco', /use a DRE de out\/25 a dez\/25 \(3 dos 12 meses da receita\): os outros 9 entram pela margem desses 3\. São só 3 dos 12 meses: a margem deles pode não valer pro ano\. Sem ele, a conta estima/.test(missao(hD, 'lucro').texto)
+      && missao(hD, 'contabil').confirmar.ate === '2025-12', missao(hD, 'lucro').texto);
+    const hD2 = rodarC({ ...G, lucroContabil: 20000, lucroDe: '2025-10', lucroAte: '2025-12', lucroReceita: 250000 }, oriL, { ...base, contabil: { ...ctb, feitaAte: '2025-12' } });
+    ok('com a DRE de 3 meses: os outros 9 pela mesma margem (R$ 80.000 nos 12 meses), com o mesmo aviso', /^Lucro de R\$\s20\.000 na DRE de out\/25 a dez\/25 \(3 dos 12 meses da receita\): com os outros 9 pela mesma margem, lucro de R\$\s80\.000 nos 12 meses\. São só 3 dos 12 meses: a margem deles pode não valer pro ano\. No Real de 2027/.test(missao(hD2, 'lucro').texto), missao(hD2, 'lucro').texto);
+    ok('com 6 meses ou mais, sem o aviso', !/São só/.test(missao(h0, 'lucro').texto) && !/São só/.test(lP.texto));
+    ok('fora do escritório: a confirmação é com o contador de lá', /^Antes de apresentar, confirme com o contador que faz a contabilidade dela se o resultado até set\/26 é confiável/.test(missao(rodarC({ ...G, lucroContabil: 100000 }, oriL, { ...base, contabil: { faz: false, feitaAte: null } }), 'contabil').texto)
+      && /^Antes de apresentar, confirme com quem faz a contabilidade dela se o resultado até set\/26 é confiável/.test(missao(rodarC({ ...G, lucroContabil: 100000 }, oriL, base), 'contabil').texto));
+    ok('no caminho com o Simples, a confirmação pesa, sem decidir', (() => { const m = missao(rodarC({ ...T, lucroContabil: 100000 }, oriL, { ...base, vedacoes: limpo, socios: 2, contabil: ctb }), 'contabil'); return m && m.peso === 'importa' && m.estado === 'aberta' && m.fase === 'numeros'; })());
+    // as fontes da fase, com a DRE até julho
+    const foP = fontesDoEstudo({ entrada: eP, origens: oriL, comparacao: comparar({ ...eP, regimes: ['presumido', 'real'], lucroFator: 1.2 }), serie, hoje: '2026-11-11', objetivo: 'presumido_real', contabil: ctb });
+    ok('as fontes: a DRE de 10 de 12 meses ("faltam meses") e a confirmação com os meses que o Domínio aponta', foP.lucro[0].estado === 'antigo' && foP.lucro[0].situacao === 'digitado: a DRE de out/25 a jul/26 (10 de 12 meses)'
+      && foP.lucro[1].id === 'ctbconf' && foP.lucro[1].onde === 'Quem cuida da contabilidade dela (Adaini): se o resultado até jul/26 é confiável. O Domínio aponta 9 de 10 meses com problema (na missão abaixo).', foP.lucro.slice(0, 2));
+  }
+
   console.log('=== a precisão do estudo ===');
   const p0 = precisaoDoEstudo(g0);
-  ok('provisório: falta o que pode virar — o que decide primeiro, com o efeito de cada item', p0.nivel === 'provisorio' && p0.falta.map(x => x.id + ':' + x.peso).join() === 'lucro:decide,presuncao:importa,piscofins:importa,crescimento:importa,resto:detalhe'
+  ok('provisório: falta o que pode virar — o que decide primeiro, com o efeito de cada item', p0.nivel === 'provisorio' && p0.falta.map(x => x.id + ':' + x.peso).join() === 'lucro:decide,contabil:decide,presuncao:importa,piscofins:importa,crescimento:importa,resto:detalhe'
     && p0.falta[0].falta === true && p0.falta[0].efeito === 'é o número que decide entre o Presumido e o Real: o IRPJ e a CSLL do Real saem dele' && p0.falta.every(x => x.efeito && x.titulo && x.curto), p0.falta);
   ok('o que já está na conta, e como chegou', p0.tem.map(x => x.id).join() === 'receita,folha,compras' && p0.tem.every(x => x.como === 'veio do Domínio pela ponte') && p0.doSistema.join() === 'a receita,as compras,a folha,o pró-labore', [p0.tem, p0.doSistema]);
   ok('quase: falta só o que não vira o resultado', precisaoDoEstudo(gL).nivel === 'quase' && precisaoDoEstudo(gL).falta.every(x => x.peso !== 'decide') && precisaoDoEstudo(gL).tem.some(x => x.id === 'lucro' && x.como === 'digitado'));
-  ok('pronto: nada falta', precisaoDoEstudo(gP).nivel === 'pronto' && precisaoDoEstudo(gP).falta.length === 0 && precisaoDoEstudo(gP).tem.length === 9);
+  ok('pronto: nada falta', precisaoDoEstudo(gP).nivel === 'pronto' && precisaoDoEstudo(gP).falta.length === 0 && precisaoDoEstudo(gP).tem.length === 10);
   ok('com o Simples vedado: o impedimento é o primeiro que falta', precisaoDoEstudo(tV).falta[0].id === 'vedacoes' && precisaoDoEstudo(tV).falta[0].efeito === 'com impedimento, o Simples não é opção: a conta dele é só simulação');
   ok('os nomes do nível e do peso, pra tela e pro assistente', Object.keys(NIVEL_DA_PRECISAO).join() === 'pronto,quase,provisorio' && Object.keys(PESO_DA_PRECISAO).join() === 'decide,importa,detalhe' && PESO_DA_PRECISAO.decide === 'decide o resultado');
   ok('sem o roteiro: provisório e vazio', (() => { const p = precisaoDoEstudo(null); return p.nivel === 'provisorio' && !p.tem.length && !p.falta.length; })());

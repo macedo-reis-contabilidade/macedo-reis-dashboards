@@ -13,11 +13,15 @@
 // só o Presumido contra o Real, a receita e a presunção, o lucro do Real (o da contabilidade), o resto da conta e o
 // veredito. E a precisão do estudo (precisaoDoEstudo): o que já está na conta e o que falta, com o efeito de cada item —
 // "mostrando o comparativo com o que se tem mas deixando evidenciado o que se falta pra ser mais preciso".
+// Também de 11/11/2026 (20h11, o Samuel na missão do lucro: "a ponte da Domínio deveria puxar essa informação até a data
+// que supostamente a contabilidade está feita" e "eu ainda confirmaria com a Adaini se é confiável usar esse número até
+// essa data"): a DRE que o estudo pede vai até onde a contabilidade está feita, e não até o fim da receita (lucroDoEstudo),
+// e a confirmação de quem cuida da contabilidade é uma missão que decide, com o que o Domínio mostra daqueles meses.
 // Testado por tests/comparativo-roteiro.test.mjs.
 // ============================================================
 
 import { LIMITE_SIMPLES, SUBLIMITE, ROTULO_REGIME, TIPOS, ehObjetivo, ehServico, fraseDaDecisao, rotuloDoTipo } from './comparativo-motor.js';
-import { DO_SISTEMA, periodoCurto } from './comparativo-dados.js';
+import { DO_SISTEMA, periodoCurto, periodoDaDre, dreSugerida, janelaDaReceita, mesesDeAte } from './comparativo-dados.js';
 import { NAO_CONFERE, oQueConferiu } from './simples-vedacoes.js';
 
 // o Presumido só é opção com receita bruta de até R$ 78 milhões no ano anterior (Lei 9.718/1998, art. 13, na redação da
@@ -152,6 +156,86 @@ function mesesDepois(ate, fechado) {
   return out;
 }
 const faltamMeses = l => (l.length === 1 ? 'falta ' : 'faltam ') + juntar(l.map(rotuloComp));
+// ---------- o lucro da contabilidade: até onde ela está feita, o que o Domínio mostra e a confirmação ----------
+const dataBR = iso => { const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(iso || '')); return m ? m[3] + '/' + m[2] + '/' + m[1] : ''; };
+const ultimoDiaDoMes = c => c + '-' + String(new Date(Date.UTC(+c.slice(0, 4), +c.slice(5, 7), 0)).getUTCDate()).padStart(2, '0');
+// os meses em faixas: "fev/26" · "nov/25 e dez/25" · "jan/26 a jul/26" · "out/25, jan/26 a mar/26 e jul/26"
+export function faixasDeMeses(lista) {
+  const ord = [...new Set((lista || []).map(String).filter(c => /^\d{4}-\d{2}$/.test(c)))].sort();
+  const seguinte = c => { const a = +c.slice(0, 4), m = +c.slice(5, 7); return m === 12 ? (a + 1) + '-01' : a + '-' + String(m + 1).padStart(2, '0'); };
+  const grupos = [];
+  ord.forEach(c => { const g = grupos[grupos.length - 1]; if (g && seguinte(g[g.length - 1]) === c) g.push(c); else grupos.push([c]); });
+  return juntar(grupos.flatMap(g => (g.length < 3 ? g.map(rotuloComp) : [rotuloComp(g[0]) + ' a ' + rotuloComp(g[g.length - 1])])));
+}
+// "em fev/26" · "em nov/25 e dez/25" · "de jan/26 a jul/26"
+const quandoFoi = lista => { const f = faixasDeMeses(lista); return (/^\S+ a \S+$/.test(f) ? 'de ' : 'em ') + f; };
+// O que o Domínio mostra da contabilidade nos meses de `de` a `ate` (contabil.meses, de contabilDoEstudo: os problemas
+// fortes do Controle das contabilidades), juntos por tipo e com os meses, e a conta de banco mais atrasada quando para
+// antes do fim do período. Volta { lidos, comProblema, itens: [texto], naoFeitos: [competencia] } — lidos: os meses do
+// período que o Domínio leu; naoFeitos: os do período que o Controle não dá como feitos. Null sem o Controle ou o período.
+const ORDEM_DOS_SINAIS = ['transitoria', 'fiscal', 'folha', 'receita', 'folha_difere', 'caixa', 'banco'];
+const TEXTO_DO_SINAL = { fiscal: 'a escrita fiscal não entrou na contabilidade', folha: 'a folha não entrou na contabilidade', receita: 'a receita lançada é diferente do faturamento',
+  folha_difere: 'a folha lançada é diferente da calculada', caixa: 'o caixa fechou o mês negativo', banco: 'o banco ficou sem lançamento' };
+export function sinaisDaContabilidade(contabil, de, ate) {
+  if (!contabil || contabil.faz === false || !de || !ate) return null;
+  const meses = (contabil.meses || []).filter(m => m && m.competencia >= de && m.competencia <= ate);
+  const por = new Map();
+  meses.forEach(m => (m.problemas || []).forEach(p => { const l = por.get(p.tipo) || []; l.push({ c: m.competencia, valor: p.valor }); por.set(p.tipo, l); }));
+  const itens = [];
+  ORDEM_DOS_SINAIS.forEach(tipo => {
+    const l = por.get(tipo);
+    if (!l) return;
+    const cs = l.map(x => x.c), ult = l[l.length - 1];
+    if (tipo === 'transitoria') itens.push('conta transitória ou a classificar com saldo ' + quandoFoi(cs) + (num(ult.valor) > 0 ? ' (' + brl(ult.valor) + ' em ' + rotuloComp(ult.c) + ')' : ''));
+    else itens.push(TEXTO_DO_SINAL[tipo] + ' ' + quandoFoi(cs));
+  });
+  const banco = contabil.bancoAte ? String(contabil.bancoAte).slice(0, 10) : null;
+  if (banco && banco < ultimoDiaDoMes(ate)) itens.push('a conta de banco mais atrasada está lançada até ' + dataBR(banco));
+  return { lidos: meses.length, comProblema: meses.filter(m => (m.problemas || []).length).length, itens,
+    naoFeitos: mesesDeAte(de, ate).filter(c => !contabil.feitaAte || c > contabil.feitaAte) };
+}
+// com menos de metade dos meses da receita na DRE, a margem deles pode não valer pro ano (a sazonalidade, o mês atípico)
+const POUCOS_MESES = 6;
+const poucosMeses = (meses, total) => (meses > 0 && meses < POUCOS_MESES && total > meses ? ' São só ' + meses + ' dos ' + total + ' meses: a margem deles pode não valer pro ano.' : '');
+// A confirmação gravada no estudo (origens.lucroConfirmado: { fonte: 'confirmado', ate, por, nome, em }): é da
+// contabilidade até um mês, não de um número — vale enquanto a DRE usada (ou a pedida) não passa dele.
+// Volta { vale, ate, nome, em } ou null
+export function confirmacaoDaContabilidade(origens, ate) {
+  const oc = origens && origens.lucroConfirmado;
+  if (!oc || oc.fonte !== 'confirmado') return null;
+  return { vale: !ate || !oc.ate || String(oc.ate) >= String(ate), ate: oc.ate || null, nome: oc.nome || null, em: oc.em || null };
+}
+// Tudo do lucro da contabilidade num lugar só, pra missão, pra linha do "O que usar" e pra tela: jan (a janela da receita),
+// sug (a DRE que o estudo pede: até onde a contabilidade está feita), dre (o período da DRE informada e o fator que a leva
+// aos 12 meses; null sem o lucro), ate (o mês até onde vai a contabilidade usada: o da DRE, senão o da pedida), sinais (o
+// que o Domínio mostra até lá), conf (a confirmação) e quem (com quem confirmar)
+export function lucroDoEstudo({ entrada = {}, origens = {}, serie = null, contabil = null } = {}) {
+  const e = entrada || {};
+  const jan = janelaDaReceita(serie);
+  const sug = dreSugerida(serie, contabil);
+  const dre = informado(e.lucroContabil) ? periodoDaDre(serie, e) : null;
+  const de = dre ? dre.de : sug && !sug.antes ? sug.de : null;
+  const ate = dre ? dre.ate : sug && !sug.antes ? sug.ate : null;
+  const resp = contabil && contabil.faz !== false && contabil.responsavel ? String(contabil.responsavel) : null;
+  const quem = resp ? 'quem cuida da contabilidade dela (' + resp + ')' : contabil && contabil.faz === false ? 'o contador que faz a contabilidade dela' : 'quem faz a contabilidade dela';
+  return { jan, sug, dre, de, ate, sinais: sinaisDaContabilidade(contabil, de, ate), conf: confirmacaoDaContabilidade(origens, ate), quem, responsavel: resp };
+}
+// a missão da confirmação: aberta até alguém marcar "Confirmado com a contabilidade" (a tela grava quem e quando)
+function missaoDaConfirmacao(L, peso) {
+  const { dre, de, ate, conf, sinais, quem } = L;
+  const feita = !!(conf && conf.vale);
+  const per = de && ate ? 'de ' + rotuloComp(de) + ' a ' + rotuloComp(ate) : '';
+  const doDominio = !sinais || !sinais.lidos ? '' : sinais.itens.length ? ' O que o Domínio mostra ' + per + ': ' + sinais.itens.join('; ') + '.' : ' O Domínio não aponta problema ' + per + '.';
+  const naoFeitos = sinais && sinais.naoFeitos.length && dre ? ' Pelo Controle das contabilidades, ' + faixasDeMeses(sinais.naoFeitos) + (sinais.naoFeitos.length === 1 ? ' ainda não está feito.' : ' ainda não estão feitos.') : '';
+  const mudou = conf && !conf.vale ? ' A confirmação de ' + dataBR(conf.em) + ' foi até ' + rotuloComp(conf.ate) + ', e a DRE agora vai até ' + rotuloComp(ate) + ': confirme de novo.' : '';
+  return { id: 'contabil', titulo: 'A confirmação da contabilidade', curto: 'a confirmação da contabilidade', peso,
+    estado: feita ? 'feita' : 'aberta', como: feita ? 'confirmado' + (conf.nome ? ' por ' + conf.nome : '') + (conf.em ? ' em ' + dataBR(conf.em) : '') : null,
+    texto: feita ? (conf.nome || 'A equipe') + ' confirmou com ' + quem + ' que o resultado' + (conf.ate ? ' até ' + rotuloComp(conf.ate) : '') + ' é confiável' + (conf.em ? ', em ' + dataBR(conf.em) : '') + '.' + doDominio
+      : 'Antes de apresentar, confirme com ' + quem + ' se o resultado' + (ate ? ' até ' + rotuloComp(ate) : '') + ' é confiável: os meses conciliados e fechados, sem lançamento por fazer.' + doDominio + naoFeitos + mudou,
+    efeito: 'o lucro errado troca o resultado entre o Presumido e o Real',
+    confirmar: feita ? null : { ate: ate || null }, confirmarRotulo: 'Confirmado com a contabilidade', desfazer: feita, desfazerRotulo: 'Desfazer a confirmação' };
+}
+
 // Volta { simples, numeros, premissas, veredito }: as linhas de cada fase — { id, info, onde, auto, estado (tem | antigo |
 // falta | padrao | dispensa | conversa), rotuloEstado, situacao, relatorio (a tela lê o relatório), campo (onde digitar),
 // ficha (o contrato vai na ficha da empresa) }
@@ -178,7 +262,6 @@ export function fontesDoEstudo({ entrada = {}, origens = {}, comparacao = null, 
   const grupo = (e.grupo || []).map((g, i) => ({ g, i })).filter(x => x.g && num(x.g.receita) > 0);
   const out = geral ? { presuncao: [], lucro: [], premissas: [], veredito: [] } : { simples: [], numeros: [], premissas: [], veredito: [] };
   const add = (fase, x) => { const l = { estado: 'tem', situacao: '', auto: null, ...x }; l.rotuloEstado = ESTADO_FONTE[l.estado]; out[fase].push(l); };
-  const ateReceita = serie && serie.length ? serie[serie.length - 1].competencia : null;
 
   // ===== fase 1: a receita (e, com o Simples, os sócios e as outras empresas deles) =====
   {
@@ -238,16 +321,32 @@ export function fontesDoEstudo({ entrada = {}, origens = {}, comparacao = null, 
   // ===== fase 2: os números da empresa (no Presumido × Real: o lucro da contabilidade) =====
   if (geral) {
     const lucroInf = informado(e.lucroContabil);
-    // a contabilidade feita até que mês (o Controle das contabilidades): a DRE dos 12 meses da receita só fecha com ela
+    // a DRE vai até onde a contabilidade está feita (o Controle das contabilidades): o que falta dos 12 meses da receita
+    // entra pela margem dos meses feitos (lucroDoEstudo)
+    const L = lucroDoEstudo({ entrada: e, origens: o, serie, contabil });
     const feitaAte = contabil && contabil.faz !== false ? contabil.feitaAte || null : null;
-    const faltam = feitaAte && ateReceita ? mesesDepois(feitaAte, ateReceita) : [];
+    const p = L.dre || (L.sug && !L.sug.antes ? L.sug : null);      // o período: o da DRE informada, senão o da pedida
+    const total = L.jan ? L.jan.meses.length : 12;
+    const parcial = !!(p && p.faltam && p.faltam.length);
+    const perTxt = p ? 'de ' + rotuloComp(p.de) + ' a ' + rotuloComp(p.ate) : 'dos mesmos 12 meses da receita';
     const ctb = !contabil ? '' : contabil.faz === false ? ' O escritório não faz a contabilidade dela (Controle das contabilidades).'
-      : feitaAte ? ' Pelo Controle das contabilidades, ela está feita até ' + rotuloComp(feitaAte) + (faltam.length ? ': ' + faltamMeses(faltam) + ' pra DRE dos 12 meses fechar.' : '.')
-      : ' Pelo Controle das contabilidades, nenhum mês está feito.';
-    add(F2, { id: 'dre', info: 'O lucro da contabilidade nos 12 meses', estado: lucroInf ? (faltam.length ? 'antigo' : 'tem') : 'falta', campo: 'lucroContabil',
-      situacao: lucroInf ? como('lucroContabil') + (faltam.length ? ' — a contabilidade vai até ' + rotuloComp(feitaAte) : '') : 'falta',
-      onde: 'Domínio Contabilidade: a DRE (ou o balancete) dos mesmos 12 meses da receita — o resultado antes do IRPJ e da CSLL.' + ctb,
-      auto: 'A ponte do Domínio ainda não traz o resultado da contabilidade: digite o lucro da DRE.' });
+      : L.sug && L.sug.antes ? ' Pelo Controle das contabilidades, ' + (feitaAte ? 'ela está feita até ' + rotuloComp(feitaAte) : 'nenhum mês está feito') + ': nenhum dos meses da receita.'
+      : feitaAte ? ' Pelo Controle das contabilidades, ela está feita até ' + rotuloComp(feitaAte) + '.' : '';
+    // a DRE informada que passa do que o Controle dá como feito: o número está na conta, mas não é o de meses fechados
+    const alem = !!(L.dre && feitaAte && L.dre.ate > feitaAte);
+    add(F2, { id: 'dre', info: 'O lucro da contabilidade', estado: lucroInf ? (parcial || alem ? 'antigo' : 'tem') : 'falta', campo: 'lucroContabil',
+      situacao: lucroInf ? como('lucroContabil') + (L.dre ? ': a DRE ' + perTxt + (parcial ? ' (' + L.dre.meses + ' de ' + total + ' meses)' : '') + (alem ? ', além do que a contabilidade tem feito (' + rotuloComp(feitaAte) + ')' : '') : '') : 'falta',
+      onde: 'Domínio Contabilidade: a DRE (ou o balancete) ' + perTxt + (parcial ? ', até onde a contabilidade está feita' : '') + ' — o resultado antes do IRPJ e da CSLL.'
+        + (parcial ? ' ' + (p.faltam.length > 3 ? 'Os outros ' + p.faltam.length + ' meses' : maiuscula(juntar(p.faltam.map(rotuloComp)))) + (p.faltam.length === 1 ? ' entra' : ' entram') + ' pela margem ' + (p.faltam.length > 3 ? 'desses' : 'dos outros meses') + '.' : '') + ctb,
+      auto: 'A ponte do Domínio ainda não traz o resultado da contabilidade: por enquanto, digite o lucro da DRE.' });
+    // a confirmação de quem cuida da contabilidade: com o lucro na conta, ou enquanto ele é pedido
+    if (L.ate && (lucroInf || !conferido('lucroContabil'))) {
+      const ok = !!(L.conf && L.conf.vale);
+      add(F2, { id: 'ctbconf', info: 'A confirmação da contabilidade', estado: ok ? 'tem' : 'falta',
+        situacao: ok ? 'confirmado' + (L.conf.nome ? ' por ' + L.conf.nome : '') + (L.conf.em ? ' em ' + dataBR(L.conf.em) : '') : 'falta confirmar',
+        onde: maiuscula(L.quem) + ': se o resultado até ' + rotuloComp(L.ate) + ' é confiável' + (L.sinais && L.sinais.itens.length ? '. O Domínio aponta ' + L.sinais.comProblema + ' de ' + L.sinais.lidos + ' meses com problema (na missão abaixo)' : '') + '.',
+        auto: 'Nenhum sistema tem: é a palavra de quem fecha a contabilidade.' });
+    }
     if (lucroInf) add(F2, { id: 'lalur', info: 'As adições e as exclusões do lucro real', estado: padrao('ajustesLalur') ? 'padrao' : 'tem', campo: 'ajustesLalur',
       situacao: padrao('ajustesLalur') ? 'no padrão: sem ajustes' : como('ajustesLalur'),
       onde: 'A DRE e o razão: as despesas indedutíveis (multas, brindes, doações) e as receitas que não são tributadas. Se a empresa já foi do Real, o LALUR da última ECF.',
@@ -356,7 +455,7 @@ export const FASES = [
 // contabilidade; o resto da conta é igual nos dois (ICMS, ISS, INSS e, de 2027 em diante, a CBS e o IBS) ou só pesa em 2026
 export const FASES_GERAL = [
   { id: 'presuncao', titulo: 'A receita e a presunção', objetivo: 'A receita dos 12 meses e a atividade de cada uma: é o que faz o IRPJ e a CSLL do Presumido.' },
-  { id: 'lucro', titulo: 'O lucro do Real', objetivo: 'O lucro da contabilidade (a DRE dos 12 meses) e os ajustes: é o que faz o IRPJ e a CSLL do Real.' },
+  { id: 'lucro', titulo: 'O lucro do Real', objetivo: 'O lucro da contabilidade (a DRE até onde ela está feita), a confirmação de quem cuida dela e os ajustes: é o que faz o IRPJ e a CSLL do Real.' },
   { id: 'premissas', titulo: 'O resto da conta', objetivo: 'O PIS/Cofins de 2026 (cumulativo no Presumido, com crédito no Real) e o que é igual nos dois regimes: ICMS, ISS, INSS e, de 2027 em diante, a CBS e o IBS.' },
   { id: 'veredito', titulo: 'O veredito', objetivo: 'Com as missões que decidem cumpridas, o regime mais barato e quanto.' }
 ];
@@ -531,25 +630,34 @@ export function roteiroDoEstudo({ entrada = {}, origens = {}, comparacao = null,
     const emp = d && d.real ? d.real.empate.presumido : null;
     const empTxt = !emp ? '' : emp.nunca ? ' Nem com lucro zero o Real fica abaixo do Presumido.'
       : ' O Real empata com o Presumido com lucro de ' + brl(emp.lucro) + ' antes do IR (' + pct(emp.margem * 100) + '% da receita): abaixo disso, o Real sai mais barato.';
-    // a contabilidade feita até que mês (o Controle das contabilidades): a DRE dos 12 meses da receita só fecha com ela
-    const ateRec = serie && serie.length ? serie[serie.length - 1].competencia : null;
-    // os 12 meses da DRE são os da receita
-    const doze = (serie || []).slice(-12);
-    const per = doze.length ? 'de ' + rotuloComp(doze[0].competencia) + ' a ' + rotuloComp(ateRec) : 'dos 12 meses';
+    // os meses da receita, a DRE que o estudo pede (até onde a contabilidade está feita, pelo Controle das contabilidades) e
+    // a que ele tem; o que falta dos 12 meses entra pela margem dos meses feitos (lucroDoEstudo)
+    const L = lucroDoEstudo({ entrada: e, origens: o, serie, contabil });
     const feitaAte = contabil && contabil.faz !== false ? contabil.feitaAte || null : null;
-    const faltamCtb = feitaAte && ateRec && feitaAte < ateRec;
-    const ctbTxt = !contabil ? '' : contabil.faz === false ? ' O escritório não faz a contabilidade dela: o lucro vem do contador de lá ou do cliente.'
-      : feitaAte ? ' Pelo Controle das contabilidades, ela está feita até ' + rotuloComp(feitaAte) + (faltamCtb ? ': a DRE até ' + rotuloComp(ateRec) + ' ainda não fecha.' : '.') : '';
+    const foraDaqui = contabil && contabil.faz === false ? ' O escritório não faz a contabilidade dela: o lucro vem do contador de lá ou do cliente.' : '';
+    const lucroOuPrej = x => (x < 0 ? 'prejuízo de ' + brl(-x) : 'lucro de ' + brl(x));
     if (lucroInf) {
+      const dre = L.dre;
+      const per = dre ? 'de ' + rotuloComp(dre.de) + ' a ' + rotuloComp(dre.ate) : 'dos 12 meses';
+      const parcial = !!(dre && Math.abs(dre.fator - 1) > 0.0005);
+      const v = num(e.lucroContabil);
+      // a DRE de só uma parte dos meses da receita: os que faltam entram pela margem dos que ela tem
+      const parteTxt = !parcial ? '' : dre.janela && dre.faltam.length ? ' (' + dre.meses + ' dos ' + dre.janela.meses + ' meses da receita): com ' + (dre.faltam.length > 3 ? 'os outros ' + dre.faltam.length : juntar(dre.faltam.map(rotuloComp))) + ' pela mesma margem, ' + lucroOuPrej(v * dre.fator) + ' nos 12 meses'
+        : ': pela receita, ' + lucroOuPrej(v * dre.fator) + ' nos 12 meses';
+      const ctbTxt = foraDaqui || (!feitaAte || !dre ? '' : dre.ate > feitaAte ? ' Pelo Controle das contabilidades, ela está feita só até ' + rotuloComp(feitaAte) + ': a DRE usada vai além disso.'
+        : dre.faltam.length && feitaAte > dre.ate ? ' A contabilidade já está feita até ' + rotuloComp(feitaAte) + ': atualize o lucro com a DRE até lá.'
+        : ' Pelo Controle das contabilidades, ela está feita até ' + rotuloComp(feitaAte) + '.');
       const lr = d && d.real ? d.real.lucro : null;
       // a troca: os tributos de hoje que a DRE descontou (o PIS/Cofins do Presumido, o DAS do Simples) saem e entram os do Real
       const troca = rDec && rDec.real.disponivel ? rDec.real.trocaTributos : null;
       const trocaTxt = troca == null ? ', sem a troca dos tributos (falta o regime de hoje)' : Math.abs(troca) < 0.5 ? ', sem diferença de tributos entre hoje e o Real'
         : ': o da DRE ' + (troca > 0 ? 'mais ' : 'menos ') + brl(Math.abs(troca)) + ' da troca dos tributos de hoje pelos do Real';
       add({ id: 'lucro', fase: F2, titulo: 'O lucro da contabilidade', curto: 'o lucro da contabilidade', peso: 'decide', estado: 'feita', como: como('lucroContabil'),
-        texto: (num(e.lucroContabil) < 0 ? 'Prejuízo de ' + brl(-num(e.lucroContabil)) : 'Lucro de ' + brl(e.lucroContabil)) + ' na DRE ' + per + '.'
-          + (lr != null ? ' No Real de ' + d.ano + ', ' + (lr < 0 ? 'prejuízo de ' + brl(-lr) : 'lucro de ' + brl(lr)) + ' antes do IR' + trocaTxt + '.' : '') + empTxt + ctbTxt,
+        texto: maiuscula(lucroOuPrej(v)) + ' na DRE ' + per + parteTxt + '.' + (parcial && dre.janela ? poucosMeses(dre.meses, dre.janela.meses) : '')
+          + (lr != null ? ' No Real de ' + d.ano + ', ' + lucroOuPrej(lr) + ' antes do IR' + trocaTxt + '.' : '') + empTxt + ctbTxt,
         efeito: 'o IRPJ e a CSLL do Real saem dele' });
+      // quem cuida da contabilidade confirma que o resultado até ali é confiável: sem isso, o estudo segue provisório
+      add({ fase: F2, ...missaoDaConfirmacao(L, 'decide') });
       const ajOk = !padrao('ajustesLalur');
       add({ id: 'ajustes', fase: F2, titulo: 'As adições e as exclusões', curto: 'as adições e exclusões', peso: 'detalhe', estado: ajOk ? 'feita' : 'aberta', como: ajOk ? como('ajustesLalur') : null,
         texto: ajOk ? (num(e.ajustesLalur) ? brl(e.ajustesLalur) + ' de adições menos exclusões.' : 'Sem ajustes no lucro real.')
@@ -561,14 +669,26 @@ export function roteiroDoEstudo({ entrada = {}, origens = {}, comparacao = null,
       const naoServe = receita > 0 && custos > receita;
       const seguiu = conferido('lucroContabil') || (!padrao('outrasDespesas') && !naoServe);
       const est = d && d.real ? d.real.lucro : null;
+      const sug = L.sug;
+      const feitaTxt = feitaAte ? ' Pelo Controle das contabilidades, ela está feita até ' + rotuloComp(feitaAte) + '.' : '';
+      // o que pedir: a DRE até onde a contabilidade está feita (e não até o fim da receita, que ainda não fecha)
+      const pede = !sug ? 'Falta o lucro da DRE dos 12 meses, antes do IRPJ e da CSLL.'
+        : sug.antes ? 'Falta o lucro da DRE, antes do IRPJ e da CSLL. Pelo Controle das contabilidades, ' + (feitaAte ? 'ela está feita até ' + rotuloComp(feitaAte) : 'nenhum mês está feito')
+          + ': nenhum dos meses da receita (' + rotuloComp(sug.de) + ' a ' + rotuloComp(sug.faltam[sug.faltam.length - 1]) + ').'
+        : sug.faltam.length ? 'Falta o lucro da DRE, antes do IRPJ e da CSLL. Pelo Controle das contabilidades, ela está feita até ' + rotuloComp(feitaAte) + ': use a DRE de ' + rotuloComp(sug.de) + ' a ' + rotuloComp(sug.ate)
+          + ' (' + sug.meses + ' dos ' + sug.total + ' meses da receita): ' + (sug.faltam.length > 3 ? 'os outros ' + sug.faltam.length : juntar(sug.faltam.map(rotuloComp))) + (sug.faltam.length === 1 ? ' entra' : ' entram')
+          + ' pela margem ' + (sug.meses === 1 ? 'desse mês' : 'desses ' + sug.meses) + '.' + poucosMeses(sug.meses, sug.total)
+        : 'Falta o lucro da DRE de ' + rotuloComp(sug.de) + ' a ' + rotuloComp(sug.ate) + ', antes do IRPJ e da CSLL.' + feitaTxt;
       add({ id: 'lucro', fase: F2, titulo: 'O lucro da contabilidade', curto: 'o lucro da contabilidade', peso: 'decide',
         estado: seguiu ? 'feita' : 'aberta', falta: !seguiu, como: seguiu ? (conferido('lucroContabil') ? 'pela estimativa' : 'estimado, com as outras despesas') : null,
-        texto: (seguiu ? 'A conta segue com o lucro estimado' : 'Falta o lucro da DRE ' + per + ', antes do IRPJ e da CSLL. Sem ele, a conta estima o lucro do Real')
+        texto: (seguiu ? 'A conta segue com o lucro estimado' : pede + foraDaqui + ' Sem ele, a conta estima o lucro do Real')
           + ' (a receita menos as compras, a folha e as despesas)' + (est != null ? ': ' + (est < 0 ? 'prejuízo de ' + brl(-est) : brl(est)) + ' em ' + d.ano + '.' : '.')
           + (naoServe ? ' As compras, as despesas com nota e a folha passam da receita: a empresa formou estoque, investiu ou teve prejuízo, e a estimativa não serve pra decidir.' : '')
-          + empTxt + ctbTxt,
+          + empTxt + (seguiu ? foraDaqui || feitaTxt : ''),
         efeito: 'é o número que decide entre o Presumido e o Real: o IRPJ e a CSLL do Real saem dele',
         campo: 'lucroContabil', irRotulo: 'Digitar o lucro da DRE', conferir: seguiu ? null : ['lucroContabil'], conferirRotulo: 'Seguir com a estimativa' });
+      // enquanto o lucro é pedido, a confirmação já tem o que olhar (o que o Domínio mostra até onde a contabilidade vai)
+      if (!seguiu && L.ate) add({ fase: F2, ...missaoDaConfirmacao(L, 'decide') });
     }
   }
   add({ id: 'folha', fase: F2, titulo: 'A folha e o pró-labore', curto: 'a folha e o pró-labore', peso: geral && lucroInf ? 'detalhe' : 'decide',
@@ -606,9 +726,13 @@ export function roteiroDoEstudo({ entrada = {}, origens = {}, comparacao = null,
     const emp = alvo && d.real.empate[alvo];
     const despOk = !padrao('outrasDespesas') || num(e.outrasDespesas) > 0;
     if (lucroInf) {
+      const L = lucroDoEstudo({ entrada: e, origens: o, serie, contabil });
+      const parcial = !!(L.dre && Math.abs(L.dre.fator - 1) > 0.0005);
+      const per = L.dre ? 'de ' + rotuloComp(L.dre.de) + ' a ' + rotuloComp(L.dre.ate) + (parcial ? ', levada aos 12 meses pela receita' : '') : 'dos 12 meses';
       add({ id: 'lucro', fase: F2, titulo: 'O lucro do Real', curto: 'o lucro do Real', peso: 'importa', estado: 'feita', como: como('lucroContabil'),
-        texto: (num(e.lucroContabil) < 0 ? 'Prejuízo de ' + brl(-num(e.lucroContabil)) : 'Lucro de ' + brl(e.lucroContabil)) + ' na DRE dos 12 meses: no Real de ' + d.ano + ', ' + brl(d.real.lucro) + ' antes do IR, com os tributos de hoje trocados pelos do Real.',
+        texto: (num(e.lucroContabil) < 0 ? 'Prejuízo de ' + brl(-num(e.lucroContabil)) : 'Lucro de ' + brl(e.lucroContabil)) + ' na DRE ' + per + ': no Real de ' + d.ano + ', ' + brl(d.real.lucro) + ' antes do IR, com os tributos de hoje trocados pelos do Real.',
         efeito: 'o IRPJ e a CSLL do Real saem dele' });
+      add({ fase: F2, ...missaoDaConfirmacao(L, 'importa') });
     } else if (despOk) {
       add({ id: 'lucro', fase: F2, titulo: 'O lucro do Real', curto: 'o lucro do Real', peso: 'importa', estado: 'feita', como: como('outrasDespesas'),
         texto: 'Outras despesas de ' + brl(e.outrasDespesas) + ': a conta usou lucro de ' + brl(d.real.lucro) + ' antes do IR.', efeito: 'o lucro abaixo do empate faz o Real ganhar' });

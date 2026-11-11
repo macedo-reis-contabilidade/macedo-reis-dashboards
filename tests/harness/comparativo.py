@@ -107,7 +107,11 @@ SEMEAR = """
     v.dominio_mensal = Array.from({ length: 12 }, (_, i) => { const d = new Date(Date.UTC(2025, 9 + i, 1)); const c = d.toISOString().slice(0, 7);
       return { codigo: 700, cliente_id: 'c7', competencia: c, receita_bruta: 50000, receita_mercadorias: 50000, receita_servicos: 0, receita_simples: null, compras: 30000, servicos_tomados: 2000, ativo_e_consumo: 0,
         salarios: 0, decimo_terceiro: 0, pro_labore_valor: 1621 }; });
-    v.contabil_empresas = [{ cliente_id: 'c7', faz: true, inicio: '2025-01', fim: null }];
+    v.contabil_empresas = [{ cliente_id: 'c7', faz: true, inicio: '2025-01', fim: null, responsavel: 'Adaini' }];
+    // o andamento da contabilidade no Domínio (a versão 3 da ponte): de maio a julho de 2026, uma conta transitória com saldo
+    v.dominio_mensal.forEach(l => Object.assign(l, { notas_saida: 10, notas_entrada: 5, lanc_fiscal: 15, lanc_folha: 1, folha_lancada: 1621, receita_lancada: 50000, caixa_negativo: 0,
+      transitorias: l.competencia >= '2026-05' ? 1 : 0, transitorias_valor: l.competencia >= '2026-05' ? 9000 : 0 }));
+    v.dominio_andamento = [{ codigo: 700, cliente_id: 'c7', banco_contas: 2, banco_ate: '2026-06-11', banco_ultimo: '2026-07-31' }];
     v.contabil_meses = Array.from({ length: 19 }, (_, i) => { const d = new Date(Date.UTC(2025, i, 1)); return { cliente_id: 'c7', competencia: d.toISOString().slice(0, 7), situacao: 'feita', feita_em: '2026-08-10' }; });
     v.comparativos = [{ id: 'est3', cliente_id: 'c3', nome: null, entrada: { v: 1, entrada: { atividades: [{ tipo: 'comercio', receita: 500000 }] }, origens: {} }, resultado: null, atualizado_em: '2026-10-30T12:00:00Z', atualizado_por: 'fiscal@macedoereis.com.br' }];
     // o cenário 13 (a presunção pelas notas do Domínio): a construtora do Presumido, só com nota de serviço; a loja do Presumido
@@ -549,8 +553,15 @@ def main():
         fontes = p5.inner_text('#escolhida')
         ok('Domínio pela ponte (12 meses fechados)' in fontes and 'sem caso na Reforma' not in fontes and 'sem folha no Fator R' not in fontes and 'sem PGDAS da Receita' not in fontes,
            'na empresa do Presumido, as fontes não dizem a falta do que é só do Simples (a Reforma, o Fator R, o PGDAS)')
+        # 11/11/2026, 20h11 (o Samuel: "a ponte deveria puxar essa informação até a data que a contabilidade está feita"): a DRE
+        # vai até onde a contabilidade está feita, e o mês se escolhe ao lado do lucro (já no mês do Controle das contabilidades)
         aj = texto(p5, '#ajudaLucro')
-        ok('dos mesmos 12 meses da receita (de out/25 a set/26)' in aj and 'Pelo Controle das contabilidades, ela está feita até jul/26.' in aj, f'o campo do lucro diz os meses da DRE e até onde a contabilidade vai ({aj[:70]}…)')
+        ok('até o mês escolhido' in aj and 'use a DRE até onde ela está feita: a conta leva o lucro aos 12 meses pela margem dos meses que ela tem' in aj and '(de out/25 a set/26)' in aj,
+           f'o campo do lucro explica a DRE até onde a contabilidade está feita ({aj[:70]}…)')
+        meses_dre = p5.eval_on_selector_all('#f_lucroAte option', 'os => os.map(o => o.value + (o.selected ? "*" : ""))')
+        ok(len(meses_dre) == 12 and meses_dre[0] == '2025-10' and meses_dre[9] == '2026-07*' and meses_dre[11] == '2026-09' and 'A DRE vai de out/25 até' in texto(p5, 'label[for="f_lucroAte"]')
+           and texto(p5, '#origLucroAte') == 'pelo Controle das contabilidades, feita até jul/26' and 'jul/26 (10 de 12 meses)' in texto(p5, '#f_lucroAte option[value="2026-07"]'),
+           f'o seletor do mês da DRE: os 12 meses da receita, já em jul/26, até onde a contabilidade está feita ({meses_dre[9:]})')
         # a fase 1 já abre concluída: a receita e a atividade (a presunção) vieram do Domínio, e a tela vai direto pro lucro
         ok(p5.get_attribute('#trilha li:nth-child(1)', 'data-estado') == 'feita' and p5.get_attribute('#trilha li:nth-child(2)', 'data-estado') == 'atual'
            and 'O lucro da contabilidade' in p5.inner_text('#fase .ct-m.ct-prox'), 'a fase 1 abre concluída (a receita e a presunção pelo Domínio): o próximo passo é o lucro da contabilidade')
@@ -571,18 +582,58 @@ def main():
            f'a precisão: falta o lucro da contabilidade, que decide; a presunção já está na conta ({pr[:90]}…)')
         ml = texto(p5, '#fase .ct-m[data-id="lucro"]')
         ok(p5.get_attribute('#fase .ct-m[data-id="lucro"]', 'data-estado') == 'aberta' and 'Falta o lucro da DRE' in ml and 'O Real empata com o Presumido com lucro de R$ 57.000' in ml
-           and 'feita até jul/26: a DRE até set/26 ainda não fecha' in ml and 'Digitar o lucro da DRE' in ml and 'Seguir com a estimativa' in ml,
-           f'fase 2: o lucro da contabilidade falta e decide, com o empate e a contabilidade feita até jul/26 ({ml[:90]}…)')
+           and 'feita até jul/26: use a DRE de out/25 a jul/26 (10 dos 12 meses da receita): ago/26 e set/26 entram pela margem desses 10.' in ml and 'ainda não fecha' not in ml
+           and 'Digitar o lucro da DRE' in ml and 'Seguir com a estimativa' in ml,
+           f'fase 2: o lucro da contabilidade falta e decide, e a missão pede a DRE até onde a contabilidade está feita ({ml[:90]}…)')
         fd = texto(p5, '#fase .ct-usar-item[data-id="dre"]')
-        ok('Domínio Contabilidade: a DRE' in fd and 'faltam ago/26 e set/26' in fd and p5.get_attribute('#fase .ct-usar-item[data-id="dre"]', 'data-estado') == 'falta', 'o que usar: a DRE do Domínio, com os meses que faltam na contabilidade')
+        ok('Domínio Contabilidade: a DRE (ou o balancete) de out/25 a jul/26, até onde a contabilidade está feita' in fd and 'Ago/26 e set/26 entram pela margem dos outros meses.' in fd
+           and p5.get_attribute('#fase .ct-usar-item[data-id="dre"]', 'data-estado') == 'falta', 'o que usar: a DRE do Domínio até onde a contabilidade está feita, com os meses que faltam pela margem')
+        # a confirmação de quem cuida da contabilidade já aparece, com o que o Domínio mostra daqueles meses
+        mc = texto(p5, '#fase .ct-m[data-id="contabil"]')
+        ok(p5.get_attribute('#fase .ct-m[data-id="contabil"]', 'data-estado') == 'aberta' and 'confirme com quem cuida da contabilidade dela (Adaini) se o resultado até jul/26 é confiável' in mc
+           and 'O que o Domínio mostra de out/25 a jul/26: conta transitória ou a classificar com saldo de mai/26 a jul/26 (R$ 9.000 em jul/26); a conta de banco mais atrasada está lançada até 11/06/2026.' in mc
+           and 'Confirmado com a contabilidade' in mc, f'a missão da confirmação: com quem confirmar, até que mês e o que o Domínio mostra ({mc[:110]}…)')
+        fc = texto(p5, '#fase .ct-usar-item[data-id="ctbconf"]')
+        ok(p5.get_attribute('#fase .ct-usar-item[data-id="ctbconf"]', 'data-estado') == 'falta' and 'falta confirmar' in fc and 'O Domínio aponta 3 de 10 meses com problema' in fc, f'o que usar: a confirmação da contabilidade ({fc[:90]}…)')
+        ok(p5.locator('#precisao li[data-id="contabil"]').count() == 1 and p5.get_attribute('#precisao li[data-id="contabil"]', 'data-peso') == 'decide', 'a precisão: a confirmação da contabilidade também falta, e decide')
         p5.click('#fase .ct-m[data-id="lucro"] [data-ir]')
         ok(p5.evaluate("() => document.activeElement && document.activeElement.id") == 'f_lucroContabil', '"Digitar o lucro da DRE" põe o cursor no campo')
         p5.fill('#f_lucroContabil', '40000')
-        p5.wait_for_function("() => document.querySelector('#trilha li:nth-child(2)').dataset.estado === 'feita'", timeout=3000)
-        ok('Fase 2 concluída' in texto(p5, '#banner') and 'pela contabilidade' in texto(p5, '#banner'), f'o lucro digitado fecha a fase 2 ({texto(p5, "#banner")[:100]})')
-        p5.click('#trilha button[data-fase="1"]')
+        p5.wait_for_function("() => { const m = document.querySelector('#fase .ct-m[data-id=\"lucro\"]'); return m && m.dataset.estado === 'feita'; }", timeout=3000)
         ml = texto(p5, '#fase .ct-m[data-id="lucro"]')
-        ok('Lucro de R$ 40.000 na DRE de out/25 a set/26' in ml and 'da troca dos tributos de hoje pelos do Real' in ml and 'digitado' in ml, f'o lucro digitado cumpre a missão e diz a troca dos tributos ({ml[:110]}…)')
+        # R$ 40.000 em 10 dos 12 meses (a receita é igual em todos: fator 1,2) → R$ 48.000 nos 12 meses
+        ok('Lucro de R$ 40.000 na DRE de out/25 a jul/26 (10 dos 12 meses da receita): com ago/26 e set/26 pela mesma margem, lucro de R$ 48.000 nos 12 meses.' in ml
+           and 'da troca dos tributos de hoje pelos do Real' in ml and 'digitado' in ml, f'o lucro digitado vale até jul/26 e vai aos 12 meses pela margem ({ml[:130]}…)')
+        ok(p5.get_attribute('#trilha li:nth-child(2)', 'data-estado') == 'atual' and 'Provisório' in texto(p5, '#placar') and p5.get_attribute('#fase .ct-m[data-id="contabil"]', 'data-estado') == 'aberta',
+           'com o lucro e sem a confirmação de quem cuida da contabilidade, a fase 2 não fecha e o estudo segue provisório')
+        p5.wait_for_function("() => (window.__mockDb.comparativos || []).some(r => r.cliente_id === 'c7' && r.entrada.entrada.lucroContabil === 40000 && r.entrada.entrada.lucroAte === '2026-07')", timeout=5000)
+        ge = p5.evaluate("() => JSON.parse(JSON.stringify(window.__mockDb.comparativos.find(r => r.cliente_id === 'c7').entrada.entrada))")
+        ok(ge['lucroDe'] == '2025-10' and ge['lucroAte'] == '2026-07' and abs(ge['lucroReceita'] - 500000) < 0.01, f'o estudo grava o período da DRE e a receita dele ({ge.get("lucroDe")} a {ge.get("lucroAte")}, {ge.get("lucroReceita")})')
+        # o mês da DRE se troca no seletor: até set/26 (os 12 meses), o lucro entra como veio, e a tela avisa que passa do que está feito
+        p5.select_option('#f_lucroAte', '2026-09')
+        p5.wait_for_function("() => /na DRE de out\\/25 a set\\/26\\./.test(document.querySelector('#fase .ct-m[data-id=\"lucro\"]').textContent)", timeout=3000)
+        ml9 = texto(p5, '#fase .ct-m[data-id="lucro"]')
+        ok('Lucro de R$ 40.000 na DRE de out/25 a set/26.' in ml9 and 'nos 12 meses' not in ml9 and 'ela está feita só até jul/26: a DRE usada vai além disso.' in ml9
+           and 'ago/26 e set/26 ainda não estão feitos.' in texto(p5, '#fase .ct-m[data-id="contabil"]'), f'a DRE até set/26: os 12 meses, com o aviso de que passa do que o Controle dá como feito ({ml9[:70]}…)')
+        p5.select_option('#f_lucroAte', '2026-07')
+        p5.wait_for_function("() => /na DRE de out\\/25 a jul\\/26 /.test(document.querySelector('#fase .ct-m[data-id=\"lucro\"]').textContent)", timeout=3000)
+        # a confirmação: um clique, com quem marcou e o dia; fecha a fase 2 — e dá pra desfazer
+        p5.click('#fase .ct-m[data-id="contabil"] [data-confirmar-contabil]')
+        p5.wait_for_function("() => document.querySelector('#trilha li:nth-child(2)').dataset.estado === 'feita'", timeout=3000)
+        ok('Fase 2 concluída' in texto(p5, '#banner') and 'pela contabilidade' in texto(p5, '#banner'), f'com o lucro e a confirmação, a fase 2 fecha ({texto(p5, "#banner")[:100]})')
+        p5.click('#trilha button[data-fase="1"]')
+        mc = texto(p5, '#fase .ct-m[data-id="contabil"]')
+        ok(p5.get_attribute('#fase .ct-m[data-id="contabil"]', 'data-estado') == 'feita' and 'confirmou com quem cuida da contabilidade dela (Adaini) que o resultado até jul/26 é confiável, em ' in mc
+           and 'Desfazer a confirmação' in mc and p5.get_attribute('#fase .ct-usar-item[data-id="ctbconf"]', 'data-estado') == 'tem', f'a confirmação cumprida diz quem confirmou e quando, com o Desfazer ({mc[:120]}…)')
+        p5.wait_for_function("() => (window.__mockDb.comparativos || []).some(r => r.cliente_id === 'c7' && r.entrada.origens.lucroConfirmado && r.entrada.origens.lucroConfirmado.ate === '2026-07')", timeout=5000)
+        oc = p5.evaluate("() => JSON.parse(JSON.stringify(window.__mockDb.comparativos.find(r => r.cliente_id === 'c7').entrada.origens.lucroConfirmado))")
+        ok(oc['fonte'] == 'confirmado' and oc['ate'] == '2026-07' and len(oc['em']) == 10 and oc['por'], f'e o estudo grava a confirmação: até que mês, quem e o dia ({oc})')
+        p5.click('#fase .ct-m[data-id="contabil"] [data-desconfirmar-contabil]')
+        p5.wait_for_function("() => document.querySelector('#fase .ct-m[data-id=\"contabil\"]').dataset.estado === 'aberta'", timeout=3000)
+        ok(p5.get_attribute('#trilha li:nth-child(2)', 'data-estado') == 'atual' and 'Confirmado com a contabilidade' in texto(p5, '#fase .ct-m[data-id="contabil"]'), '"Desfazer a confirmação" reabre a missão e a fase')
+        p5.click('#fase .ct-m[data-id="contabil"] [data-confirmar-contabil]')
+        p5.wait_for_function("() => document.querySelector('#trilha li:nth-child(2)').dataset.estado === 'feita'", timeout=3000)
+        p5.click('#trilha button[data-fase="1"]')
         p5.click('details.ct-det > summary')
         ok('Lucro antes do IR (o da contabilidade, com os tributos trocados)' in p5.inner_text('details.ct-det'), 'no detalhe por tributo, o lucro do Real é o da contabilidade')
         p5.wait_for_function("() => (window.__mockDb.comparativos || []).some(r => r.cliente_id === 'c7' && r.entrada.entrada.lucroContabil === 40000)", timeout=5000)
@@ -592,6 +643,8 @@ def main():
         p5.fill('#f_lucroContabil', '')
         p5.wait_for_function("() => { const m = document.querySelector('#fase .ct-m[data-id=\"lucro\"]'); return m && m.dataset.estado === 'aberta'; }", timeout=3000)
         ok(p5.get_attribute('.ct-orig[data-orig="lucroContabil"]', 'data-fonte') == 'padrao', 'o lucro apagado volta à estimativa (a origem volta ao padrão)')
+        p5.wait_for_function("() => (window.__mockDb.comparativos || []).some(r => r.cliente_id === 'c7' && r.entrada.entrada.lucroContabil == null && !('lucroAte' in r.entrada.entrada) && !('lucroReceita' in r.entrada.entrada))", timeout=5000)
+        ok(True, 'e o período da DRE sai junto com o lucro')
         # o resto da conta: as vendas com alíquota zero de PIS/Cofins (a cesta básica da Lei 10.925/2004)
         p5.click('#trilha button[data-fase="2"]')
         mp = texto(p5, '#fase .ct-m[data-id="piscofins"]')

@@ -300,7 +300,8 @@
     import { hojeLocal, formatDocumento, normalizarDocumento } from './assets/js/utils.js';
     import { nomePorEmail } from './assets/js/equipe.js';
     import { fraseDaDecisao, TIPOS, ANEXOS, ROTULO_REGIME, REGIMES, OBJETIVOS, ehObjetivo, ehServico, rotuloDoTipo } from './assets/js/comparativo-motor.js';
-    import { aplicarRelatorios, FONTES, rotuloComp, mesclarSerie, pareceFolha, cnpjsDoCabecalho, juntarFolha, folhaDoAno, aplicarFolha, doRegimeGeral, simplesNoEstudo } from './assets/js/comparativo-dados.js';
+    import { aplicarRelatorios, FONTES, rotuloComp, mesclarSerie, pareceFolha, cnpjsDoCabecalho, juntarFolha, folhaDoAno, aplicarFolha, doRegimeGeral, simplesNoEstudo,
+      periodoDaDre, dreSugerida, janelaDaReceita, mesesDeAte } from './assets/js/comparativo-dados.js';
     // o estudo (o gravado ou os números do sistema, as empresas dos sócios) e a conta: a mesma regra do assistente do escritório
     import { PADRAO_ATIV, comPadroes, ORIGENS_PADRAO, CAMPOS, erroSemTabela, carregarEstudo, contaDoEstudo, situacaoComGrupo, resumoParaGravar, opcoesDeObjetivo } from './assets/js/comparativo-estudo.js';
     import { oQueConferiu } from './assets/js/simples-vedacoes.js';
@@ -634,15 +635,42 @@
       }).join('');
       return '<fieldset class="ct-grupo" id="grupoSocios"><legend>Empresas dos mesmos sócios</legend><p class="ct-gr-sit' + (alerta ? ' ct-alerta' : '') + '" id="grupoSit">' + esc(txt) + '</p>' + linhas + '</fieldset>';
     }
-    // o lucro do Real pela contabilidade: o resultado da DRE dos 12 meses e os ajustes (sem ele, a conta estima o lucro)
+    // o lucro do Real pela contabilidade: o resultado da DRE e os ajustes (sem ele, a conta estima o lucro). A DRE vai até
+    // onde a contabilidade está feita (o Controle das contabilidades), e não até o fim da receita, que ainda não fecha: o
+    // mês se escolhe aqui, e a conta leva o lucro aos 12 meses pela margem dos meses que ela tem (periodoDaDre)
+    const temLucro = () => st.entrada.lucroContabil != null && st.entrada.lucroContabil !== '';
     function blocoLucro() {
-      // os 12 meses da DRE são os da receita; e até que mês a contabilidade está feita (o Controle das contabilidades)
-      const doze = (st.serie || []).slice(-12);
-      const per = doze.length ? ' (de ' + rotuloComp(doze[0].competencia) + ' a ' + rotuloComp(doze[doze.length - 1].competencia) + ')' : '';
+      const jan = janelaDaReceita(st.serie);
       const k = st.contabil;
-      const ctb = !k ? '' : k.faz === false ? ' O escritório não faz a contabilidade desta empresa.' : k.feitaAte ? ' Pelo Controle das contabilidades, ela está feita até ' + rotuloComp(k.feitaAte) + '.' : ' Pelo Controle das contabilidades, nenhum mês está feito.';
-      return '<fieldset class="ct-grupo" id="blocoLucro"><legend>Lucro do Real (a contabilidade)</legend><div class="ct-campos">' + campo('lucroContabil') + campo('ajustesLalur') + '</div>' +
-        '<small class="ct-orig" id="ajudaLucro">O resultado da DRE dos mesmos 12 meses da receita' + esc(per) + ', antes do IRPJ e da CSLL; prejuízo, com o sinal de menos. A conta troca os tributos de hoje pelos do Real. Em branco, o lucro é estimado: a receita menos as compras, a folha e as despesas.' + esc(ctb) + '</small></fieldset>';
+      const dre = temLucro() ? periodoDaDre(st.serie, st.entrada) : null;
+      const sug = dreSugerida(st.serie, k);
+      // o mês do seletor: o da DRE que o estudo tem, senão até onde a contabilidade está feita, senão o fim da receita
+      const ateSel = !jan ? null : dre && dre.ate >= jan.de && dre.ate <= jan.ate ? dre.ate : sug && sug.ate ? sug.ate : jan.ate;
+      const feita = !k ? '' : k.faz === false ? 'a contabilidade não é feita no escritório' : k.feitaAte ? 'pelo Controle das contabilidades, feita até ' + rotuloComp(k.feitaAte) : 'pelo Controle das contabilidades, nenhum mês feito';
+      const seletor = !jan || jan.meses.length < 2 ? '' : '<label class="ct-campo" for="f_lucroAte">A DRE vai de ' + esc(rotuloComp(jan.de)) + ' até' +
+        '<select class="select" id="f_lucroAte" data-campo="lucroAte">' + jan.meses.map((c, i) => '<option value="' + c + '"' + (c === ateSel ? ' selected' : '') + '>' + esc(rotuloComp(c)) +
+          (i < jan.meses.length - 1 ? ' (' + (i + 1) + ' de ' + jan.meses.length + ' meses)' : '') + '</option>').join('') + '</select>' +
+        '<small class="ct-orig" id="origLucroAte">' + esc(feita) + '</small></label>';
+      const per = jan ? ' (de ' + rotuloComp(jan.de) + ' a ' + rotuloComp(jan.ate) + ')' : '';
+      return '<fieldset class="ct-grupo" id="blocoLucro"><legend>Lucro do Real (a contabilidade)</legend><div class="ct-campos">' + campo('lucroContabil') + seletor + campo('ajustesLalur') + '</div>' +
+        '<small class="ct-orig" id="ajudaLucro">O resultado da DRE antes do IRPJ e da CSLL' + (seletor ? ', até o mês escolhido' : ' dos mesmos 12 meses da receita' + esc(per)) + '; prejuízo, com o sinal de menos. ' +
+        (seletor ? 'Se a contabilidade ainda não chegou ao fim da receita' + esc(per) + ', use a DRE até onde ela está feita: a conta leva o lucro aos 12 meses pela margem dos meses que ela tem. ' : '') +
+        'A conta troca os tributos de hoje pelos do Real. Em branco, o lucro é estimado: a receita menos as compras, a folha e as despesas.</small></fieldset>';
+    }
+    // o período da DRE acompanha o lucro: digitado, fica com o mês do seletor (o sugerido: até onde a contabilidade está
+    // feita) e com a receita desses meses, que é o que leva o lucro aos 12 meses; apagado, o período sai junto
+    function definirPeriodo(jan, ate) {
+      const e = st.entrada;
+      e.lucroDe = jan.de; e.lucroAte = ate >= jan.de && ate <= jan.ate ? ate : jan.ate; delete e.lucroAnual;
+      e.lucroReceita = mesesDeAte(jan.de, e.lucroAte).reduce((s, c) => s + (jan.porMes.get(c) || 0), 0) || null;
+    }
+    function acertarPeriodoDoLucro() {
+      const e = st.entrada;
+      if (!temLucro()) { delete e.lucroDe; delete e.lucroAte; delete e.lucroReceita; delete e.lucroAnual; return; }
+      const jan = janelaDaReceita(st.serie);
+      if (!jan) return;
+      const sel = $('f_lucroAte');
+      definirPeriodo(jan, e.lucroDe === jan.de && e.lucroAte ? e.lucroAte : sel && sel.value ? sel.value : jan.ate);
     }
     function renderForm() {
       const e = st.entrada;
@@ -685,6 +713,7 @@
       // o lucro da contabilidade apagado: a conta volta a estimar (a origem volta ao padrão)
       const nova = caminho === 'lucroContabil' && n == null ? ORIGENS_PADRAO.lucroContabil : { fonte: 'digitado', texto: FONTES.digitado };
       st.origens[caminho] = nova;
+      if (caminho === 'lucroContabil') acertarPeriodoDoLucro();
       const t = document.querySelector('.ct-orig[data-orig="' + CSS.escape(caminho) + '"]');
       if (t) { t.dataset.fonte = nova.fonte; t.textContent = nova.texto; t.title = nova.dica ? nova.texto + ' — ' + nova.dica : nova.texto; }
       if (/^atividades\.\d+\.receita$/.test(caminho)) $('totalRec').innerHTML = 'Receita dos 12 meses: <b>' + esc(brl(st.entrada.atividades.reduce((s, a) => s + (Number(a.receita) || 0), 0))) + '</b>';
@@ -699,6 +728,13 @@
       const caminho = el.dataset.campo;
       if (el.type === 'checkbox') { definir(st.entrada, caminho, el.checked); mudou(); return; }
       if (el.tagName !== 'SELECT') return;
+      // até que mês vai a DRE: com o lucro digitado, o período e a receita dele mudam na hora; sem ele, o mês fica no
+      // seletor e entra quando o lucro for digitado
+      if (caminho === 'lucroAte') {
+        const jan = janelaDaReceita(st.serie);
+        if (jan && temLucro()) { definirPeriodo(jan, el.value); mudou(); }
+        return;
+      }
       const m = /^atividades\.(\d+)\.tipo$/.exec(caminho);
       if (m) {
         // outro tipo: anexo, presunção e tributo voltam aos do tipo novo
@@ -899,11 +935,12 @@
         ms.forEach(m => {
           if (m.peso === 'detalhe' && !sep) { lis.push('<li class="ct-m-sep">Extras: não seguram a fase</li>'); sep = true; }
           const prox = rot.proximo && rot.proximo.id === m.id;
-          const acoes = m.estado === 'feita' ? '' : '<div class="ct-m-acoes">' +
+          const acoes = m.estado === 'feita' ? (m.desfazer ? '<div class="ct-m-acoes"><button type="button" class="btn btn-ghost btn-sm" data-desconfirmar-contabil="1">' + esc(m.desfazerRotulo || 'Desfazer') + '</button></div>' : '') : '<div class="ct-m-acoes">' +
             (m.relatorio ? '<button type="button" class="btn btn-ghost btn-sm" data-relatorio="1">Soltar ' + esc(m.relatorio) + '</button>' : '') +
             (m.campo ? '<button type="button" class="btn btn-ghost btn-sm" data-ir="' + esc(m.campo) + '">' + esc(m.irRotulo || 'Ir ao campo') + '</button>' : '') +
             (m.acao === 'mais-grupo' ? '<button type="button" class="btn btn-ghost btn-sm" data-mais-grupo="1">' + esc(m.acaoRotulo) + '</button>' : '') +
-            (m.conferir ? '<button type="button" class="btn btn-ghost btn-sm" data-conferir="' + esc(m.conferir.join(',')) + '">✓ ' + esc(m.conferirRotulo || 'Está certo') + '</button>' : '') + '</div>';
+            (m.conferir ? '<button type="button" class="btn btn-ghost btn-sm" data-conferir="' + esc(m.conferir.join(',')) + '">✓ ' + esc(m.conferirRotulo || 'Está certo') + '</button>' : '') +
+            (m.confirmar ? '<button type="button" class="btn btn-ghost btn-sm" data-confirmar-contabil="' + esc(m.confirmar.ate || '') + '">✓ ' + esc(m.confirmarRotulo || 'Confirmado') + '</button>' : '') + '</div>';
           lis.push('<li class="ct-m' + (prox ? ' ct-prox' : '') + (novas.has(m.id) ? ' ct-m-nova' : '') + '" data-id="' + esc(m.id) + '" data-estado="' + m.estado + '" data-falta="' + (m.falta && m.estado !== 'feita' ? 'sim' : 'nao') + '">' +
             '<span class="ct-m-mark" aria-hidden="true">' + (m.estado === 'feita' ? '✓' : '') + '</span><div>' +
             '<div class="ct-m-tit">' + esc(m.titulo) + (m.estado === 'feita' ? '<span class="ct-m-como">' + esc(m.como || 'feito') + '</span>' : prox ? '<small>próximo passo</small>' : '') +
@@ -944,6 +981,17 @@
       if (e.target.closest('[data-mais-grupo]')) { maisGrupo(); return; }
       const ir = e.target.closest('[data-ir]');
       if (ir) { irAoCampo(ir.dataset.ir); return; }
+      // a confirmação de quem cuida da contabilidade: fica no estudo com quem marcou, o dia e até que mês (e dá pra desfazer)
+      const cc = e.target.closest('[data-confirmar-contabil]'), dc = e.target.closest('[data-desconfirmar-contabil]');
+      if (cc || dc) {
+        if (cc) st.origens.lucroConfirmado = { fonte: 'confirmado', texto: 'confirmado com a contabilidade', ate: cc.dataset.confirmarContabil || null, por: usuario, nome: usuario ? nomePorEmail(usuario) : null, em: hojeLocal() };
+        else delete st.origens.lucroConfirmado;
+        calcular();
+        clearTimeout(tGravar); tGravar = setTimeout(gravar, 1500);
+        const li = document.querySelector('#fase .ct-m[data-id="contabil"]'), b = li && li.querySelector('button');
+        if (b) b.focus();
+        return;
+      }
       const cf = e.target.closest('[data-conferir]');
       if (!cf) return;
       cf.dataset.conferir.split(',').filter(Boolean).forEach(k => { st.origens[k] = { fonte: 'confirmado', texto: FONTES.confirmado }; });

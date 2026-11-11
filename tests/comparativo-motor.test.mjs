@@ -386,7 +386,7 @@ igual('S Presumido 2026: ICMS', 110000, item(s26.presumido, 'ICMS'));
 igual('S Real 2026: lucro estimado', 353925, s26.real.lucro);
 verdade('S sem o lucro da contabilidade: estimado, sem a troca', s26.real.lucroInformado === false && s26.real.trocaTributos === null && cS.decisao.real.informado === false);
 
-console.log('=== T · o lucro do Real pela contabilidade (a DRE dos 12 meses) ===');
+console.log('=== T · o lucro do Real pela contabilidade (a DRE) ===');
 // a DRE do Presumido dá R$ 100.000 antes do IRPJ e da CSLL. Ela já descontou os tributos de hoje: PIS/Cofins 30.295 + ICMS
 // 110.000 = 140.295. No Real de 2026: PIS/Cofins 36.075 + ICMS 110.000 = 146.075. A troca: 140.295 − 146.075 = −5.780
 const cT = comparar({ ...S, lucroContabil: 100000 }), t26 = cT.anos[0], t27 = cT.anos[1];
@@ -415,6 +415,22 @@ igual('T com R$ 10.000 de adições: lucro de 2027', 96225, comparar({ ...S, luc
 // prejuízo na contabilidade: sem IRPJ nem CSLL
 const cPrej = comparar({ ...S, lucroContabil: -50000 });
 verdade('T prejuízo na DRE: sem IRPJ e CSLL no Real, com o aviso', cPrej.anos[1].real.irpj === 0 && cPrej.anos[1].real.csll === 0 && cPrej.anos[1].real.lucro < 0 && cPrej.anos[1].real.avisos.some(a => /^Prejuízo de /.test(a)));
+// A DRE de só uma parte dos 12 meses (11/11/2026: a contabilidade feita até julho, a receita até setembro): o lucro vai aos
+// 12 meses pelo lucroFator, a receita dos 12 meses ÷ a dos meses da DRE. R$ 80.000 em 10 de 12 meses iguais: fator 1,2 →
+// R$ 96.000; em 2027, 96.000 − 13.775 da troca = 82.225; em 2026, 96.000 − 5.780 = 90.220
+const cF = comparar({ ...S, lucroContabil: 80000, lucroFator: 1.2 });
+igual('T a DRE de 10 dos 12 meses: o lucro de 2026, levado aos 12 pela receita', 90220, cF.anos[0].real.lucro);
+igual('T a DRE de 10 dos 12 meses: o lucro de 2027', 82225, cF.anos[1].real.lucro);
+igual('T a troca dos tributos não muda com o fator', -13775, cF.anos[1].real.trocaTributos);
+igual('T decisao.real.doze: o lucro da contabilidade nos 12 meses', 96000, cF.decisao.real.doze);
+verdade('T sem o lucro, doze é nulo; com a DRE dos 12 meses, é ela (com os ajustes)', cS.decisao.real.doze === null && cT.decisao.real.doze === 100000 && comparar({ ...S, lucroContabil: 100000, ajustesLalur: 10000 }).decisao.real.doze === 110000);
+verdade('T o aviso diz o que foi informado e o que a conta usou', cF.avisos.some(a => /^O lucro do Real parte do lucro da contabilidade \(R\$\s80\.000,00 na DRE: R\$\s96\.000,00 nos 12 meses, pela receita\), trocando os tributos de hoje pelos do Real\./.test(a)));
+// os ajustes são do mesmo período da DRE: vão aos 12 meses junto — (80.000 + 5.000) × 1,2 = 102.000 − 13.775
+igual('T os ajustes do período vão junto', 88225, comparar({ ...S, lucroContabil: 80000, ajustesLalur: 5000, lucroFator: 1.2 }).anos[1].real.lucro);
+verdade('T o fator fora do que faz sentido não quebra a conta: sem ele, zero ou negativo é 1; o absurdo é contido', normalizar({ ...S, lucroContabil: 1 }).lucroFator === 1 && normalizar({ ...S, lucroContabil: 1, lucroFator: 0 }).lucroFator === 1
+  && normalizar({ ...S, lucroContabil: 1, lucroFator: -3 }).lucroFator === 1 && normalizar({ ...S, lucroContabil: 1, lucroFator: 'x' }).lucroFator === 1 && normalizar({ ...S, lucroContabil: 1, lucroFator: 500 }).lucroFator === 24);
+// sem o lucro informado, o fator não mexe em nada (a estimativa é a mesma)
+igual('T sem o lucro da contabilidade, o fator não muda a estimativa', s26.real.lucro, comparar({ ...S, lucroFator: 1.2 }).anos[0].real.lucro);
 // o zero informado é lucro zero, não "vazio"
 verdade('T o zero informado vale (lucro zero na DRE)', comparar({ ...S, lucroContabil: 0 }).anos[0].real.lucroInformado === true && normalizar({ ...S, lucroContabil: '' }).lucroContabil === null && normalizar({ ...S, lucroContabil: null }).lucroContabil === null);
 // o regime de hoje é o Real: a DRE já é a do Real — em 2026 o lucro entra como veio; em 2027 troca o PIS/Cofins pela CBS/IBS

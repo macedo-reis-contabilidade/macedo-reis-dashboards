@@ -6,7 +6,7 @@
 import { entradaDoSistema, aplicarRelatorios, premissasParaTestar, prazosDaEscolha, exclusaoObrigatoria, ultimoDiaUtil, serieDosMeses, tipoPeloCnae, tipoPeloAnexo, regimeDoCadastro,
   ehRefeicaoRS, ehRdaRS, empresasDosSocios, receitaDaEmpresa, situacaoDoGrupo, serieDaEmpresa, foraDaSoma, avisoDaSoma, mesclarSerie,
   pareceFolha, cnpjsDoCabecalho, juntarFolha, folhaDoAno, aplicarFolha, mesesDaPonte, seriePonte, somaDaPonte, objetivoSugerido, porQueDoObjetivo, objetivoValido, doRegimeGeral, simplesNoEstudo,
-  presuncaoPeloCnae, periodoCurto } from '../assets/js/comparativo-dados.js';
+  presuncaoPeloCnae, periodoCurto, mesesDeAte, janelaDaReceita, periodoDaDre, dreSugerida } from '../assets/js/comparativo-dados.js';
 import { comparar, testarPremissas } from '../assets/js/comparativo-motor.js';
 
 let falhas = 0, total = 0;
@@ -379,7 +379,7 @@ console.log('=== qual comparativo: a sugestão do sistema (11/11/2026) ===');
 
   // o que o sistema diz do lucro da contabilidade e das vendas sem PIS/Cofins ao abrir a empresa
   const sisG = entradaDoSistema({ cliente: { regime_tributario: 'Lucro Presumido', cnae_principal: '4711-3/02', uf: 'RS' } });
-  ok('o lucro da contabilidade falta no sistema (a DRE dos 12 meses), e as vendas com alíquota zero de PIS/Cofins ficam no padrão a conferir', sisG.origens.lucroContabil.fonte === 'padrao' && /falta no sistema: a DRE dos 12 meses/.test(sisG.origens.lucroContabil.texto)
+  ok('o lucro da contabilidade falta no sistema (a DRE), e as vendas com alíquota zero de PIS/Cofins ficam no padrão a conferir', sisG.origens.lucroContabil.fonte === 'padrao' && /^falta no sistema: a DRE$/.test(sisG.origens.lucroContabil.texto)
     && sisG.origens['atividades.0.pctAliqZero'].fonte === 'padrao' && /nenhuma — confira/.test(sisG.origens['atividades.0.pctAliqZero'].texto) && /Lei 10\.925\/2004/.test(sisG.origens['atividades.0.pctAliqZero'].dica)
     && /No Simples, paga no DAS/.test(sisG.origens['atividades.0.pctAliqZero'].dica) && /as da Cesta Básica Nacional \(LC 214, Anexos I e XV\) seguem com zero; as outras pagam 10% da alíquota desde abril de 2026 \(LC 224\/2025\)/.test(sisG.origens['atividades.0.pctAliqZero'].dica) && sisG.origens.ajustesLalur.fonte === 'padrao', sisG.origens['atividades.0.pctAliqZero']);
 }
@@ -460,6 +460,57 @@ console.log('=== a atividade pelas notas do Domínio e a presunção própria do
     && cargaServ.entrada.atividades[1].presIrpj === 8 && cargaServ.entrada.atividades[1].presCsll === 12 && cargaServ.origens['atividades.1.presIrpj'].texto === 'pelo CNAE: transporte de carga');
   const obra = entradaDoSistema({ cliente: { regime_tributario: PRES, cnae_principal: '4120-4/00', uf: 'RS' }, dominio: dom(0, 80000) });
   ok('a obra depende do contrato: o sistema não troca a presunção sozinho', obra.especial.id === 'construcao' && obra.entrada.atividades[0].presIrpj === undefined && !obra.origens['atividades.0.presIrpj']);
+}
+
+console.log('=== o lucro da contabilidade até onde ela está feita (11/11/2026, 20h11) ===');
+{
+  // a receita de out/25 a set/26, mês a mês (R$ 600.000 no total); a contabilidade está feita até jul/26
+  const comps = ['2025-10', '2025-11', '2025-12', '2026-01', '2026-02', '2026-03', '2026-04', '2026-05', '2026-06', '2026-07', '2026-08', '2026-09'];
+  const valores = [10000, 40000, 50000, 20000, 30000, 60000, 70000, 40000, 110000, 50000, 70000, 50000];
+  const serie = comps.map((c, i) => ({ competencia: c, total: valores[i] }));
+  ok('os meses do calendário de um a outro, os dois dentro', mesesDeAte('2025-11', '2026-02').join() === '2025-11,2025-12,2026-01,2026-02' && mesesDeAte('2026-07', '2026-07').join() === '2026-07'
+    && mesesDeAte('2026-08', '2026-07').length === 0 && mesesDeAte('x', '2026-07').length === 0 && mesesDeAte('2020-01', '2030-12').length === 60);
+  const j = janelaDaReceita(serie);
+  ok('a janela da receita: de outubro a setembro, 12 meses, R$ 600.000', j.de === '2025-10' && j.ate === '2026-09' && j.meses.length === 12 && perto(j.receita, 600000) && perto(j.anual, 600000) && j.porMes.get('2026-06') === 110000);
+  ok('sem a série, sem a janela', janelaDaReceita(null) === null && janelaDaReceita([]) === null && janelaDaReceita([{ competencia: '2026-01', total: 0 }]) === null);
+  // a série com mais de 12 meses: só os 12 do calendário até o último
+  ok('a série mais longa: os 12 meses até o último', (() => { const x = janelaDaReceita([{ competencia: '2025-08', total: 9 }, { competencia: '2025-09', total: 9 }, ...serie]); return x.de === '2025-10' && x.meses.length === 12 && perto(x.receita, 600000); })());
+  // a empresa nova (5 meses): a receita vai a 12 meses
+  const nova = serie.slice(7);
+  ok('a empresa de 5 meses: a receita levada a 12', (() => { const x = janelaDaReceita(nova); return x.de === '2026-05' && x.meses.length === 5 && perto(x.receita, 320000) && perto(x.anual, 768000); })());
+
+  // a DRE que o estudo pede: até onde a contabilidade está feita, dentro da janela
+  const s = dreSugerida(serie, { faz: true, feitaAte: '2026-07' });
+  ok('a DRE a pedir: de outubro a julho, 10 dos 12 meses, faltando agosto e setembro', s.de === '2025-10' && s.ate === '2026-07' && s.meses === 10 && s.total === 12 && s.faltam.join() === '2026-08,2026-09' && s.antes === false, s);
+  ok('a contabilidade em dia (ou adiantada): a DRE dos 12 meses', dreSugerida(serie, { faz: true, feitaAte: '2026-09' }).ate === '2026-09' && dreSugerida(serie, { faz: true, feitaAte: '2026-10' }).faltam.length === 0);
+  ok('a contabilidade parada antes da janela (ou sem mês feito): nenhum mês da receita', (() => { const a = dreSugerida(serie, { faz: true, feitaAte: '2025-09' }), b = dreSugerida(serie, { faz: true, feitaAte: null });
+    return a.antes && a.ate === null && a.meses === 0 && a.faltam.length === 12 && b.antes; })());
+  ok('sem o Controle, ou com a contabilidade fora do escritório: a janela inteira; sem a série, nada', dreSugerida(serie, null).ate === '2026-09' && dreSugerida(serie, { faz: false, feitaAte: null }).ate === '2026-09' && dreSugerida(null, { faz: true, feitaAte: '2026-07' }) === null);
+
+  // o período da DRE do estudo e o fator que leva o lucro aos 12 meses: a receita dos 12 ÷ a dos meses da DRE
+  // de outubro a julho, R$ 480.000 dos R$ 600.000: fator 1,25
+  const p = periodoDaDre(serie, { lucroContabil: 40000, lucroDe: '2025-10', lucroAte: '2026-07', lucroReceita: 1 });
+  ok('a DRE de outubro a julho: 10 meses, R$ 480.000 de receita, fator 1,25 (a receita de hoje, não a guardada)', p.de === '2025-10' && p.ate === '2026-07' && p.meses === 10 && perto(p.receita, 480000) && perto(p.fator, 1.25, 1e-9)
+    && p.completo === false && p.faltam.join() === '2026-08,2026-09' && p.janela.meses === 12 && p.guardada === false, p);
+  const p12 = periodoDaDre(serie, { lucroContabil: 40000 });
+  ok('sem o período, a DRE é a dos 12 meses: fator 1', p12.de === '2025-10' && p12.ate === '2026-09' && p12.fator === 1 && p12.completo === true && p12.faltam.length === 0);
+  ok('o período virado (de depois do até) vale como sem período', periodoDaDre(serie, { lucroDe: '2026-09', lucroAte: '2026-01' }).fator === 1);
+  // a janela andou um mês (a receita agora vai de nov/25 a out/26): o período guardado saiu dela, e vale a receita guardada
+  const serie2 = [...serie.slice(1), { competencia: '2026-10', total: 60000 }];
+  const pg = periodoDaDre(serie2, { lucroContabil: 40000, lucroDe: '2025-10', lucroAte: '2026-07', lucroReceita: 480000 });
+  ok('o período que saiu da janela: a receita guardada com o lucro, e a margem dela na receita de hoje (650.000 ÷ 480.000)', pg.guardada === true && perto(pg.receita, 480000) && perto(pg.fator, 650000 / 480000, 1e-9) && pg.faltam.join() === '2026-08,2026-09,2026-10', pg);
+  ok('fora da janela e sem a receita guardada: pelo tempo (12 ÷ os meses da DRE)', perto(periodoDaDre(serie2, { lucroDe: '2025-10', lucroAte: '2026-07' }).fator, 1.2, 1e-9));
+  // a empresa nova: a DRE dos 5 meses vai a 12 pela receita anualizada (768.000 ÷ 320.000 = 2,4)
+  ok('a empresa de 5 meses: a DRE deles vai a 12 meses (fator 2,4)', perto(periodoDaDre(nova, { lucroContabil: 1 }).fator, 2.4, 1e-9) && periodoDaDre(nova, { lucroContabil: 1 }).completo === true);
+  // o "e se" do assistente: o número já é o dos 12 meses
+  ok('o lucro marcado como dos 12 meses (o "e se"): fator 1, mesmo na empresa nova', periodoDaDre(nova, { lucroContabil: 1, lucroAnual: true }).fator === 1 && periodoDaDre(serie, { lucroAnual: true, lucroDe: '2025-10', lucroAte: '2026-07' }).fator === 1);
+  // sem a série (o estudo digitado à mão): só com o período e a receita que o estudo guardou
+  ok('sem a série: sem o período, nada; com ele e a receita guardada, a margem na receita do estudo', periodoDaDre(null, { lucroContabil: 1 }) === null
+    && perto(periodoDaDre(null, { lucroDe: '2025-10', lucroAte: '2026-07', lucroReceita: 480000, atividades: [{ receita: 600000 }] }).fator, 1.25, 1e-9)
+    && periodoDaDre(null, { lucroDe: '2025-10', lucroAte: '2026-07' }).fator === 1);
+  // os meses sem receita no período: o fator vai pelo tempo
+  ok('a DRE de um mês sem receita no sistema: sem a margem, vai pelo tempo (12 ÷ 1)', (() => { const x = periodoDaDre([{ competencia: '2025-12', total: 100 }, { competencia: '2026-02', total: 100 }], { lucroDe: '2026-01', lucroAte: '2026-01' });
+    return x.fator === 12 && x.meses === 1 && x.receita === null && x.guardada === false; })());
 }
 
 console.log('\n' + (total - falhas) + ' de ' + total + ' conferências ok' + (falhas ? ' — ' + falhas + ' FALHA(S)' : ''));

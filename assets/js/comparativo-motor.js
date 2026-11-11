@@ -149,9 +149,13 @@ const pct1 = v => (Number(v) || 0).toLocaleString('pt-BR', { maximumFractionDigi
 //   mix (CBS/IBS das vendas): { cheia, red60, red40, red30, zero } — padrão cheia 100 · pctComprasComCredito (opcional)
 //   crescimentoReceita / crescimentoFolha (% ao ano, das projeções) · semLc224 · aliq2027 ({ cbs, cbs_aplicada, ibs })
 //   regimes (opcional): os regimes que entram na comparação (regimesDoObjetivo) — sem ele, os três
-//   lucroContabil (opcional): o lucro (ou o prejuízo, negativo) da DRE dos 12 meses antes do IRPJ e da CSLL, no regime de
+//   lucroContabil (opcional): o lucro (ou o prejuízo, negativo) da DRE antes do IRPJ e da CSLL (a dos 12 meses, ou a de uma
+//     parte deles com o lucroFator, abaixo), no regime de
 //     hoje. Com ele, o lucro do Real deixa de ser estimado (receita menos compras, folha e despesas): é o da contabilidade,
 //     mais os ajustes, trocando os tributos de hoje pelos do Real (calcReal) · ajustesLalur: adições menos exclusões
+//   lucroFator (opcional, padrão 1): o que leva o lucro e os ajustes informados aos 12 meses da receita, quando a DRE
+//     cobre só uma parte deles (a contabilidade feita até dois meses antes: a receita dos 12 meses ÷ a receita dos meses
+//     da DRE — periodoDaDre, de comparativo-dados.js; quem monta é o contaDoEstudo)
 export function normalizar(e = {}) {
   const atividades = (e.atividades || []).map(a => {
     const tipo = TIPOS[a.tipo] ? a.tipo : 'comercio';
@@ -230,7 +234,8 @@ export function normalizar(e = {}) {
     anoBase: ANOS.includes(num(e.anoBase, 2026)) ? num(e.anoBase, 2026) : 2026,
     regimeAtual: REGIMES.includes(e.regimeAtual) ? e.regimeAtual : null,
     lucroContabil: e.lucroContabil == null || e.lucroContabil === '' || !Number.isFinite(Number(e.lucroContabil)) ? null : Number(e.lucroContabil),
-    ajustesLalur: num(e.ajustesLalur)
+    ajustesLalur: num(e.ajustesLalur),
+    lucroFator: num(e.lucroFator, 1) > 0 ? entre(num(e.lucroFator, 1), 0.05, 24) : 1
   };
   const pedidos = Array.isArray(e.regimes) ? REGIMES.filter(r => e.regimes.includes(r)) : [];
   n.regimes = pedidos.length ? pedidos : REGIMES.slice();
@@ -601,6 +606,11 @@ function calcPresumido(n, d, k, ano) {
 // cumulativo do Presumido sai e entra o não cumulativo (2026) ou a CBS/IBS (2027 em diante); o ICMS, o ISS e o INSS, iguais
 // nos dois, se anulam. No Simples, sai o DAS inteiro. Nas projeções o lucro cresce com a receita, e a folha que cresce em
 // outro ritmo entra pela diferença. Sem o regime de hoje, o lucro informado entra como veio (com aviso).
+// A DRE de só uma parte dos 12 meses (a contabilidade feita até dois meses antes do último da receita — o Samuel,
+// 11/11/2026: "a ponte deveria puxar essa informação até a data que a contabilidade está feita"): o lucro e os ajustes
+// vão aos 12 meses pelo lucroFator, a receita dos 12 meses ÷ a receita dos meses da DRE (a margem dos meses feitos vale
+// pros que faltam).
+export const lucroDosDozeMeses = n => (n.lucroContabil == null ? null : (n.lucroContabil + n.ajustesLalur) * n.lucroFator);
 export function irpjCsllReal(lucro) {
   const l = Math.max(0, lucro);
   return { irpj: l * IRPJ + Math.max(0, l - ADICIONAL_ANO) * ADICIONAL, csll: l * CSLL };
@@ -651,13 +661,14 @@ function calcReal(n, d, k, ano) {
   const lucroInformado = n.lucroContabil != null;
   if (lucroInformado) {
     const hoje = outrosDeHoje(n);
+    const doze = lucroDosDozeMeses(n);
     if (hoje != null) {
       const d0 = dadosDoAno(n, 0);
       const folhaAlem = (d.folha - d0.folha * d.fr) * (1 + FGTS) + (d.proLabore - d0.proLabore * d.fr);
       trocaTributos = hoje * d.fr - o.total;
-      lucro = (n.lucroContabil + n.ajustesLalur) * d.fr + trocaTributos - folhaAlem;
+      lucro = doze * d.fr + trocaTributos - folhaAlem;
     } else {
-      lucro = (n.lucroContabil + n.ajustesLalur) * d.fr;
+      lucro = doze * d.fr;
       avisos.push(n.regimeAtual
         ? 'A conta do Simples dos 12 meses não fecha (a receita passa do limite): o lucro da contabilidade entrou como veio, sem trocar os tributos de hoje pelos do Real.'
         : 'Sem o regime de hoje, o lucro da contabilidade entrou como veio: informe o regime pra a conta trocar os tributos de hoje pelos do Real.');
@@ -728,10 +739,15 @@ export function comparar(entrada, opcoes = {}) {
   if (comReal && n.lucroContabil == null) {
     // o lucro estimado: o que ele deixa de fora e quando ele não serve
     const custos = n.compras + n.despesasCredito + n.folha * (1 + FGTS) + n.proLabore + n.outrasDespesas;
-    if (custos > n.receita) avisos.push('As compras, as despesas com nota e a folha somam ' + brl(custos) + ', mais que a receita de ' + brl(n.receita) + ': a empresa formou estoque, investiu ou teve prejuízo. O lucro estimado do Real não serve pra decidir — informe o lucro da contabilidade (a DRE dos 12 meses).');
+    if (custos > n.receita) avisos.push('As compras, as despesas com nota e a folha somam ' + brl(custos) + ', mais que a receita de ' + brl(n.receita) + ': a empresa formou estoque, investiu ou teve prejuízo. O lucro estimado do Real não serve pra decidir — informe o lucro da contabilidade (a DRE, até onde ela está feita).');
     else if (!(n.outrasDespesas > 0)) avisos.push('Sem as outras despesas (aluguel, sistemas, contador, manutenção…), o lucro do Real sai maior que o de verdade e o Real, mais caro. Informe o resto dos custos do ano.');
   }
-  if (comReal && n.lucroContabil != null) avisos.push('O lucro do Real parte do lucro da contabilidade (' + brl(n.lucroContabil) + ' nos 12 meses' + (n.ajustesLalur ? ', com ' + brl(n.ajustesLalur) + ' de adições menos exclusões' : '') + '), trocando os tributos de hoje pelos do Real. Fora da conta: a compensação de prejuízo fiscal de anos anteriores e o Real trimestral.');
+  if (comReal && n.lucroContabil != null) {
+    // a DRE de só uma parte dos 12 meses: o que foi informado e o que a conta usou, levado aos 12 meses pela receita
+    const parcial = Math.abs(n.lucroFator - 1) > 0.0005;
+    avisos.push('O lucro do Real parte do lucro da contabilidade (' + brl(n.lucroContabil) + (parcial ? ' na DRE' : ' nos 12 meses') + (n.ajustesLalur ? ', com ' + brl(n.ajustesLalur) + ' de adições menos exclusões' : '')
+      + (parcial ? ': ' + brl(lucroDosDozeMeses(n)) + ' nos 12 meses, pela receita' : '') + '), trocando os tributos de hoje pelos do Real. Fora da conta: a compensação de prejuízo fiscal de anos anteriores e o Real trimestral.');
+  }
   return { entrada: n, anos: resultados, anoDecisao, decisao, avisos };
 }
 
@@ -755,7 +771,8 @@ export function resumoDaDecisao(n, r) {
     return l <= ADICIONAL_ANO ? l : (folga + ADICIONAL_ANO * ADICIONAL) / (IRPJ + CSLL + ADICIONAL);
   };
   if (!r.real.disponivel) return out;
-  out.real = { lucro: r.real.lucro, margem: r.receita > 0 ? r.real.lucro / r.receita : null, empate: {}, informado: !!r.real.lucroInformado, estimado: r.real.lucroEstimado };
+  // doze: o lucro da contabilidade com os ajustes, levado aos 12 meses (null sem ele) — antes da troca dos tributos
+  out.real = { lucro: r.real.lucro, margem: r.receita > 0 ? r.real.lucro / r.receita : null, empate: {}, informado: !!r.real.lucroInformado, estimado: r.real.lucroEstimado, doze: lucroDosDozeMeses(n) };
   ['presumido', 'simples'].forEach(reg => {
     if (!r[reg].disponivel) return;
     const l = lucroDeEmpate(r[reg].total);

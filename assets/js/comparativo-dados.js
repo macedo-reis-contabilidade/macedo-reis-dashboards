@@ -473,7 +473,7 @@ export function entradaDoSistema({ cliente = null, caso = null, fatorR = [], pgd
   if (!origens.compras) origens.compras = origem('padrao', 'falta no sistema', 'solte o acompanhamento de entradas do Domínio ou digite as compras dos 12 meses');
   origens.aliqCreditoIcms = origem('padrao', 'padrão: 12% — confira', 'fornecedor do RS no regime normal dá 17%, de outro estado 12%, do Simples bem menos');
   origens.outrasDespesas = origem('padrao', 'falta no sistema: fazem o lucro do Real', 'aluguel de pessoa física, sistemas, contador, manutenção — o resto dos custos do ano, sem compras nem folha');
-  origens.lucroContabil = origem('padrao', 'falta no sistema: a DRE dos 12 meses', 'o resultado da DRE antes do IRPJ e da CSLL (prejuízo, com o sinal de menos). Sem ele, a conta estima o lucro do Real pelas compras, a folha e as despesas');
+  origens.lucroContabil = origem('padrao', 'falta no sistema: a DRE', 'o resultado da DRE antes do IRPJ e da CSLL, até onde a contabilidade está feita (prejuízo, com o sinal de menos). Sem ele, a conta estima o lucro do Real pelas compras, a folha e as despesas');
   origens.ajustesLalur = origem('padrao', 'padrão: sem ajustes', 'adições (despesa indedutível: multa, brinde, doação) menos exclusões (receita que não é tributada) do lucro real');
 
   // a folha: o Domínio pela ponte (os proventos dos empregados, com as férias, as rescisões e o 13º, e o pró-labore, dos
@@ -889,4 +889,77 @@ export function prazosDaEscolha(hoje, regimeAtual, ano = 2027, situacao = null, 
   if (regimeAtual !== 'mei') out.push({ titulo: 'Presumido ou Real em ' + ano, texto: 'A escolha se faz no primeiro pagamento do IRPJ de ' + ano + ': no Presumido e no Real trimestral, a quota do 1º trimestre, que vence no fim de abril (Lei 9.430, art. 26, §1º); no Real anual, a estimativa de janeiro, que vence no fim de fevereiro (Lei 9.430, art. 3º, parágrafo único).'
     + (comSimples ? '' : ' A escolha vale pro ano inteiro: não dá pra trocar no meio de ' + ano + ' (Lei 9.718, art. 13, §1º; Lei 9.430, art. 3º).') });
   return out;
+}
+
+// ---------- o lucro da contabilidade até onde ela está feita (11/11/2026) ----------
+// O Samuel, com a primeira empresa do regime geral (a contabilidade feita até jul/26, a receita até set/26): "a ponte da
+// Domínio deveria puxar essa informação até a data que supostamente a contabilidade está feita". A DRE dos 12 meses da
+// receita só fecha com a contabilidade em dia; a que está dois meses atrás já tem o resultado de 10 dos 12. O lucro do
+// estudo é o da DRE no período que a contabilidade tem (lucroDe a lucroAte), levado aos 12 meses pela receita: a margem
+// dos meses feitos vale pros que faltam.
+const RE_COMP = /^\d{4}-\d{2}$/;
+const mesDepois = c => { const a = Number(c.slice(0, 4)), m = Number(c.slice(5, 7)); return m === 12 ? (a + 1) + '-01' : a + '-' + String(m + 1).padStart(2, '0'); };
+// os meses do calendário de `de` a `ate` ('AAAA-MM'), os dois dentro (no máximo 60)
+export function mesesDeAte(de, ate) {
+  const out = [];
+  if (!RE_COMP.test(String(de || '')) || !RE_COMP.test(String(ate || '')) || de > ate) return out;
+  for (let c = de; c <= ate && out.length < 60; c = mesDepois(c)) out.push(c);
+  return out;
+}
+// a janela da receita do estudo, pela série do sistema ([{ competencia, total }], os meses com receita): os 12 meses do
+// calendário até o último com receita, a partir do primeiro com receita. Volta { de, ate, meses, porMes, receita, anual }
+// (anual: a receita levada a 12 meses quando a janela tem menos, a empresa nova), ou null sem a série
+export function janelaDaReceita(serie) {
+  const ult = (serie || []).filter(m => m && RE_COMP.test(String(m.competencia)) && num(m.total) > 0).sort((a, b) => (a.competencia < b.competencia ? -1 : 1));
+  if (!ult.length) return null;
+  const ate = ult[ult.length - 1].competencia;
+  let ini = ate;
+  for (let i = 0; i < 11; i++) ini = mesAntes(ini);
+  const dentro = ult.filter(m => m.competencia >= ini);
+  const de = dentro[0].competencia;
+  const meses = mesesDeAte(de, ate);
+  const porMes = new Map(dentro.map(m => [m.competencia, num(m.total)]));
+  const receita = [...porMes.values()].reduce((s, v) => s + v, 0);
+  return { de, ate, meses, porMes, receita, anual: receita * 12 / meses.length };
+}
+// o período da DRE do estudo e o fator que leva o lucro dela aos 12 meses da receita.
+// entrada: lucroDe e lucroAte ('AAAA-MM': o período que o número cobre — sem eles, a DRE é a dos meses da janela),
+// lucroReceita (a receita desses meses quando o lucro foi informado: vale quando o período já saiu da janela de hoje) e
+// lucroAnual (o número já é o dos 12 meses: o "e se" do assistente).
+// Volta { de, ate, meses, receita, fator, completo, faltam, janela: { de, ate, meses }, guardada } — fator: a receita dos
+// 12 meses ÷ a receita dos meses da DRE (1 quando ela cobre os 12 meses da janela); faltam: os meses da janela depois da
+// DRE; guardada: a receita do período é a que o estudo guardou. Null sem como saber o período (sem a série e sem ele).
+export function periodoDaDre(serie, entrada = {}) {
+  const e = entrada || {};
+  const j = janelaDaReceita(serie);
+  const mes = c => (RE_COMP.test(String(c || '')) ? String(c) : null);
+  let de = mes(e.lucroDe), ate = mes(e.lucroAte);
+  const guardadaRec = num(e.lucroReceita) > 0 ? num(e.lucroReceita) : null;
+  if (!j) {
+    if (e.lucroAnual || !de || !ate || de > ate) return null;
+    const doze = (e.atividades || []).reduce((s, a) => s + num(a && a.receita), 0);
+    return { de, ate, meses: mesesDeAte(de, ate).length, receita: guardadaRec, fator: guardadaRec && doze > 0 ? doze / guardadaRec : 1, completo: null, faltam: [], janela: null, guardada: true };
+  }
+  const janela = { de: j.de, ate: j.ate, meses: j.meses.length };
+  if (e.lucroAnual) return { de: j.de, ate: j.ate, meses: j.meses.length, receita: j.receita, fator: 1, completo: true, faltam: [], janela, guardada: false, anual: true };
+  if (!ate || (de && de > ate)) { de = j.de; ate = j.ate; }
+  if (!de) de = j.de;
+  const lista = mesesDeAte(de, ate);
+  const dentro = de >= j.de && ate <= j.ate;
+  const receita = dentro ? lista.reduce((s, c) => s + (j.porMes.get(c) || 0), 0) : guardadaRec;
+  return { de, ate, meses: lista.length, receita: receita > 0 ? receita : null,
+    fator: receita > 0 ? j.anual / receita : 12 / Math.max(1, lista.length),
+    completo: de <= j.de && ate >= j.ate, faltam: ate < j.ate ? mesesDeAte(mesDepois(ate), j.ate) : [], janela, guardada: !dentro };
+}
+// a DRE que o estudo pede: do primeiro mês da janela até onde a contabilidade está feita (o Controle das contabilidades),
+// dentro da janela — sem o Controle (ou com a contabilidade fora do escritório), a janela inteira. Volta { de, ate, meses,
+// total, faltam, antes } (antes: a contabilidade para antes da janela, nenhum mês da receita está feito), ou null sem a série
+export function dreSugerida(serie, contabil = null) {
+  const j = janelaDaReceita(serie);
+  if (!j) return null;
+  const semControle = !contabil || contabil.faz === false;
+  const feitaAte = !semControle && RE_COMP.test(String(contabil.feitaAte || '')) ? contabil.feitaAte : null;
+  if (!semControle && (!feitaAte || feitaAte < j.de)) return { de: j.de, ate: null, meses: 0, total: j.meses.length, faltam: j.meses.slice(), antes: true };
+  const ate = semControle || feitaAte >= j.ate ? j.ate : feitaAte;
+  return { de: j.de, ate, meses: mesesDeAte(j.de, ate).length, total: j.meses.length, faltam: ate < j.ate ? mesesDeAte(mesDepois(ate), j.ate) : [], antes: false };
 }
