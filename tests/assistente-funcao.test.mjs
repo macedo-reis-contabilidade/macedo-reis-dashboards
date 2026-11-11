@@ -13,6 +13,7 @@ import { montarSistema, preambulo, dicionario, INSTRUCOES, marcaOutroDia } from 
 import { criarServidor, limparContexto, limparPagina, limparHistorico, diaBR, LIMITE_DIA } from '../supabase/functions/assistente/servidor.js';
 import { responder, erroDoChat } from '../supabase/functions/reforma-chat/agente.js';
 import { criarDrive, filtrarArquivos, palavrasDe, pastaDaUrl } from '../supabase/functions/assistente/drive.js';
+import { resumoDoResultado } from '../supabase/functions/assistente/comparativo.js';
 
 const raiz = fileURLToPath(new URL('..', import.meta.url));
 let falhas = 0;
@@ -977,7 +978,15 @@ console.log('O comparativo tributário (a mesma conta da tela, com o "e se"):');
   const t = await fs.comparativo({});
   chk('sem empresa: a aberta na tela, com os números do sistema (sem estudo gravado)', /^COMPARATIVO TRIBUTÁRIO — RESTAURANTE EXEMPLO LTDA \(EXEMPLO\) · id 7777/.test(t) && /Ainda não há estudo gravado: os números são os que o sistema tem hoje/.test(t), t.slice(0, 300));
   chk('o resultado por ano e regime, a decisão e por tributo', /- Simples Nacional \(o regime de hoje\): últimos 12 meses R\$\s?[\d.]+,\d\d \([\d,]+% da receita\)/.test(t) && /A decisão \(2027\): Em 2027, o /.test(t)
-    && /POR TRIBUTO \(R\$ no ano: últimos 12 meses · 2027 · 2028\)/.test(t) && /- Lucro Presumido: IRPJ [\d.]+,\d\d · /.test(t) && /lucro antes do IR calculado/.test(t));
+    && /POR TRIBUTO \(R\$ no ano: últimos 12 meses · 2027 · 2028\)/.test(t) && /- Lucro Presumido: IRPJ [\d.]+,\d\d · /.test(t) && /lucro antes do IR estimado \(a receita menos as compras, a folha e as despesas\): últimos 12 meses R\$/.test(t));
+  // 11/11/2026: qual comparativo (sem escolha na tela, o que o sistema sugere), os impedimentos do Simples e a precisão
+  chk('qual comparativo: sem escolha na tela, o sugerido pelo regime de hoje (no Simples, os três), e como pedir o outro', t.split('\n')[3] === 'Comparativo: Simples × Presumido × Real (ainda não escolhido na tela (ela abre perguntando "Qual comparativo você quer fazer?"): o sistema sugere este — A empresa está no Simples Nacional: ficar ou sair é a pergunta.). O outro é Presumido × Real: outra chamada, com objetivo "presumido_real".', t.split('\n')[3]);
+  chk('os impedimentos do Simples pelo cadastro: o que o sistema olhou, o que faltou e o que ele não confere', /IMPEDIMENTOS DO SIMPLES, PELO CADASTRO: nada veda — o sistema olhou o CNAE principal \(sem secundário no cadastro\) e os sócios\.\n- Faltou no cadastro pra conferir: a natureza jurídica\.\n- O sistema não confere: sócio domiciliado no exterior \(LC 123, art\. 17, II\); /.test(t),
+    (t.match(/IMPEDIMENTOS DO SIMPLES[^\n]*\n[^\n]*/) || [''])[0]);
+  chk('a precisão do estudo: o nível, o que falta com o efeito (o que decide primeiro) e o que já está na conta', /PRECISÃO DO ESTUDO: falta o que pode virar o resultado\nFalta, pra ficar mais preciso \(o que decide primeiro\):\n- [^\n]* \[decide o resultado\]: /.test(t)
+    && /- A folha e o pró-labore \[decide o resultado\]: sem ela o INSS patronal sai zero e o lucro estimado do Real, maior\./.test(t) && /Já está na conta: a receita dos 12 meses \(veio do caso da Reforma\)/.test(t), (t.match(/PRECISÃO DO ESTUDO[\s\S]{0,400}/) || [''])[0]);
+  chk('a decisão provisória diz o que ainda pode virar, logo depois dela', /A decisão \(2027\): [^\n]*\nPROVISÓRIO, ainda pode virar — missões que faltam: [^\n]*a folha e o pró-labore/.test(t));
+  chk('o lucro da contabilidade nos números: não informado, a conta estima', /- Lucro contábil antes do IRPJ e da CSLL \(a DRE dos 12 meses\): não informado — a conta estima o lucro do Real pela receita menos as compras, a folha e as despesas \[/.test(t));
   chk('o aviso do limite: a soma com a padaria passa em dezembro e o Simples sai em 2027 — e ele abre a resposta', /ATENÇÃO, O LIMITE DO SIMPLES: .*passa do limite de R\$ 4,8 milhões em dezembro: a saída do Simples vale a partir de 01\/01\/2027/.test(t)
     && /Na resposta: o aviso do limite vem na primeira frase/.test(t));
   chk('as empresas dos sócios, com o sócio em comum pelo nome', /EMPRESAS DOS MESMOS SÓCIOS/.test(t) && /- PADARIA IRMA LTDA — sócio em comum: FULANO DE TAL: R\$\s?2\.165\.000,00 nos 12 meses \[caso da Reforma: faturamento do Domínio/.test(t));
@@ -993,7 +1002,8 @@ console.log('O comparativo tributário (a mesma conta da tela, com o "e se"):');
   chk('o "e se": o que mudou, nada gravado, o resultado com a mudança e o de antes', /— E SE\nSó nesta conta: nada foi gravado\. Pra valer, a pessoa muda o campo na tela Comparativo tributário\./.test(es)
     && /- Folha \(salários, 13º e férias\): R\$\s?0,00 → R\$\s?480\.000,00/.test(es) && /pra o lucro do Real antes do IR dar 6% da receita em 2027/.test(es)
     && /RESULTADO COM A MUDANÇA/.test(es) && /SEM A MUDANÇA \(o estudo\), em 2027: Simples Nacional R\$/.test(es) && /2027 R\$\s?144\.300,00/.test(es), es.slice(0, 900));
-  chk('o "e se" só lê', log.slice(nEscritas).every(x => /^(clientes|rt_casos|fr_empresas|fr_lancamentos|receita_pgdas|comparativos|socios|rt_parametros|dominio_mensal)\?/.test(x.caminho)));
+  chk('o "e se" só lê', log.slice(nEscritas).every(x => /^(clientes|rt_casos|fr_empresas|fr_lancamentos|receita_pgdas|comparativos|socios|rt_parametros|dominio_mensal|receita_empresas|contabil_empresas|contabil_meses)\?/.test(x.caminho)), log.slice(nEscritas).map(x => x.caminho.split('?')[0]).join());
+  chk('a leitura do cadastro pede os CNAEs secundários e a natureza jurídica (os impedimentos do Simples), e nunca as credenciais', log.some(x => /^clientes\?select=[^&]*cnae_principal,cnaes_secundarios,natureza_juridica/.test(x.caminho)) && !log.some(x => /credenciais/.test(x.caminho)));
   const fsP = criarFerramentas({ banco, hoje: '2026-11-01', contexto: {}, usuario: { socio: true } });
   const gr = await fsP.comparativo({ empresa: ID_P });
   chk('o estudo gravado vale: quem gravou e quando, e os números dele', /O estudo gravado na tela Comparativo tributário em 01\/11\/2026, 11:00 por Samuel: os números são os dele/.test(gr) && /Atividade 1: Indústria/.test(gr)
@@ -1002,6 +1012,29 @@ console.log('O comparativo tributário (a mesma conta da tela, com o "e se"):');
     gr.split('\n').find(l => /SISTEMA HOJE/.test(l)));
   const sc = await criarFerramentas({ banco, hoje: '2026-11-01', contexto: { comparativo_id: EST_SEM } }).comparativo({});
   chk('o estudo aberto de empresa sem cadastro (o da tela)', /^COMPARATIVO TRIBUTÁRIO — PROSPECT DO DIEGO LTDA \(empresa sem cadastro no sistema\)/.test(sc) && /por Diego/.test(sc) && /Regime de hoje: Lucro Presumido\./.test(sc), sc.slice(0, 300));
+  // a empresa do Presumido: só o Presumido contra o Real (o Simples fica fora da comparação, sem o limite nem as empresas dos sócios)
+  chk('no Presumido, o sugerido é só o Presumido contra o Real: o Simples fora da comparação, sem o bloco das empresas dos sócios', /\nComparativo: Presumido × Real \(ainda não escolhido na tela [^\n]*o sistema sugere este — A empresa está no Lucro Presumido: a escolha de todo ano é entre o Presumido e o Real\.\)\. O outro é Simples × Presumido × Real: outra chamada, com objetivo "todos"\./.test(sc)
+    && /- Fora desta comparação: Simples Nacional \(o comparativo é Presumido × Real; com objetivo "todos", a conta põe os três\)\./.test(sc) && !/\n- Simples Nacional/.test(sc) && !/EMPRESAS DOS MESMOS SÓCIOS/.test(sc) && !/POR TRIBUTO[^\n]*\n- Simples Nacional/.test(sc), (sc.match(/Comparativo: [^\n]*/) || [''])[0]);
+  // serviço de R$ 900 mil no Presumido: IRPJ 15% × 32% × 900.000 = 43.200, mais o adicional de 10% sobre o que passa de R$ 60 mil
+  // por trimestre (72.000 − 60.000 = 12.000 × 4 × 10% = 4.800) = 48.000; CSLL 9% × 32% × 900.000 = 25.920
+  chk('os números do Presumido conferem com a conta à mão (IRPJ 48.000,00 e CSLL 25.920,00)', /- Lucro Presumido: IRPJ 48\.000,00 · 48\.000,00 · 48\.000,00; CSLL 25\.920,00 · /.test(sc), (sc.match(/- Lucro Presumido: IRPJ[^;]*;[^;]*/) || [''])[0]);
+  chk('o que muda abre com a diferença entre os dois, e o recado de como responder fala da presunção contra o lucro', /O QUE MUDA O RESULTADO\n- Em 2027 o Presumido e o Real só diferem no IRPJ e na CSLL: /.test(sc)
+    && /Entre o Presumido e o Real, de 2027 em diante a diferença é só o IRPJ e a CSLL \(a presunção contra o lucro\): diga o lucro em que os dois empatam e de onde veio o lucro da conta/.test(sc) && /Perguntaram o que falta pra o estudo ficar mais preciso: a precisão do estudo/.test(sc));
+  chk('empresa sem cadastro: os impedimentos do Simples não são conferidos, e a presunção vai nos números', /IMPEDIMENTOS DO SIMPLES: não conferidos \(empresa sem cadastro: o sistema não tem o CNAE, os sócios nem a natureza jurídica\)\./.test(sc) && /presunção de 32% no IRPJ e 32% na CSLL/.test(sc));
+  const fsS = criarFerramentas({ banco, hoje: '2026-11-01', contexto: { comparativo_id: EST_SEM } });
+  const scT = await fsS.comparativo({ objetivo: 'todos' });
+  chk('o outro comparativo, pedido na pergunta: com o Simples', /\nComparativo: Simples × Presumido × Real \(pedido nesta pergunta; na tela, a escolha ainda não foi feita\)\. O outro é Presumido × Real: outra chamada, com objetivo "presumido_real"\./.test(scT)
+    && /\n- Simples Nacional: últimos 12 meses R\$/.test(scT) && !/Fora desta comparação/.test(scT) && /Entrar no Simples/.test(scT), (scT.match(/Comparativo: [^\n]*/) || [''])[0]);
+  chk('o comparativo que não existe é ignorado (vale o sugerido)', /\nComparativo: Presumido × Real \(ainda não escolhido na tela/.test(await fsS.comparativo({ objetivo: 'constructor' })) && /\nComparativo: Presumido × Real \(ainda não escolhido na tela/.test(await fsS.comparativo({ objetivo: 7 })));
+  const scL = await fsS.comparativo({ e_se: { lucro_contabil_12_meses: 100000 } });
+  // a DRE de R$ 100.000 no Presumido de serviço (ISS 3% e PIS/Cofins 3,65% já descontados): em 2027 saem o PIS/Cofins e
+  // entra a CBS/IBS; o "e se" fica no mesmo comparativo (Presumido × Real)
+  chk('o "e se" com o lucro da contabilidade: de vazio pra R$ 100.000, no mesmo comparativo, com o lucro do Real pela contabilidade', /- Lucro contábil antes do IRPJ e da CSLL \(a DRE dos 12 meses\): — → R\$\s?100\.000,00/.test(scL)
+    && /\nComparativo: Presumido × Real \(/.test(scL) && /lucro antes do IR, o da contabilidade com os tributos de hoje trocados pelos do Real: últimos 12 meses R\$/.test(scL)
+    && /SEM A MUDANÇA \(o estudo\), em 2027: Lucro Presumido R\$\s?[\d.]+,\d\d · Lucro Real R\$\s?[\d.]+,\d\d — o mais barato: /.test(scL) && !/SEM A MUDANÇA[^\n]*Simples Nacional/.test(scL), scL.slice(0, 700));
+  chk('o resumo gravado, numa linha: só os regimes do comparativo do estudo (o de antes de 11/11/2026, os três)',
+    /^em 2027 o mais barato é o Lucro Real \(Lucro Presumido R\$\s?20\.000,00 · Lucro Real R\$\s?18\.000,00\), R\$\s?2\.000,00 a menos que o segundo$/.test(resumoDoResultado({ anoDecisao: 2027, melhor: 'real', diferenca: 2000, regimes: ['presumido', 'real'], totais: { 2027: { simples: null, presumido: 20000, real: 18000 } } }))
+    && /Simples Nacional fora · Lucro Presumido R\$\s?20\.000,00/.test(resumoDoResultado({ anoDecisao: 2027, melhor: 'real', diferenca: 2000, totais: { 2027: { simples: null, presumido: 20000, real: 18000 } } })) && resumoDoResultado(null) === 'sem resultado gravado');
   const pn = await fsP.comparativo({ empresa: 'prospect do diego' });
   chk('pelo nome, o estudo de empresa sem cadastro', /^COMPARATIVO TRIBUTÁRIO — PROSPECT DO DIEGO LTDA/.test(pn), pn.slice(0, 200));
   chk('pessoa física: o comparativo é de empresa', /JOAO DA SILVA é pessoa física \(IRPF\): o comparativo tributário é de empresa\./.test(await fsP.comparativo({ empresa: ID_PF })));
@@ -1012,6 +1045,59 @@ console.log('O comparativo tributário (a mesma conta da tela, com o "e se"):');
   chk('o prompt: a tela no mapa e quando usar o comparativo (e o "e se" que não grava)', /Comparativo tributário \(fiscal-comparativo\.html — /.test(montarSistema()[0].text) && /use comparativo\. É a mesma conta da tela Comparativo tributário/.test(INSTRUCOES)
     && /outro número é outra chamada, com e_se, que não grava nada/.test(INSTRUCOES) && /é da Reforma \(perguntar_reforma\)/.test(INSTRUCOES));
   chk('o preâmbulo com o estudo de empresa sem cadastro', /Estudo do Comparativo tributário aberto na tela: PROSPECT LTDA, empresa sem cadastro — "esta empresa" é ela/.test(preambulo({ hoje: '2026-11-01', estudo: 'PROSPECT LTDA' })));
+}
+{
+  // 11/11/2026 — a indústria do Presumido com o Simples vedado pelo cadastro (um CNAE secundário impeditivo e uma pessoa
+  // jurídica entre os sócios), os números do Domínio pela ponte e a contabilidade feita até julho
+  const ID_I = 'dddddddd-dddd-4ddd-8ddd-dddddddddddd';
+  const mes = i => new Date(Date.UTC(2025, i, 1)).toISOString().slice(0, 7);
+  const extras = {
+    clientes: [...CLIENTES, { id: ID_I, nome_principal: 'INDUSTRIA DE TESTE LTDA', nome_fantasia: null, documento: '88888888000188', tipo_pessoa: 'PJ', regime_tributario: 'Lucro Presumido', status: 'ativo', cidade: 'Igrejinha', uf: 'RS',
+      cnae_principal: '1091-1/02 - Fabricação de produtos de padaria e confeitaria com predominância de produção própria', cnaes_secundarios: ['4637-1/04 - Comércio atacadista de pães, bolos, biscoitos e similares', '7820-5/00 - Locação de mão-de-obra temporária'], natureza_juridica: 'Sociedade Empresária Limitada' }],
+    socios: [{ cliente_id: ID_I, nome: 'SOCIA DE TESTE', cpf: '999.888.777-66', participacao_percentual: 50 }, { cliente_id: ID_I, nome: 'HOLDING INVENTADA LTDA', cpf: '12.345.678/0001-99', participacao_percentual: 50 }],
+    dominio_mensal: Array.from({ length: 12 }, (_, i) => ({ codigo: 800, cliente_id: ID_I, competencia: mes(9 + i), receita_bruta: 50000, receita_mercadorias: 50000, receita_servicos: 0, receita_simples: null,
+      compras: 30000, servicos_tomados: 2000, ativo_e_consumo: 0, salarios: 0, decimo_terceiro: 0, pro_labore_valor: 1621 })),
+    receita_empresas: [{ cliente_id: ID_I, pendencias: [{ orgao: 'RFB', titulo: 'Débito' }], situacao_fiscal_em: '2026-11-03' }],
+    contabil_empresas: [{ cliente_id: ID_I, faz: true, inicio: '2025-01', fim: null }],
+    contabil_meses: Array.from({ length: 19 }, (_, i) => ({ cliente_id: ID_I, competencia: mes(i), situacao: 'feita', feita_em: '2026-08-10' })),
+    rt_casos: [], rt_parametros: [{ chave: 'aliq_ref_2027', valor: { cbs: 11.3, cbs_aplicada: 11.2, ibs: 0.1 } }], fr_empresas: [], fr_lancamentos: [], receita_pgdas: [], comparativos: []
+  };
+  const { banco } = bancoFalso({ extras });
+  const fs = criarFerramentas({ banco, hoje: '2026-11-11', contexto: { cliente_id: ID_I }, usuario: { email: 'fiscal@macedoereis.com.br', nome: 'Thalia', socio: false } });
+  const t = await fs.comparativo({});
+  chk('o Simples vedado pelo cadastro: o sugerido é só o Presumido contra o Real, com o porquê', /\nComparativo: Presumido × Real \(ainda não escolhido na tela [^\n]*o sistema sugere este — A empresa está no Lucro Presumido e o Simples está vedado pra ela\.\)/.test(t), (t.match(/Comparativo: [^\n]*/) || [''])[0]);
+  chk('os impedimentos, cada um com a base (e o remédio do CNAE secundário), e as pendências na Receita a conferir', /IMPEDIMENTOS DO SIMPLES, PELO CADASTRO: o Simples está vedado pra ela hoje\n- CNAE secundário impeditivo: 7820-5\/00 \(Locação de mão-de-obra temporária\) \(Res\. CGSN 140\/2018, art\. 8º, §1º, I, e Anexo VI\) Basta constar no CNPJ pra impedir a opção\./.test(t)
+    && /\n- Pessoa jurídica no quadro de sócios: HOLDING INVENTADA LTDA \(50% do capital\) \(LC 123, art\. 3º, §4º, I\)\n- A conferir: O relatório de situação fiscal de 03\/11\/2026 tem 1 pendência na Receita ou na PGFN/.test(t), (t.match(/IMPEDIMENTOS DO SIMPLES[\s\S]{0,500}/) || [''])[0]);
+  chk('o documento dos sócios (o CPF e o CNPJ da sócia) não sai na resposta', !/12\.345\.678|12345678000199|999\.888\.777|99988877766/.test(t));
+  // IRPJ 15% × 8% × 600.000 = 7.200; CSLL 9% × 12% × 600.000 = 6.480; o empate do Real: 13.680 ÷ 24% = 57.000 (9,5% da receita)
+  chk('os números do Domínio pela ponte e a conta à mão do Presumido (IRPJ 7.200,00, CSLL 6.480,00; o empate em R$ 57.000,00)', /receita R\$\s?600\.000,00 \[Domínio, pela ponte: /.test(t) && /- Lucro Presumido: IRPJ 7\.200,00 · 7\.200,00 · 7\.200,00; CSLL 6\.480,00 · /.test(t)
+    && /O Real empata com o Presumido em 2027 com lucro de R\$\s?57\.000,00 antes do IR \(9,5% da receita\)/.test(t), (t.match(/- Lucro Presumido: IRPJ[^;]*;[^;]*/) || [''])[0]);
+  chk('a precisão: o lucro da contabilidade é o que falta e decide; a contabilidade feita até julho nos números e na missão', /PRECISÃO DO ESTUDO: falta o que pode virar o resultado\nFalta, pra ficar mais preciso \(o que decide primeiro\):\n- O lucro da contabilidade \[decide o resultado\]: é o número que decide entre o Presumido e o Real/.test(t)
+    && /- A contabilidade, pelo Controle das contabilidades: feita até jul\/26 \(a DRE só fecha até lá\)\./.test(t) && /\[falta · decide o resultado\] O lucro da contabilidade: Falta o lucro da DRE de out\/25 a set\/26, antes do IRPJ e da CSLL\./.test(t)
+    && /\(na tela: digitar o lucro da DRE, ou marcar "Seguir com a estimativa"\)/.test(t) && /Já está na conta: a receita dos 12 meses \(veio do Domínio pela ponte\)/.test(t), (t.match(/PRECISÃO DO ESTUDO[\s\S]{0,300}/) || [''])[0]);
+  chk('as fases do caminho (a receita e a presunção, o lucro do Real, o resto da conta, o veredito), sem prazo do Simples', /\n1\. A receita e a presunção — /.test(t) && /\n2\. O lucro do Real — /.test(t) && /\n3\. O resto da conta — /.test(t) && /\n4\. O veredito — /.test(t)
+    && /PRAZOS PRA DECIDIR\n- Presumido ou Real em 2027: [^\n]*A escolha vale pro ano inteiro/.test(t) && !/Entrar no Simples/.test(t));
+  const tt = await fs.comparativo({ objetivo: 'todos' });
+  chk('com os três, pedido na pergunta: a linha do Simples é simulação, com o mais barato sem ele, e isso abre a resposta', /ATENÇÃO, OS IMPEDIMENTOS DO SIMPLES: O Simples está vedado hoje pelo cadastro \(CNAE secundário impeditivo: 7820-5\/00 [^\n]*a linha dele vale como simulação, se a empresa tirar os impedimentos\. Sem o Simples, o mais barato em 2027 é o Lucro /.test(tt)
+    && /Na resposta: o Simples está vedado hoje pelo cadastro e a linha dele é simulação: diga isso na primeira frase/.test(tt) && /\n1\. Ela pode entrar no Simples\? — /.test(tt) && /Antes, a empresa precisa tirar os impedimentos do cadastro\./.test(tt)
+    && /EMPRESAS DOS MESMOS SÓCIOS/.test(tt), (tt.match(/ATENÇÃO, OS IMPEDIMENTOS[^\n]*/) || [''])[0]);
+  const def = DEFINICOES.find(d => d.name === 'comparativo');
+  chk('a definição da ferramenta: o comparativo pedido (os dois nomes) e o "e se" do lucro da contabilidade', JSON.stringify(def.input_schema.properties.objetivo.enum) === '["presumido_real","todos"]' && def.input_schema.properties.e_se.properties.lucro_contabil_12_meses.type === 'number'
+    && /o que o cadastro veda no Simples/.test(def.description) && /a precisão do estudo/.test(def.description));
+  // as vendas com alíquota zero de PIS/Cofins (a cesta básica): nos números, com a origem; na missão; e no "e se"
+  // PIS/Cofins do Presumido de 2026 da indústria de teste: 3,65% × (600.000 − 17% × 600.000 = 498.000) = 18.177
+  chk('as vendas com alíquota zero de PIS/Cofins: nos números (no padrão, a conferir) e na missão do PIS/Cofins das vendas', /vendas com alíquota zero de PIS\/Cofins 0% \[padrão: nenhuma — confira\]/.test(t) && !/revenda monofásica \d/.test(t)
+    && /\[a conferir · importa\] O PIS\/Cofins das vendas: No padrão, toda a venda paga PIS\/Cofins: em 2026, R\$\s?18\.177 no Presumido/.test(t) && /informe a parte das vendas com alíquota zero\./.test(t), (t.match(/O PIS\/Cofins das vendas: [^\n]{0,200}/) || [''])[0]);
+  // fora da Cesta Básica Nacional (o padrão): 10% da alíquota de abril a dezembro (LC 224/2025) —
+  // PIS 0,065% × 498.000 × 9/12 = 242,775; Cofins 0,3% × 498.000 × 9/12 = 1.120,50
+  const tz = await fs.comparativo({ e_se: { vendas_aliquota_zero_pis_cofins: 100 } });
+  chk('o "e se" com toda a venda em alíquota zero (fora da cesta básica): o PIS e a Cofins do Presumido caem pros 10% da alíquota de abril a dezembro (LC 224), e a mudança vem dita', def.input_schema.properties.e_se.properties.vendas_aliquota_zero_pis_cofins.type === 'number'
+    && /\n- Vendas com alíquota zero de PIS\/Cofins: 0% das vendas → 100% das vendas/.test(tz) && /- Lucro Presumido: IRPJ 7\.200,00 · 7\.200,00 · 7\.200,00; CSLL 6\.480,00 · 6\.480,00 · 6\.480,00; PIS 242,7[78] · — · —; Cofins 1\.120,50 · — · —/.test(tz)
+    && /Alíquota zero de PIS\/Cofins fora da Cesta Básica Nacional: desde 01\/04\/2026 essas vendas pagam 10% da alíquota padrão/.test(tz), (tz.match(/- Lucro Presumido: IRPJ[^\n]{0,160}/) || [''])[0] + ' | ' + (tz.match(/[^\n]*Vendas com alíquota zero[^\n]{0,160}/) || [''])[0]);
+  const tc = await fs.comparativo({ e_se: { vendas_aliquota_zero_pis_cofins: 100, aliquota_zero_da_cesta_basica: true } });
+  chk('o "e se" com os produtos na Cesta Básica Nacional: a alíquota zero segue, e o PIS e a Cofins do Presumido zeram', def.input_schema.properties.e_se.properties.aliquota_zero_da_cesta_basica.type === 'boolean'
+    && /; PIS 0,00 · — · —; Cofins 0,00 · — · —/.test(tc) && /\n- Alíquota zero de PIS\/Cofins: os produtos são da Cesta Básica Nacional: não \(10% da alíquota desde abril de 2026\) → sim \(seguem com zero\)/.test(tc)
+    && !/Alíquota zero de PIS\/Cofins fora da Cesta Básica Nacional: desde/.test(tc), (tc.match(/- Lucro Presumido: IRPJ[^\n]{0,160}/) || [''])[0] + ' | ' + (tc.match(/[^\n]*Cesta Básica Nacional[^\n]{0,200}/) || [''])[0]);
 }
 {
   // o servidor: o estudo da tela vira a empresa aberta (ou, sem cadastro, vai pelo nome no preâmbulo)

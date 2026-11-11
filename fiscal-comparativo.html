@@ -190,6 +190,35 @@
     .ct-gravado { font-size:12.5px; color:var(--text-muted); margin-top:14px; min-height:18px; }
     .ct-gravado.ct-erro { color:var(--err); }
     .ct-so-leitor { position:absolute; width:1px; height:1px; padding:0; margin:-1px; overflow:hidden; clip:rect(0,0,0,0); white-space:nowrap; border:0; }
+    /* qual comparativo: a pergunta que abre o estudo, o que o cadastro veda no Simples e a escolha feita */
+    .ct-pergunta[hidden] { display:none; }
+    .ct-pergunta h2 { margin-bottom:4px; }
+    .ct-pergunta > p.ct-sub { margin-bottom:0; max-width:86ch; }
+    .ct-opcoes { display:grid; grid-template-columns:repeat(2, minmax(0,1fr)); gap:12px; max-width:980px; margin-top:12px; }
+    @media (max-width:760px){ .ct-opcoes { grid-template-columns:minmax(0,1fr); } }
+    .ct-opcao { text-align:left; background:var(--surface); border:1px solid var(--line-strong); border-radius:12px; padding:14px 16px; color:var(--text); font:inherit; cursor:pointer; display:grid; gap:5px; align-content:start; }
+    .ct-opcao:hover, .ct-opcao:focus-visible { border-color:var(--brand-primary); outline:none; box-shadow:0 0 0 3px rgba(91,130,166,.28); }
+    .ct-opcao[aria-pressed="true"] { border-color:var(--ok); }
+    .ct-opcao b { font-size:15px; font-weight:600; }
+    .ct-opcao span { font-size:13px; color:var(--brand-pale); line-height:1.5; }
+    .ct-opcao .ct-sugerido { justify-self:start; font-size:11px; font-weight:600; color:var(--ok); border:1px solid rgba(63,176,122,.5); border-radius:999px; padding:0 9px; line-height:1.7; }
+    .ct-opcao .ct-porque { color:var(--text); }
+    .ct-vedado { border:1px solid rgba(230,180,80,.55); background:rgba(230,180,80,.08); border-radius:10px; padding:10px 14px; margin-top:12px; max-width:980px; font-size:13px; line-height:1.55; color:var(--brand-pale); }
+    .ct-vedado b { color:var(--warn); }
+    .ct-vedado ul { margin:4px 0 0; padding-left:18px; }
+    .ct-vedado small { color:var(--text-muted); }
+    .ct-vedado p { margin:6px 0 0; font-size:12.5px; color:var(--text-muted); }
+    .ct-livre { margin:12px 0 0; font-size:12.5px; line-height:1.55; color:var(--text-muted); max-width:98ch; }
+    .ct-escolha { display:flex; flex-wrap:wrap; gap:6px 12px; align-items:center; font-size:14px; color:var(--brand-pale); margin:0; }
+    .ct-escolha b { color:var(--text); }
+    .ct-precisao { border:1px solid var(--line); border-radius:12px; background:var(--surface); padding:10px 14px; margin:0 0 12px; }
+    .ct-precisao h3 { margin:0; font-size:13.5px; color:var(--text); }
+    .ct-precisao ul { margin:6px 0 0; padding-left:18px; font-size:13px; line-height:1.55; color:var(--brand-pale); }
+    .ct-precisao li + li { margin-top:3px; }
+    .ct-precisao .ct-peso { font-size:11px; font-weight:600; border-radius:999px; padding:0 8px; border:1px solid var(--line-strong); color:var(--text-muted); margin-left:6px; white-space:nowrap; }
+    .ct-precisao li[data-peso="decide"] .ct-peso { color:var(--warn); border-color:rgba(230,180,80,.5); }
+    .ct-precisao .ct-tem { font-size:12.5px; line-height:1.5; color:var(--text-muted); margin:6px 0 0; }
+    .ct-precisao[data-nivel="pronto"] h3 { color:var(--ok); }
   </style>
 </head>
 <body>
@@ -216,7 +245,7 @@
         </div>
         <div class="eyebrow">Fiscal</div>
         <h1>Comparativo tributário</h1>
-        <p>Quanto a empresa paga de imposto no Simples, no Lucro Presumido e no Lucro Real: os últimos 12 meses pelas regras de 2026 e as projeções de 2027 e 2028, já com a CBS no lugar do PIS/Cofins. O sistema preenche o que já sabe da empresa e diz de onde veio cada número; o que ficou no padrão vem em amarelo.</p>
+        <p>Quanto a empresa paga de imposto em cada regime: os últimos 12 meses pelas regras de 2026 e as projeções de 2027 e 2028, já com a CBS no lugar do PIS/Cofins. Escolhida a empresa, a tela pergunta qual comparativo fazer (só o Presumido contra o Real, ou com o Simples) e segue o caminho dele. O sistema preenche o que já sabe e diz de onde veio cada número; o que falta pra conta ficar precisa vem dito no resultado.</p>
       </div>
 
       <section class="ct-sec" aria-labelledby="tEmpresa">
@@ -243,6 +272,8 @@
         </div>
       </section>
 
+      <section class="ct-sec ct-pergunta" id="pergunta" aria-labelledby="tPergunta" hidden></section>
+
       <section class="ct-sec ct-roteiro" id="roteiro" aria-labelledby="tRoteiro" hidden>
         <div class="ct-rot-cab"><h2 id="tRoteiro">Por onde começar</h2><div class="ct-placar" id="placar"></div></div>
         <ol class="ct-trilha" id="trilha" aria-label="As fases do estudo"></ol>
@@ -268,10 +299,12 @@
     import { supabase, getCurrentUser, signOut } from './assets/js/supabase.js';
     import { hojeLocal, formatDocumento, normalizarDocumento } from './assets/js/utils.js';
     import { nomePorEmail } from './assets/js/equipe.js';
-    import { fraseDaDecisao, TIPOS, ANEXOS, ROTULO_REGIME, REGIMES } from './assets/js/comparativo-motor.js';
+    import { fraseDaDecisao, TIPOS, ANEXOS, ROTULO_REGIME, REGIMES, OBJETIVOS, ehObjetivo } from './assets/js/comparativo-motor.js';
     import { aplicarRelatorios, FONTES, rotuloComp, mesclarSerie, pareceFolha, cnpjsDoCabecalho, juntarFolha, folhaDoAno, aplicarFolha } from './assets/js/comparativo-dados.js';
     // o estudo (o gravado ou os números do sistema, as empresas dos sócios) e a conta: a mesma regra do assistente do escritório
-    import { PADRAO_ATIV, comPadroes, ORIGENS_PADRAO, CAMPOS, erroSemTabela, carregarEstudo, contaDoEstudo, situacaoComGrupo, resumoParaGravar } from './assets/js/comparativo-estudo.js';
+    import { PADRAO_ATIV, comPadroes, ORIGENS_PADRAO, CAMPOS, erroSemTabela, carregarEstudo, contaDoEstudo, situacaoComGrupo, resumoParaGravar, opcoesDeObjetivo } from './assets/js/comparativo-estudo.js';
+    import { oQueConferiu, NAO_CONFERE } from './assets/js/simples-vedacoes.js';
+    import { PESO_DA_PRECISAO, NIVEL_DA_PRECISAO } from './assets/js/comparativo-roteiro.js';
     import { assistenteDaTela } from './assets/js/assistente-escritorio.js';
     import { lerRelatorio, consolidar, lerPlanilha, perfilAtividade } from './assets/js/dominio-relatorios.js';
     import { paginasDoPdf, abasDaPlanilha, rotuloRel } from './assets/js/relatorios-arquivos.js';
@@ -300,7 +333,7 @@
 
     // ---------- o cadastro, a carteira e a CBS de 2027 ----------
     const [rCli, rCart, rPar] = await Promise.all([
-      supabase.todosClientes('id, nome_principal, nome_fantasia, documento, regime_tributario, cnae_principal, cidade, uf, status'),
+      supabase.todosClientes('id, nome_principal, nome_fantasia, documento, regime_tributario, cnae_principal, cnaes_secundarios, natureza_juridica, cidade, uf, status'),
       supabase.from('carteira_info').select('cliente_id, saida'),
       supabase.from('rt_parametros').select('chave, valor').eq('chave', 'aliq_ref_2027').maybeSingle()
     ]);
@@ -314,8 +347,11 @@
     // serieRel: os meses do faturamento solto na tela (entram na série e ficam gravados no estudo)
     // folhaRel: os meses do resumo da folha solto na tela, só os totais (salários, pró-labore e outros), gravados no estudo
     // socios: quantos sócios o cadastro tem (null = sem cadastro) · jornada e faseVista: o roteiro (as fases e as missões)
+    // vedacoes: o que o cadastro veda no Simples (null = sem cadastro) · contabil: o Controle das contabilidades da empresa
+    // trocando: a pergunta "qual comparativo" aberta de novo (o comparativo escolhido fica em entrada.objetivo)
     const st = { cliente: null, nome: '', entrada: null, origens: {}, notas: [], conferencia: null, rels: [], fontes: [],
       estudoId: null, gravadoEm: null, gravadoPor: null, semTabela: false, serie: null, serieRel: null, folhaRel: null, grupoSeries: [], grupoFora: [], socios: null,
+      vedacoes: null, contabil: null, trocando: false,
       jornada: { inicial: true, feitas: new Set(), fases: new Set() }, faseVista: null };
     let ultimoRoteiro = null;
 
@@ -364,13 +400,14 @@
       await gravarPendente();
       st.cliente = null; st.nome = nome; st.estudoId = null; st.gravadoEm = null; st.gravadoPor = null; st.rels = []; st.conferencia = null;
       st.serie = null; st.serieRel = null; st.folhaRel = null; st.grupoSeries = []; st.grupoFora = []; st.socios = null; st.faseVista = null; st.jornada = { inicial: true, feitas: new Set(), fases: new Set() };
+      st.vedacoes = null; st.contabil = null; st.trocando = false;
       st.entrada = comPadroes({ atividades: [{ tipo: 'comercio', receita: 0 }], grupo: [] });
       st.origens = { ...ORIGENS_PADRAO, 'atividades.0.receita': { fonte: 'padrao', texto: 'digite a receita dos 12 meses' }, 'atividades.0.tipo': { fonte: 'padrao' },
         compras: { fonte: 'padrao', texto: 'digite ou solte os relatórios' }, folha: { fonte: 'padrao', texto: 'digite os 12 meses', dica: 'salários, 13º e férias' }, proLabore: { fonte: 'padrao', texto: 'digite' },
         aliqCreditoIcms: { fonte: 'padrao', texto: 'padrão: 12% — confira' }, outrasDespesas: { fonte: 'padrao', texto: 'digite: fazem o lucro do Real' }, rat: { fonte: 'padrao', texto: 'padrão: 2% e FAP 1' }, terceiros: { fonte: 'padrao', texto: 'padrão: 5,8%' } };
       st.notas = []; st.fontes = [];
       $('lidos').innerHTML = ''; $('msgRel').textContent = '';
-      renderEmpresa(); renderForm(); calcular(); $('gravado').textContent = '';
+      renderEmpresa(); renderPergunta(); renderForm(); calcular(); $('gravado').textContent = '';
       contextoDoAssistente();
     });
 
@@ -399,7 +436,8 @@
       st.entrada = est.entrada; st.origens = est.origens; st.conferencia = est.conferencia;
       st.notas = est.notas;
       st.sistema = est.sistema;
-      renderEmpresa(); renderForm(); calcular();
+      st.vedacoes = est.vedacoes || null; st.contabil = est.contabil || null; st.trocando = false;
+      renderEmpresa(); renderPergunta(); renderForm(); calcular();
       if (st.estudoId) $('gravado').textContent = 'Estudo gravado em ' + new Date(st.gravadoEm).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' }) + (st.gravadoPor ? ' por ' + (nomePorEmail(st.gravadoPor) || st.gravadoPor) : '') + '.';
       contextoDoAssistente();
     }
@@ -415,16 +453,81 @@
         (c ? '<p>' + esc([c.nome_fantasia, c.documento ? formatDocumento(c.documento) : null, c.cnae_principal ? 'CNAE ' + c.cnae_principal : null, c.cidade ? c.cidade + (c.uf ? '/' + c.uf : '') : null].filter(Boolean).join(' · ')) +
           ' · <a href="clientes/editar.html?id=' + encodeURIComponent(c.id) + '">abrir a ficha</a></p>' : '<p>sem cadastro no sistema</p>') +
         '<div class="ct-linha-acoes">' + opRegime + recomecar + '</div>' + fontes;
-      $('caixaRelatorios').hidden = false;
-      $('grade').hidden = false;
-      $('regimeAtual').addEventListener('change', e => { st.entrada.regimeAtual = e.target.value || null; mudou(); });
+      mostrarEstudo();
+      $('regimeAtual').addEventListener('change', e => { st.entrada.regimeAtual = e.target.value || null; renderPergunta(); mudou(); });
       if ($('recomecar')) $('recomecar').addEventListener('click', () => {
         if (!confirm('Trocar os números deste estudo pelos que o sistema tem hoje? O que foi digitado se perde.')) return;
-        st.entrada = comPadroes(st.sistema.entrada); st.origens = { ...ORIGENS_PADRAO, ...st.sistema.origens }; st.conferencia = st.sistema.conferencia;
+        const objetivo = st.entrada.objetivo;   // o comparativo escolhido fica
+        st.entrada = comPadroes({ ...st.sistema.entrada, ...(objetivo ? { objetivo } : {}) }); st.origens = { ...ORIGENS_PADRAO, ...st.sistema.origens }; st.conferencia = st.sistema.conferencia;
         st.serie = st.sistema.serie || null; st.serieRel = null; st.folhaRel = null;
         renderForm(); mudou();
       });
     }
+    // os relatórios, o roteiro, os números e o resultado só aparecem depois da escolha do comparativo
+    function mostrarEstudo() {
+      const escolhido = !!(st.entrada && st.entrada.objetivo);
+      $('caixaRelatorios').hidden = !escolhido;
+      $('grade').hidden = !escolhido;
+      if (!escolhido) $('roteiro').hidden = true;
+    }
+
+    // ---------- qual comparativo (pedido do Samuel, 11/11/2026) ----------
+    // Escolhida a empresa, a tela pergunta qual comparativo fazer — só o Presumido contra o Real, ou com o Simples — e o
+    // sistema sugere um, com o porquê: o regime de hoje e o que o cadastro veda no Simples (o CNAE principal e os
+    // secundários, pessoa jurídica entre os sócios, a natureza jurídica). A escolha fica no estudo (entrada.objetivo) e dá o
+    // caminho: as fases, os campos, a tabela e os prazos.
+    function blocoVedacoes(curto) {
+      const v = st.vedacoes;
+      if (!v) return curto ? '' : '<p class="ct-livre">Empresa sem cadastro: o sistema não confere os impedimentos do Simples (o CNAE, os sócios, a natureza jurídica).</p>';
+      const item = i => '<li>' + esc(i.texto) + ' <small>(' + esc(i.base) + ')</small>' + (i.remedio ? ' ' + esc(i.remedio) : '') + '</li>';
+      const sem = v.semDado && v.semDado.length ? ' Faltou no cadastro pra conferir: ' + v.semDado.join(', ') + '.' : '';
+      if (v.vedado) {
+        return '<div class="ct-vedado" id="vedado"><b>O Simples está vedado pra ela hoje.</b><ul>' + v.impedimentos.map(item).join('') + '</ul>' +
+          (v.conferir.length ? '<p>A conferir: ' + v.conferir.map(i => esc(i.texto) + ' (' + esc(i.base) + ')').join('; ') + '.</p>' : '') +
+          (curto ? '' : '<p>O sistema não confere: ' + esc(NAO_CONFERE.join('; ')) + '.' + esc(sem) + '</p>') + '</div>';
+      }
+      if (curto) return '';
+      return '<p class="ct-livre" id="livre">' + (oQueConferiu(v) ? 'Pelo cadastro, nada veda o Simples: ' + esc(oQueConferiu(v)) + '.' : 'O cadastro não tem o que conferir das vedações do Simples.') +
+        (v.conferir.length ? ' A conferir: ' + v.conferir.map(i => esc(i.texto) + ' (' + esc(i.base) + ')').join('; ') + '.' : '') + esc(sem) +
+        ' O sistema não confere: ' + esc(NAO_CONFERE.join('; ')) + '.</p>';
+    }
+    function renderPergunta() {
+      const box = $('pergunta');
+      if (!st.entrada) { box.hidden = true; return; }
+      box.hidden = false;
+      const atual = ehObjetivo(st.entrada.objetivo) ? st.entrada.objetivo : null;
+      if (atual && !st.trocando) {
+        const v = st.vedacoes;
+        const nota = atual === 'presumido_real' ? (v && v.vedado ? '' : 'O Simples ficou fora desta comparação' + (v && oQueConferiu(v) ? ': pelo cadastro, nada o veda.' : '.'))
+          : v && v.vedado ? 'O Simples entra como simulação.' : '';
+        box.innerHTML = '<h2 id="tPergunta" class="ct-so-leitor">Qual comparativo</h2>' +
+          '<p class="ct-escolha"><span>Comparativo: <b id="objetivoAtual">' + esc(OBJETIVOS[atual].rotulo) + '</b></span>' + (nota ? '<span>' + esc(nota) + '</span>' : '') +
+          '<button type="button" class="btn btn-ghost btn-sm" id="trocarObjetivo">Trocar</button></p>' + blocoVedacoes(true);
+        return;
+      }
+      const ops = opcoesDeObjetivo(st.entrada.regimeAtual, st.vedacoes);
+      box.innerHTML = '<h2 id="tPergunta">Qual comparativo você quer fazer?</h2>' +
+        '<p class="ct-sub">A escolha dá o caminho do estudo: o que a tela pede, o que entra na conta e o que aparece no resultado. Dá pra trocar depois, sem perder os números.</p>' +
+        '<div class="ct-opcoes" role="group" aria-labelledby="tPergunta">' + ops.map(x =>
+          '<button type="button" class="ct-opcao" data-objetivo="' + esc(x.id) + '" aria-pressed="' + (x.id === atual) + '">' +
+          (x.sugerido ? '<span class="ct-sugerido">sugerido</span>' : '') + '<b>' + esc(x.rotulo) + '</b><span>' + esc(x.texto) + '</span>' +
+          (x.porque ? '<span class="ct-porque">' + esc(x.porque) + '</span>' : '') + '</button>').join('') + '</div>' + blocoVedacoes(false);
+    }
+    $('pergunta').addEventListener('click', e => {
+      if (e.target.closest('#trocarObjetivo')) {
+        st.trocando = true; renderPergunta();
+        const b = document.querySelector('#pergunta .ct-opcao[aria-pressed="true"]') || document.querySelector('#pergunta .ct-opcao'); if (b) b.focus();
+        return;
+      }
+      const b = e.target.closest('.ct-opcao[data-objetivo]'); if (!b || !ehObjetivo(b.dataset.objetivo)) return;
+      const mudouDeCaminho = st.entrada.objetivo !== b.dataset.objetivo;
+      st.entrada.objetivo = b.dataset.objetivo; st.trocando = false;
+      // outro caminho, outras fases: o roteiro recomeça a contar
+      if (mudouDeCaminho) { st.faseVista = null; st.jornada = { inicial: true, feitas: new Set(), fases: new Set() }; }
+      renderPergunta(); mostrarEstudo(); renderForm(); calcular();
+      clearTimeout(tGravar); tGravar = setTimeout(gravar, 1500);
+      const t = $('trocarObjetivo'); if (t) t.focus();
+    });
 
     // ---------- o formulário ----------
     // os campos (o nome e a unidade de cada um): CAMPOS, de assets/js/comparativo-estudo.js
@@ -458,9 +561,14 @@
       const p = 'atividades.' + i;
       const opTipos = Object.entries(TIPOS).map(([k, x]) => '<option value="' + k + '"' + (k === a.tipo ? ' selected' : '') + '>' + esc(x.rotulo) + '</option>').join('');
       const anexo = a.anexo || t.anexo;
+      // só o Presumido contra o Real: o que é só do Simples (o anexo, o fator r, a redução do ICMS no DAS) sai da tela
+      const geral = st.entrada.objetivo === 'presumido_real';
       // as reduções do ICMS: à vista quando há (a refeição no RS, o PGDAS com redução); senão, no "ajuste"
-      const comRed = tributo === 'icms' && ((Number(a.redIcms) || 0) > 0 || (Number(a.redIcmsSimples) || 0) > 0);
-      const reducoes = tributo === 'icms' ? campo(p + '.redIcms', 'ativ.redIcms') + campo(p + '.redIcmsSimples', 'ativ.redIcmsSimples') : '';
+      const comRed = tributo === 'icms' && ((Number(a.redIcms) || 0) > 0 || (!geral && (Number(a.redIcmsSimples) || 0) > 0));
+      const reducoes = tributo === 'icms' ? campo(p + '.redIcms', 'ativ.redIcms') + (geral ? '' : campo(p + '.redIcmsSimples', 'ativ.redIcmsSimples')) : '';
+      // a alíquota zero de PIS/Cofins depois da LC 224: a da Cesta Básica Nacional segue zero; a outra paga 10% da alíquota
+      const cestaBasica = '<label class="ct-campo"><span><input type="checkbox" id="f_' + p.replace('.', '_') + '_aliqZeroCesta" data-campo="' + p + '.aliqZeroCesta"' + (a.aliqZeroCesta ? ' checked' : '') +
+        '> A alíquota zero é da Cesta Básica Nacional</span><small class="ct-orig">LC 214, Anexos I e XV (arroz, feijão, leite, carnes, hortifrúti…): segue zero. Sem a marca, paga 10% da alíquota desde abril de 2026 (LC 224)</small></label>';
       return '<div class="ct-ativ" data-i="' + i + '">' +
         '<div class="ct-ativ-topo">' +
           '<label class="ct-campo" for="f_' + p.replace('.', '_') + '_tipo">Atividade<select class="select" id="f_' + p.replace('.', '_') + '_tipo" data-campo="' + p + '.tipo">' + opTipos + '</select>' + tag(p + '.tipo') + '</label>' +
@@ -468,18 +576,19 @@
           (st.entrada.atividades.length > 1 ? '<button type="button" class="ct-x" data-acao="tirar" data-i="' + i + '" aria-label="Tirar esta atividade" title="Tirar esta atividade">✕</button>' : '<span></span>') +
         '</div>' +
         '<div class="ct-campos">' +
-          (tributo === 'icms' ? campo(p + '.aliqIcms', 'ativ.aliqIcms') + campo(p + '.pctST', 'ativ.pctST') + (a.tipo === 'comercio' ? campo(p + '.pctMonofasico', 'ativ.pctMonofasico') : '') : campo(p + '.aliqIss', 'ativ.aliqIss')) +
+          (tributo === 'icms' ? campo(p + '.aliqIcms', 'ativ.aliqIcms') + campo(p + '.pctST', 'ativ.pctST') + (a.tipo === 'comercio' ? campo(p + '.pctMonofasico', 'ativ.pctMonofasico') : '') + campo(p + '.pctAliqZero', 'ativ.pctAliqZero') + cestaBasica : campo(p + '.aliqIss', 'ativ.aliqIss')) +
           (a.tipo === 'industria' ? campo(p + '.aliqIpi', 'ativ.aliqIpi') : '') +
           (comRed ? reducoes : '') +
         '</div>' +
-        '<details class="ct-ajuste"><summary>' + (tributo === 'icms' && !comRed ? 'Anexo do Simples, presunção do Presumido e redução do ICMS' : 'Anexo do Simples e presunção do Presumido') + '</summary><div class="ct-campos">' +
+        '<details class="ct-ajuste"><summary>' + (geral ? (tributo === 'icms' && !comRed ? 'Presunção do Presumido e redução do ICMS' : 'Presunção do Presumido')
+          : tributo === 'icms' && !comRed ? 'Anexo do Simples, presunção do Presumido e redução do ICMS' : 'Anexo do Simples e presunção do Presumido') + '</summary><div class="ct-campos">' +
           (comRed ? '' : reducoes) +
-          '<label class="ct-campo">Anexo do Simples<select class="select" data-campo="' + p + '.anexo">' + ANEXOS.map(x => '<option' + (x === anexo ? ' selected' : '') + '>' + x + '</option>').join('') + '</select></label>' +
-          (a.tipo === 'servico_r' ? '<label class="ct-campo"><span><input type="checkbox" data-campo="' + p + '.fatorR"' + (a.fatorR === false ? '' : ' checked') + '> Anexo pelo fator r (III com folha ≥ 28%)</span></label>' : '') +
+          (geral ? '' : '<label class="ct-campo">Anexo do Simples<select class="select" data-campo="' + p + '.anexo">' + ANEXOS.map(x => '<option' + (x === anexo ? ' selected' : '') + '>' + x + '</option>').join('') + '</select></label>') +
+          (a.tipo === 'servico_r' && !geral ? '<label class="ct-campo"><span><input type="checkbox" data-campo="' + p + '.fatorR"' + (a.fatorR === false ? '' : ' checked') + '> Anexo pelo fator r (III com folha ≥ 28%)</span></label>' : '') +
           campo(p + '.presIrpj', 'ativ.presIrpj').replace('value=""', 'value="' + esc(pct(a.presIrpj ?? t.presIrpj)) + '"') +
           campo(p + '.presCsll', 'ativ.presCsll').replace('value=""', 'value="' + esc(pct(a.presCsll ?? t.presCsll)) + '"') +
           '<label class="ct-campo">Tributo da operação<select class="select" data-campo="' + p + '.tributo"><option value="icms"' + (tributo === 'icms' ? ' selected' : '') + '>ICMS</option><option value="iss"' + (tributo === 'iss' ? ' selected' : '') + '>ISS</option></select></label>' +
-          (a.tipo === 'industria' ? '<label class="ct-campo"><span><input type="checkbox" data-campo="' + p + '.ipiMantido"' + (a.ipiMantido ? ' checked' : '') + '> IPI mantido (Zona Franca): segue no Anexo II em 2027</span></label>' : '') +
+          (a.tipo === 'industria' && !geral ? '<label class="ct-campo"><span><input type="checkbox" data-campo="' + p + '.ipiMantido"' + (a.ipiMantido ? ' checked' : '') + '> IPI mantido (Zona Franca): segue no Anexo II em 2027</span></label>' : '') +
         '</div></details>' +
       '</div>';
     }
@@ -511,20 +620,34 @@
       }).join('');
       return '<fieldset class="ct-grupo" id="grupoSocios"><legend>Empresas dos mesmos sócios</legend><p class="ct-gr-sit' + (alerta ? ' ct-alerta' : '') + '" id="grupoSit">' + esc(txt) + '</p>' + linhas + '</fieldset>';
     }
+    // o lucro do Real pela contabilidade: o resultado da DRE dos 12 meses e os ajustes (sem ele, a conta estima o lucro)
+    function blocoLucro() {
+      // os 12 meses da DRE são os da receita; e até que mês a contabilidade está feita (o Controle das contabilidades)
+      const doze = (st.serie || []).slice(-12);
+      const per = doze.length ? ' (de ' + rotuloComp(doze[0].competencia) + ' a ' + rotuloComp(doze[doze.length - 1].competencia) + ')' : '';
+      const k = st.contabil;
+      const ctb = !k ? '' : k.faz === false ? ' O escritório não faz a contabilidade desta empresa.' : k.feitaAte ? ' Pelo Controle das contabilidades, ela está feita até ' + rotuloComp(k.feitaAte) + '.' : ' Pelo Controle das contabilidades, nenhum mês está feito.';
+      return '<fieldset class="ct-grupo" id="blocoLucro"><legend>Lucro do Real (a contabilidade)</legend><div class="ct-campos">' + campo('lucroContabil') + campo('ajustesLalur') + '</div>' +
+        '<small class="ct-orig" id="ajudaLucro">O resultado da DRE dos mesmos 12 meses da receita' + esc(per) + ', antes do IRPJ e da CSLL; prejuízo, com o sinal de menos. A conta troca os tributos de hoje pelos do Real. Em branco, o lucro é estimado: a receita menos as compras, a folha e as despesas.' + esc(ctb) + '</small></fieldset>';
+    }
     function renderForm() {
       const e = st.entrada;
       const totalRec = e.atividades.reduce((s, a) => s + (Number(a.receita) || 0), 0);
       const temIcms = e.atividades.some(a => (a.tributo || (TIPOS[a.tipo] || {}).tributo) === 'icms');
+      // só o Presumido contra o Real: sem as empresas dos sócios e o ICMS fora do DAS (são do Simples), e o lucro da
+      // contabilidade logo depois da receita — é o que decide
+      const geral = e.objetivo === 'presumido_real';
       $('form').innerHTML =
         '<fieldset class="ct-grupo"><legend>Receita</legend>' + e.atividades.map(blocoAtividade).join('') +
           '<div class="ct-total-rec" id="totalRec">Receita dos 12 meses: <b>' + esc(brl(totalRec)) + '</b></div>' +
           '<div class="ct-linha-acoes"><button type="button" class="btn btn-ghost btn-sm" data-acao="mais">+ Outra atividade</button>' +
-          '<button type="button" class="btn btn-ghost btn-sm" data-acao="mais-grupo">+ Empresa dos mesmos sócios</button></div></fieldset>' +
-        blocoGrupo() +
+          (geral ? '' : '<button type="button" class="btn btn-ghost btn-sm" data-acao="mais-grupo">+ Empresa dos mesmos sócios</button>') + '</div></fieldset>' +
+        (geral ? blocoLucro() : blocoGrupo()) +
         '<fieldset class="ct-grupo"><legend>Compras e despesas</legend><div class="ct-campos">' +
           campo('compras') + (temIcms ? campo('aliqCreditoIcms') : '') + (temIcms && (e.rda || e.atividades.some(a => Number(a.redIcms) > 0)) ? campoRda() : '') +
-          campo('pctComprasSimples') + campo('despesasCredito') + campo('outrasDespesas') + (temIcms ? campo('difalSimples') : '') +
+          campo('pctComprasSimples') + campo('despesasCredito') + campo('outrasDespesas') + (temIcms && !geral ? campo('difalSimples') : '') +
         '</div></fieldset>' +
+        (geral ? '' : blocoLucro()) +
         '<fieldset class="ct-grupo"><legend>Folha</legend><div class="ct-campos">' +
           campo('folha') + campo('proLabore') + campo('rat') + campo('fap') + campo('terceiros') + campo('cprb') +
         '</div></fieldset>' +
@@ -543,11 +666,13 @@
       const caminho = el.dataset.campo;
       if (/^grupo\.\d+\.nome$/.test(caminho)) { definir(st.entrada, caminho, el.value); mudou(); return; }
       const n = lerNumero(el.value);
-      const vazio = caminho === 'cprb' || caminho === 'pctImpostoEmbutido' || caminho === 'pctComprasComCredito';
+      const vazio = caminho === 'cprb' || caminho === 'pctImpostoEmbutido' || caminho === 'pctComprasComCredito' || caminho === 'lucroContabil';
       definir(st.entrada, caminho, n == null ? (vazio ? null : 0) : n);
-      st.origens[caminho] = { fonte: 'digitado', texto: FONTES.digitado };
+      // o lucro da contabilidade apagado: a conta volta a estimar (a origem volta ao padrão)
+      const nova = caminho === 'lucroContabil' && n == null ? ORIGENS_PADRAO.lucroContabil : { fonte: 'digitado', texto: FONTES.digitado };
+      st.origens[caminho] = nova;
       const t = document.querySelector('.ct-orig[data-orig="' + CSS.escape(caminho) + '"]');
-      if (t) { t.dataset.fonte = 'digitado'; t.textContent = FONTES.digitado; t.title = FONTES.digitado; }
+      if (t) { t.dataset.fonte = nova.fonte; t.textContent = nova.texto; t.title = nova.dica ? nova.texto + ' — ' + nova.dica : nova.texto; }
       if (/^atividades\.\d+\.receita$/.test(caminho)) $('totalRec').innerHTML = 'Receita dos 12 meses: <b>' + esc(brl(st.entrada.atividades.reduce((s, a) => s + (Number(a.receita) || 0), 0))) + '</b>';
       mudou();
     });
@@ -564,7 +689,7 @@
       if (m) {
         // outro tipo: anexo, presunção e tributo voltam aos do tipo novo
         const i = +m[1], a = st.entrada.atividades[i];
-        st.entrada.atividades[i] = { ...PADRAO_ATIV({}), tipo: el.value, receita: a.receita, aliqIcms: a.aliqIcms, aliqIss: a.aliqIss, pctST: a.pctST, pctMonofasico: a.pctMonofasico, redIcms: a.redIcms, redIcmsSimples: a.redIcmsSimples };
+        st.entrada.atividades[i] = { ...PADRAO_ATIV({}), tipo: el.value, receita: a.receita, aliqIcms: a.aliqIcms, aliqIss: a.aliqIss, pctST: a.pctST, pctMonofasico: a.pctMonofasico, pctAliqZero: a.pctAliqZero, aliqZeroCesta: a.aliqZeroCesta, redIcms: a.redIcms, redIcmsSimples: a.redIcmsSimples };
         st.origens[caminho] = { fonte: 'digitado' };
         renderForm(); mudou(); return;
       }
@@ -619,10 +744,12 @@
     let ultimo = null;
     function calcular() {
       const box = $('resultado');
+      // sem o comparativo escolhido, a tela ainda está na pergunta: nada de conta
+      if (!st.entrada || !st.entrada.objetivo) { ultimo = null; box.innerHTML = ''; return; }
       if ($('grupoSit')) { const tg = textoGrupo(); $('grupoSit').textContent = tg.txt; $('grupoSit').classList.toggle('ct-alerta', tg.alerta); }
       // a conta inteira (a mesma do assistente do escritório): comparar, as premissas, o roteiro, os prazos, o que muda e os avisos
       const conta = contaDoEstudo({ entrada: st.entrada, origens: st.origens, conferencia: st.conferencia, notas: st.notas, serie: st.serie,
-        grupoSeries: st.grupoSeries, grupoFora: st.grupoFora, socios: st.socios, aliq2027, hoje: hojeLocal() });
+        grupoSeries: st.grupoSeries, grupoFora: st.grupoFora, socios: st.socios, aliq2027, hoje: hojeLocal(), vedacoes: st.vedacoes, contabil: st.contabil });
       if (!conta.comparacao) {
         ultimo = null;
         box.innerHTML = '<p class="ct-vazio">' + esc(conta.erro) + '</p>';
@@ -641,20 +768,22 @@
       // a tabela: um regime por linha, um ano por coluna; o mais barato de cada ano em verde
       const cab = '<tr><th>Regime</th>' + anos.map(r => '<th>' + (r.k === 0 ? 'Últimos 12 meses<br><small>regras de ' + r.ano + '</small>' : r.ano) + '</th>').join('') + '</tr>';
       const linhaRec = '<tr class="ct-rec"><td>Receita</td>' + anos.map(r => '<td>' + esc(brl(r.receita)) + '</td>').join('') + '</tr>';
-      const linhas = REGIMES.map(g => '<tr><td>' + esc(ROTULO_REGIME[g]) + (g === atual ? '<span class="ct-hoje">(hoje)</span>' : '') + '</td>' + anos.map(r => {
+      // só os regimes do comparativo escolhido
+      const regs = REGIMES.filter(g => conta.regimes.includes(g));
+      const linhas = regs.map(g => '<tr><td>' + esc(ROTULO_REGIME[g]) + (g === atual ? '<span class="ct-hoje">(hoje)</span>' : '') + '</td>' + anos.map(r => {
         const x = r[g];
         if (!x.disponivel) return '<td class="ct-indisp" title="' + esc(x.motivo || '') + '">fora do limite</td>';
         const melhor = r.melhor === g;
         return '<td' + (melhor ? ' class="ct-melhor"' : '') + '><b>' + esc(brl(x.total)) + '</b>' + (melhor ? '<span class="ct-tag">mais barato</span>' : '') + '<small>' + esc(pct(x.aliquota * 100, 2)) + '% da receita</small></td>';
       }).join('') + '</tr>').join('');
       // por tributo
-      const det = REGIMES.map(g => {
+      const det = regs.map(g => {
         const nomes = [];
         anos.forEach(r => (r[g].itens || []).forEach(it => { if (!nomes.includes(it.tributo)) nomes.push(it.tributo); }));
         if (!nomes.length) return '';
         return '<h4>' + esc(ROTULO_REGIME[g]) + '</h4><div class="ct-tab"><table class="ct ct-mini"><tr><th>Tributo</th>' + anos.map(r => '<th>' + (r.k === 0 ? '12 meses' : r.ano) + '</th>').join('') + '</tr>' +
           nomes.map(nm => '<tr><td>' + esc(nm) + '</td>' + anos.map(r => { const it = (r[g].itens || []).find(x => x.tributo === nm); return '<td>' + (r[g].disponivel ? esc(it ? moeda(it.valor) : '—') : '—') + '</td>'; }).join('') + '</tr>').join('') +
-          (g === 'real' ? '<tr class="ct-rec"><td>Lucro antes do IR (calculado)</td>' + anos.map(r => '<td>' + esc(moeda(r.real.lucro)) + '</td>').join('') + '</tr>' : '') +
+          (g === 'real' ? '<tr class="ct-rec"><td>Lucro antes do IR (' + (anos.some(r => r.real.lucroInformado) ? 'o da contabilidade, com os tributos trocados' : 'estimado') + ')</td>' + anos.map(r => '<td>' + esc(moeda(r.real.lucro)) + '</td>').join('') + '</tr>' : '') +
           (g === 'simples' ? '<tr class="ct-rec"><td>Fator r (média)</td>' + anos.map(r => '<td>' + (r.simples.disponivel && r.simples.fatorR != null && r.simples.anexosServico && r.simples.anexosServico.length ? esc(pct(r.simples.fatorR * 100, 1)) + '%' : '—') + '</td>').join('') + '</tr>' : '') +
           '</table></div>';
       }).join('');
@@ -669,9 +798,18 @@
       }
       // o que muda o resultado (o lucro do Real e as premissas que ficaram no padrão), os avisos e os prazos: da conta
       const { muda, avisos, prazos } = conta;
+      // a precisão do estudo: o que já está na conta (e como chegou) e o que falta, o que decide primeiro, com o efeito de cada item
+      const pr = conta.precisao;
+      const PESO = PESO_DA_PRECISAO, NIVEL = NIVEL_DA_PRECISAO;
+      const precisao = '<div class="ct-precisao" id="precisao" data-nivel="' + esc(pr.nivel) + '"><h3>Precisão do estudo: ' + esc(NIVEL[pr.nivel]) + '</h3>' +
+        (pr.falta.length ? '<ul>' + pr.falta.map(x => '<li data-id="' + esc(x.id) + '" data-peso="' + esc(x.peso) + '"><b>' + esc(x.titulo) + '</b><span class="ct-peso">' + esc(PESO[x.peso]) + '</span>' + (x.efeito ? ' ' + esc(x.efeito) + '.' : '') + '</li>').join('') + '</ul>' : '') +
+        (pr.tem.length ? '<p class="ct-tem">Já está na conta: ' + esc(pr.tem.map(x => x.titulo.charAt(0).toLowerCase() + x.titulo.slice(1) + ' (' + x.como + ')').join(' · ')) + '.</p>' : '') + '</div>';
       box.innerHTML =
+        // com o Simples na comparação e vedado pelo cadastro, a linha dele é simulação: o aviso vem antes da frase do mais barato
+        (conta.vedado ? '<p class="ct-sub ct-alerta" id="alertaVedado">' + esc(conta.vedado) + '</p>' : '') +
         '<p class="ct-frase">' + (rot.provisorio ? '<span class="ct-prov-tag">Provisório</span>' : rot.pronto ? '<span class="ct-pronto-tag">Pronto pra apresentar</span>' : '') + esc(fraseDaDecisao(c)) + '</p>' +
         (rot.provisorio ? '<p class="ct-sub ct-alerta">Ainda pode virar. ' + (decidem.length === 1 ? 'Missão que falta: ' : 'Missões que faltam: ') + esc(decidem.map(p => p.curto || p.titulo).join('; ')) + ' (veja "Por onde começar").</p>' : '') +
+        precisao +
         // o ano de agora já passou (ou passa, no ritmo de hoje) do limite: a saída do Simples cobre o ano da decisão
         (conta.limite ? '<p class="ct-sub ct-alerta" id="alertaLimite">' + esc(conta.limite) + '</p>' : '') +
         conf +
@@ -680,8 +818,11 @@
         (muda.length ? '<div class="ct-bloco"><h3>O que muda o resultado</h3><ul>' + muda.map(m => '<li' + (m.alerta ? ' class="ct-muda"' : '') + '>' + esc(m.txt) + '</li>').join('') + '</ul></div>' : '') +
         (prazos.length ? '<div class="ct-bloco ct-prazos"><h3>Prazos pra decidir</h3><ul>' + prazos.map(p => '<li><b>' + esc(p.titulo) + ':</b> ' + esc(p.texto) + '</li>').join('') + '</ul></div>' : '') +
         '<div class="ct-bloco"><h3>Premissas e avisos</h3><ul>' +
-          '<li>Todo tributo é calculado sobre a receita de hoje e conta como custo da empresa. Em 2027, a CBS/IBS do Presumido e do Real vai destacada na nota e o cliente empresa do regime regular credita tudo; no Simples por dentro, ele credita só a fatia de CBS/IBS do DAS — essa diferença pro cliente não entra na conta. A opção do Simples por fora está na <a href="fiscal-reforma.html">Reforma Tributária</a>.</li>' +
-          '<li>CBS de 2027: referência de ' + esc(pct((aliq2027 && aliq2027.cbs) || 11.3, 2)) + '%, a calculada pelo TCU, menos 0,1 ponto; IBS de 0,1%. Fora da conta: receitas financeiras, ajustes do lucro do Real, lucros e dividendos (Lei 15.270) e os anos de 2029 em diante.</li>' +
+          (conta.regimes.includes('simples')
+            ? '<li>Todo tributo é calculado sobre a receita de hoje e conta como custo da empresa. Em 2027, a CBS/IBS do Presumido e do Real vai destacada na nota e o cliente empresa do regime regular credita tudo; no Simples por dentro, ele credita só a fatia de CBS/IBS do DAS — essa diferença pro cliente não entra na conta. A opção do Simples por fora está na <a href="fiscal-reforma.html">Reforma Tributária</a>.</li>'
+            : '<li>Todo tributo é calculado sobre a receita de hoje e conta como custo da empresa. Em 2027, a CBS/IBS vai destacada na nota e o cliente empresa do regime regular credita tudo.</li>') +
+          '<li>CBS de 2027: referência de ' + esc(pct((aliq2027 && aliq2027.cbs) || 11.3, 2)) + '%, a calculada pelo TCU, menos 0,1 ponto; IBS de 0,1%. Fora da conta: ' +
+            (c.entrada.lucroContabil != null ? 'a compensação de prejuízo fiscal, o Real trimestral' : 'receitas financeiras, ajustes do lucro do Real') + ', lucros e dividendos (Lei 15.270) e os anos de 2029 em diante.</li>' +
           avisos.map(a => '<li>' + esc(a) + '</li>').join('') + '</ul></div>';
     }
     // ---------- por onde começar: as fases e as missões ----------
@@ -821,7 +962,7 @@
     async function gravarPendente() { if (tGravar) { clearTimeout(tGravar); tGravar = null; await gravar(); } }
     async function gravar() {
       tGravar = null;
-      if (!st.entrada || (!st.cliente && !st.nome)) return;
+      if (!st.entrada || !st.entrada.objetivo || (!st.cliente && !st.nome)) return;
       if (st.semTabela) { $('gravado').textContent = 'Os estudos ainda não ficam gravados: a gravação não foi liberada no banco.'; return; }
       if (gravando) { await gravando.catch(() => {}); }
       const c = ultimo;

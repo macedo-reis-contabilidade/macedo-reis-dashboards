@@ -5,8 +5,8 @@
 
 import { entradaDoSistema, aplicarRelatorios, premissasParaTestar, prazosDaEscolha, exclusaoObrigatoria, ultimoDiaUtil, serieDosMeses, tipoPeloCnae, tipoPeloAnexo, regimeDoCadastro,
   ehRefeicaoRS, ehRdaRS, empresasDosSocios, receitaDaEmpresa, situacaoDoGrupo, serieDaEmpresa, foraDaSoma, avisoDaSoma, mesclarSerie,
-  pareceFolha, cnpjsDoCabecalho, juntarFolha, folhaDoAno, aplicarFolha, mesesDaPonte, seriePonte, somaDaPonte } from '../assets/js/comparativo-dados.js';
-import { comparar } from '../assets/js/comparativo-motor.js';
+  pareceFolha, cnpjsDoCabecalho, juntarFolha, folhaDoAno, aplicarFolha, mesesDaPonte, seriePonte, somaDaPonte, objetivoSugerido, porQueDoObjetivo, objetivoValido } from '../assets/js/comparativo-dados.js';
+import { comparar, testarPremissas } from '../assets/js/comparativo-motor.js';
 
 let falhas = 0, total = 0;
 function ok(nome, cond, extra) {
@@ -300,6 +300,84 @@ console.log('=== o Domínio pela ponte (05/11/2026, a versão 2) ===');
   ok('sem nada da ponte, como antes', serieDaEmpresa({ dominio: [] }) === null && entradaDoSistema({ cliente: { regime_tributario: 'Lucro Presumido' }, dominio: [] }).ponte === null);
   const dDom = dom.map(l => ({ ...l, salarios: null, decimo_terceiro: null, pro_labore_valor: null }));
   ok('a folha que o Domínio não disse (a empresa inativa lá) não vira zero: segue o Fator R ou o padrão', entradaDoSistema({ cliente: { regime_tributario: 'Lucro Presumido' }, dominio: dDom }).origens.folha.fonte === 'padrao');
+}
+
+console.log('=== qual comparativo: a sugestão do sistema (11/11/2026) ===');
+{
+  const vedado = { vedado: true, impedimentos: [{ texto: 'x', base: 'y' }] }, livre = { vedado: false, impedimentos: [] };
+  ok('a empresa do Presumido ou do Real: só os dois', objetivoSugerido('presumido') === 'presumido_real' && objetivoSugerido('real', livre) === 'presumido_real');
+  ok('a do Simples, a do MEI e a sem regime no cadastro: os três', objetivoSugerido('simples') === 'todos' && objetivoSugerido('mei', livre) === 'todos' && objetivoSugerido(null) === 'todos');
+  ok('com o Simples vedado pelo cadastro, só os dois — mesmo sem o regime', objetivoSugerido('simples', vedado) === 'presumido_real' && objetivoSugerido(null, vedado) === 'presumido_real');
+  ok('o porquê: o regime de hoje', porQueDoObjetivo('presumido') === 'A empresa está no Lucro Presumido: a escolha de todo ano é entre o Presumido e o Real.' && porQueDoObjetivo('simples') === 'A empresa está no Simples Nacional: ficar ou sair é a pergunta.');
+  ok('o porquê: o Simples vedado, com e sem o regime', porQueDoObjetivo('presumido', vedado) === 'A empresa está no Lucro Presumido e o Simples está vedado pra ela.' && porQueDoObjetivo(null, vedado) === 'O Simples está vedado pra ela.');
+  ok('o porquê sem o regime no cadastro', porQueDoObjetivo(null) === 'Sem o regime de hoje no cadastro, a conta mostra os três.');
+  ok('só os dois comparativos valem', objetivoValido('todos') === 'todos' && objetivoValido('presumido_real') === 'presumido_real' && objetivoValido('simples') === null && objetivoValido(null) === null && objetivoValido('__proto__') === null);
+
+  // os prazos por comparativo
+  const pG = prazosDaEscolha('2026-11-11', 'presumido', 2027, null, { objetivo: 'presumido_real' });
+  ok('Presumido × Real: sem o prazo de entrar no Simples, e a escolha que vale pro ano inteiro', pG.length === 1 && pG[0].titulo === 'Presumido ou Real em 2027'
+    && /A escolha vale pro ano inteiro: não dá pra trocar no meio de 2027 \(Lei 9\.718, art\. 13, §1º; Lei 9\.430, art\. 3º\)\.$/.test(pG[0].texto), pG);
+  const pT = prazosDaEscolha('2026-11-11', 'presumido', 2027, null, { objetivo: 'todos' });
+  ok('com o Simples: a janela de entrada (a de 2027 fechou em 30/09/2026) e o Presumido ou Real sem a frase do ano inteiro', pT.length === 2 && pT[0].titulo === 'Entrar no Simples' && /A janela de 2027 fechou em 30\/09\/2026/.test(pT[0].texto)
+    && !/vale pro ano inteiro/.test(pT[1].texto), pT);
+  ok('com o Simples vedado: antes, tirar os impedimentos', /Antes, a empresa precisa tirar os impedimentos do cadastro\.$/.test(prazosDaEscolha('2026-11-11', 'presumido', 2027, null, { objetivo: 'todos', vedado: true })[0].texto)
+    && /Antes, a empresa precisa tirar os impedimentos do cadastro\.$/.test(prazosDaEscolha('2026-08-11', 'real', 2027, null, { vedado: true })[0].texto));
+  ok('sem as opções, como antes (com o Simples)', prazosDaEscolha('2026-11-11', 'presumido', 2027).length === 2);
+  const pS = prazosDaEscolha('2026-11-11', 'simples', 2027, null, { objetivo: 'presumido_real' });
+  ok('a do Simples que compara só o Presumido com o Real: o prazo de sair fica, o do IBS/CBS por fora sai', pS.some(x => x.titulo === 'Sair do Simples em 2027') && !pS.some(x => /IBS\/CBS por fora/.test(x.titulo)) && pS.some(x => x.titulo === 'Presumido ou Real em 2027'));
+
+  // as premissas a testar por comparativo
+  const eG = { atividades: [{ tipo: 'comercio', receita: 1000000, aliqIcms: 17, pctMonofasico: 0, redIcmsSimples: 40 }], compras: 500000, aliqCreditoIcms: 12, regimeAtual: 'presumido' };
+  const eS = { ...eG, regimeAtual: 'simples' };
+  const tT = premissasParaTestar(eS, {}), tG = premissasParaTestar(eG, {}, ['presumido', 'real']);
+  ok('a do Simples que compara os três: a redução do ICMS no DAS vale teste, a alíquota zero de PIS/Cofins não (no Simples ela paga no DAS)', tT.some(t => t.campo === 'atividades.0.redIcmsSimples')
+    && !tT.some(t => /pctAliqZero|pctMonofasico/.test(t.campo)) && premissasParaTestar(eS, {}, ['simples', 'presumido', 'real']).length === tT.length, tT.map(t => t.campo));
+  const tP = premissasParaTestar(eG, {});
+  ok('a do Presumido que compara os três: a alíquota zero vale teste (o PIS/Cofins de hoje entra no lucro do Real pela DRE), com o que mexe no DAS', tP.some(t => t.campo === 'atividades.0.pctAliqZero')
+    && tP.some(t => t.campo === 'atividades.0.redIcmsSimples') && tP.length === tT.length + 1, tP.map(t => t.campo));
+  ok('a do Simples que compara só o Presumido com o Real: a alíquota zero também vale teste', premissasParaTestar(eS, {}, ['presumido', 'real']).some(t => t.campo === 'atividades.0.pctAliqZero'));
+  const zero = tG.find(t => t.campo === 'atividades.0.pctAliqZero');
+  ok('Presumido × Real: sem o que só mexe no DAS, e com as vendas com alíquota zero de PIS/Cofins (100%), com o que conferir', !tG.some(t => /redIcmsSimples|pctMonofasico/.test(t.campo)) && zero && zero.valores.join() === '100'
+    && zero.rotulo === 'as vendas com alíquota zero de PIS/Cofins' && /confira se o produto tem alíquota zero \(a Lei 10\.925\/2004: óleos vegetais, arroz, carnes, leite, higiene…\) ou é monofásico\.$/.test(zero.confira), tG.map(t => t.campo));
+  const comAtiv = a => ({ ...eG, atividades: [{ ...eG.atividades[0], ...a }] });
+  ok('informada, já com parte em alíquota zero ou com toda a venda monofásica, a alíquota zero não entra no teste; com parte monofásica, entra',
+    !premissasParaTestar(eG, { 'atividades.0.pctAliqZero': { fonte: 'confirmado' } }, ['presumido', 'real']).some(t => /pctAliqZero/.test(t.campo))
+    && !premissasParaTestar(comAtiv({ pctAliqZero: 30 }), {}, ['presumido', 'real']).some(t => /pctAliqZero/.test(t.campo))
+    && !premissasParaTestar(comAtiv({ pctMonofasico: 100 }), {}, ['presumido', 'real']).some(t => /pctAliqZero/.test(t.campo))
+    && premissasParaTestar(comAtiv({ pctMonofasico: 30 }), {}, ['presumido', 'real']).some(t => /pctAliqZero/.test(t.campo)));
+  // o teste com o lucro da contabilidade: a DRE já descontou o PIS/Cofins de hoje (30.295). Com a DRE em R$ 115.000, o lucro
+  // do Real de 2027 é 115.000 + 140.295 − 154.070 = 101.225 (acima do empate de 95.000: Presumido); com alíquota zero em
+  // toda a venda (fora da Cesta Básica Nacional: 10% da alíquota de abril a dezembro, LC 224 — 0,365% × 830.000 × 9/12 =
+  // 2.272,125), os tributos de hoje caem pra 112.272,125 e o lucro, pra 115.000 + 112.272,125 − 154.070 = 73.202,125
+  // (abaixo do empate: Real) — a premissa vira o resultado
+  const e115 = { ...eG, lucroContabil: 115000, regimes: ['presumido', 'real'] };
+  const c115 = comparar(e115);
+  ok('a conta à mão: com a DRE em R$ 115.000, lucro do Real de 2027 em R$ 101.225 e o Presumido mais barato', perto(c115.anos[1].real.lucro, 101225) && c115.decisao.melhor === 'presumido');
+  const v115 = testarPremissas(e115, premissasParaTestar(e115, {}, ['presumido', 'real'])).find(t => /pctAliqZero/.test(t.campo));
+  ok('com alíquota zero em toda a venda, o lucro do Real cai pra R$ 73.202,13 e o mais barato vira o Real', v115.muda && v115.variantes[0].melhor === 'real' && perto(v115.variantes[0].totais.real, 110000 + 44070 + 0.24 * 73202.125, 0.02), v115.variantes);
+
+  // o que o sistema diz do lucro da contabilidade e das vendas sem PIS/Cofins ao abrir a empresa
+  const sisG = entradaDoSistema({ cliente: { regime_tributario: 'Lucro Presumido', cnae_principal: '4711-3/02', uf: 'RS' } });
+  ok('o lucro da contabilidade falta no sistema (a DRE dos 12 meses), e as vendas com alíquota zero de PIS/Cofins ficam no padrão a conferir', sisG.origens.lucroContabil.fonte === 'padrao' && /falta no sistema: a DRE dos 12 meses/.test(sisG.origens.lucroContabil.texto)
+    && sisG.origens['atividades.0.pctAliqZero'].fonte === 'padrao' && /nenhuma — confira/.test(sisG.origens['atividades.0.pctAliqZero'].texto) && /Lei 10\.925\/2004/.test(sisG.origens['atividades.0.pctAliqZero'].dica)
+    && /No Simples, paga no DAS/.test(sisG.origens['atividades.0.pctAliqZero'].dica) && /as da Cesta Básica Nacional \(LC 214, Anexos I e XV\) seguem com zero; as outras pagam 10% da alíquota desde abril de 2026 \(LC 224\/2025\)/.test(sisG.origens['atividades.0.pctAliqZero'].dica) && sisG.origens.ajustesLalur.fonte === 'padrao', sisG.origens['atividades.0.pctAliqZero']);
+}
+
+console.log('=== o RAT e terceiros pelas guias do Domínio (a ponte), na empresa do Presumido ou do Real ===');
+{
+  // 12 meses: folha de R$ 10.000, base do INSS dos empregados de R$ 10.000, RAT de R$ 150 (1,5% com o FAP) e terceiros de R$ 580 (5,8%)
+  const guia = (extra = {}) => Array.from({ length: 12 }, (_, i) => { const d = new Date(Date.UTC(2025, 9 + i, 1)); return { codigo: 1, competencia: d.toISOString().slice(0, 7), receita_bruta: 100000, receita_mercadorias: 100000, receita_servicos: 0,
+    salarios: 10000, decimo_terceiro: 0, pro_labore_valor: 3000, base_inss: 10000, inss_rat: 150, inss_terceiros: 580, ...extra }; });
+  const g = entradaDoSistema({ cliente: { regime_tributario: 'Lucro Presumido', cnae_principal: '4711-3/02', uf: 'RS' }, dominio: guia() });
+  ok('no Presumido: o RAT (1,5%, já com o FAP) e terceiros (5,8%) das guias, com a origem da ponte', g.entrada.rat === 1.5 && g.entrada.fap === 1 && g.entrada.terceiros === 5.8 && g.origens.rat.fonte === 'ponte' && g.origens.terceiros.fonte === 'ponte' && g.origens.fap.fonte === 'ponte'
+    && g.origens.rat.texto === 'Domínio, pela ponte: RAT com o FAP de 1,5% nas guias de out/25 a set/26' && g.origens.terceiros.texto === 'Domínio, pela ponte: 5,8% nas guias de out/25 a set/26', [g.entrada.rat, g.entrada.terceiros, g.origens.rat]);
+  ok('com o RAT da ponte, ele não vai pro teste das premissas', !premissasParaTestar({ ...g.entrada, folha: 120000 }, g.origens).some(t => t.campo === 'rat') && premissasParaTestar({ ...g.entrada, folha: 120000 }, { ...g.origens, rat: { fonte: 'padrao' } }).some(t => t.campo === 'rat'));
+  const s = entradaDoSistema({ cliente: { regime_tributario: 'Simples Nacional', cnae_principal: '4711-3/02', uf: 'RS' }, dominio: guia({ inss_rat: 0, inss_terceiros: 0, receita_simples: 100000 }) });
+  ok('no Simples a guia não tem o RAT (a CPP está no DAS): fica o padrão', s.entrada.rat === undefined && s.origens.rat.fonte === 'padrao' && s.origens.terceiros.fonte === 'padrao');
+  ok('guia com RAT zerado, fora da faixa ou sem a base: fica o padrão', entradaDoSistema({ cliente: { regime_tributario: 'Lucro Real' }, dominio: guia({ inss_rat: 0 }) }).origens.rat.fonte === 'padrao'
+    && entradaDoSistema({ cliente: { regime_tributario: 'Lucro Real' }, dominio: guia({ inss_rat: 900 }) }).origens.rat.fonte === 'padrao' && entradaDoSistema({ cliente: { regime_tributario: 'Lucro Real' }, dominio: guia({ base_inss: 0 }) }).origens.rat.fonte === 'padrao'
+    && entradaDoSistema({ cliente: { regime_tributario: 'Lucro Real' }, dominio: guia({ base_inss: null, inss_rat: null, inss_terceiros: null }) }).origens.rat.fonte === 'padrao');
+  ok('no Real, com o RAT de 3%', entradaDoSistema({ cliente: { regime_tributario: 'Lucro Real' }, dominio: guia({ inss_rat: 300 }) }).entrada.rat === 3);
 }
 
 console.log('\n' + (total - falhas) + ' de ' + total + ' conferências ok' + (falhas ? ' — ' + falhas + ' FALHA(S)' : ''));

@@ -42,6 +42,17 @@ export const TIPOS = {
 export const ANEXOS = ['I', 'II', 'III', 'IV', 'V'];
 export const REGIMES = ['simples', 'presumido', 'real'];
 export const ROTULO_REGIME = { simples: 'Simples Nacional', presumido: 'Lucro Presumido', real: 'Lucro Real' };
+// O comparativo que a equipe quer fazer (pedido do Samuel, 11/11/2026: "quando selecionar uma empresa, o sistema não
+// deveria começar 'perguntando' qual comparativo gostaríamos de fazer? a partir da escolha o sistema iria para determinado
+// caminho"): os regimes que entram na conta. A empresa do regime geral, ou a que não pode optar pelo Simples, compara só o
+// Presumido com o Real — o Simples fica fora da conta, da tabela, dos testes de premissa e da frase da decisão.
+export const OBJETIVOS = {
+  presumido_real: { rotulo: 'Presumido × Real', regimes: ['presumido', 'real'], texto: 'Empresa do regime geral: o IRPJ e a CSLL pela presunção ou pelo lucro da contabilidade.' },
+  todos: { rotulo: 'Simples × Presumido × Real', regimes: ['simples', 'presumido', 'real'], texto: 'Ficar no Simples, entrar nele ou sair: os três regimes lado a lado.' }
+};
+// só os dois nomes valem (o estudo vem do banco: "constructor" ou "__proto__" não são comparativo)
+export const ehObjetivo = o => typeof o === 'string' && Object.prototype.hasOwnProperty.call(OBJETIVOS, o);
+export const regimesDoObjetivo = o => OBJETIVOS[ehObjetivo(o) ? o : 'todos'].regimes.slice();
 // os anos que o motor sabe calcular: 2026 (regras de hoje), 2027 e 2028 (CBS cheia, IBS de 0,1%, ICMS e ISS inteiros).
 // De 2029 a 2032 o ICMS e o ISS caem e o IBS sobe, mas a alíquota de referência do IBS ainda não existe.
 export const ANOS = [2026, 2027, 2028];
@@ -58,6 +69,13 @@ export const IRPJ = 0.15, ADICIONAL = 0.10, ADICIONAL_TRIMESTRE = 60000, ADICION
 // e 10.833: 1,65% + 7,6%).
 // O ICMS destacado sai da base das saídas (STF, Tema 69) e do crédito das compras (Lei 14.592/2023).
 export const PIS_CUM = 0.0065, COFINS_CUM = 0.03, PIS_NC = 0.0165, COFINS_NC = 0.076;
+// A alíquota zero e a isenção de PIS/Cofins depois da LC 224/2025 (art. 4º, §4º, I; IN RFB 2.305/2025, arts. 3º, II, 4º, III,
+// e 7º; Perguntas e Respostas da RFB de 30/07/2026, 5 a 8 e 34): desde 01/04/2026 pagam 10% da alíquota do sistema padrão —
+// 0,065% + 0,3% no cumulativo e 0,165% + 0,76% no não cumulativo —, sobre a mesma base. Ficam fora os produtos da Cesta
+// Básica Nacional de Alimentos (LC 214, Anexos I e XV — LC 224, art. 4º, §8º, III; IN 2.305, art. 16, III) e o Simples.
+// Quem compra não se credita (LC 224, art. 4º, §7º); quem vende segue com os créditos vinculados, que compensa ou pede
+// de volta (P&R, 34). A revenda monofásica não entra: ali o tributo já foi recolhido pelo fabricante.
+export const LC224_ALIQ_ZERO = 0.10, LC224_MES_PISCOFINS = 3;   // abril, pelo índice do mês
 // LC 224/2025, art. 4º, §4º, VII, e §5º: no Presumido, os percentuais de presunção sobem 10% sobre a parte da receita
 // bruta que passa de R$ 5 milhões no ano — limite proporcional a cada período de apuração (R$ 1,25 milhão por trimestre,
 // com ajuste nos seguintes), dividido pelas atividades na proporção da receita. IRPJ desde 01/01/2026, CSLL desde
@@ -103,7 +121,7 @@ const pct1 = v => (Number(v) || 0).toLocaleString('pt-BR', { maximumFractionDigi
 // ---------- a entrada ----------
 // Valores em R$ dos 12 meses da base; percentuais como a equipe digita (17 = 17%).
 //   atividades: [{ tipo, receita, anexo?, fatorR?, presIrpj?, presCsll?, tributo?, aliqIcms?, aliqIss?, pctST?,
-//                 pctMonofasico?, ipiMantido?, redIcms?, redIcmsSimples? }]
+//                 pctMonofasico?, pctAliqZero?, ipiMantido?, redIcms?, redIcmsSimples? }]
 //     redIcms: a redução da base do ICMS no regime geral, em % (a refeição no RS: 40 = base a 60%, RICMS-RS, Livro I,
 //       art. 23, VI), com o crédito das compras reduzido na mesma proporção (art. 33, IV)
 //     redIcmsSimples: a redução do ICMS no DAS, em % da fatia do ICMS, na receita sem ST (LC 123, art. 18, §20 — o
@@ -126,6 +144,10 @@ const pct1 = v => (Number(v) || 0).toLocaleString('pt-BR', { maximumFractionDigi
 //   difalSimples (ICMS pago fora do DAS pelo optante: diferencial de alíquota e antecipação, por ano)
 //   mix (CBS/IBS das vendas): { cheia, red60, red40, red30, zero } — padrão cheia 100 · pctComprasComCredito (opcional)
 //   crescimentoReceita / crescimentoFolha (% ao ano, das projeções) · semLc224 · aliq2027 ({ cbs, cbs_aplicada, ibs })
+//   regimes (opcional): os regimes que entram na comparação (regimesDoObjetivo) — sem ele, os três
+//   lucroContabil (opcional): o lucro (ou o prejuízo, negativo) da DRE dos 12 meses antes do IRPJ e da CSLL, no regime de
+//     hoje. Com ele, o lucro do Real deixa de ser estimado (receita menos compras, folha e despesas): é o da contabilidade,
+//     mais os ajustes, trocando os tributos de hoje pelos do Real (calcReal) · ajustesLalur: adições menos exclusões
 export function normalizar(e = {}) {
   const atividades = (e.atividades || []).map(a => {
     const tipo = TIPOS[a.tipo] ? a.tipo : 'comercio';
@@ -140,6 +162,12 @@ export function normalizar(e = {}) {
       tributo: a.tributo === 'icms' || a.tributo === 'iss' ? a.tributo : t.tributo,
       aliqIcms: entre(num(a.aliqIcms, 17), 0, 40), aliqIss: entre(num(a.aliqIss, 3), 0, 5),
       pctST: entre(num(a.pctST), 0, 100), pctMonofasico: entre(num(a.pctMonofasico), 0, 100),
+      // a venda com alíquota zero de PIS/Cofins (a Lei 10.925/2004, art. 1º: o óleo vegetal, o arroz, a carne, a higiene…):
+      // no Presumido e no Real sai da base cheia como a revenda monofásica; no Simples NÃO sai do DAS (LC 123, art. 24,
+      // §1º: a alíquota zero de fora da LC 123 não vale pro optante). Só até 2026: em 2027 a CBS toma o lugar.
+      // aliqZeroCesta: os produtos são da Cesta Básica Nacional (LC 214, Anexos I e XV) e seguem com zero; sem a marca,
+      // pagam 10% da alíquota padrão desde 01/04/2026 (LC 224/2025 — acima)
+      pctAliqZero: entre(num(a.pctAliqZero), 0, 100), aliqZeroCesta: !!a.aliqZeroCesta,
       ipiMantido: !!a.ipiMantido,
       // o IPI a recolher em 2026 no Presumido e no Real, em % da receita da indústria (já com os créditos); no Simples
       // ele está no DAS (Anexo II). Em 2027 vira zero, salvo industrialização incentivada na Zona Franca (ADCT, art. 126, III)
@@ -148,9 +176,14 @@ export function normalizar(e = {}) {
     };
   }).filter(a => a.receita > 0);
   atividades.forEach(a => { if (a.tributo !== 'icms') { a.redIcms = 0; a.redIcmsSimples = 0; } });
+  // a parte das vendas sem PIS/Cofins no Presumido e no Real: a revenda monofásica mais a venda com alíquota zero
+  atividades.forEach(a => { a.pctSemPisCofins = a.tributo === 'icms' ? Math.min(100, a.pctMonofasico + a.pctAliqZero) : 0; });
+  // e, dela, a parte com alíquota zero que a LC 224 alcança (fora da Cesta Básica Nacional)
+  atividades.forEach(a => { a.pctZeroLc224 = a.tributo === 'icms' && !a.aliqZeroCesta ? Math.max(0, a.pctSemPisCofins - a.pctMonofasico) : 0; });
   if (!atividades.length) throw new Error('Informe a receita de pelo menos uma atividade.');
   const receita = atividades.reduce((s, a) => s + a.receita, 0);
-  // o % de ST e de monofásico das compras segue o das vendas de mercadoria, salvo informado
+  // o % de ST e o das compras sem crédito de PIS/Cofins (a revenda monofásica e a compra que também veio com alíquota
+  // zero) seguem os das vendas de mercadoria, salvo informado
   const recIcms = atividades.filter(a => a.tributo === 'icms').reduce((s, a) => s + a.receita, 0);
   const media = k => recIcms > 0 ? atividades.filter(a => a.tributo === 'icms').reduce((s, a) => s + a.receita * a[k], 0) / recIcms : 0;
   const mixIn = e.mix || {};
@@ -175,7 +208,7 @@ export function normalizar(e = {}) {
     cprb: num(e.cprb) > 0 ? entre(num(e.cprb), 0, 10) : null,
     compras: Math.max(0, num(e.compras)),
     pctComprasST: entre(num(e.pctComprasST, media('pctST')), 0, 100),
-    pctComprasMonofasico: entre(num(e.pctComprasMonofasico, media('pctMonofasico')), 0, 100),
+    pctComprasMonofasico: entre(num(e.pctComprasMonofasico, media('pctSemPisCofins')), 0, 100),
     creditoIcms: e.creditoIcms != null && e.creditoIcms !== '' && num(e.creditoIcms, -1) >= 0 ? num(e.creditoIcms) : null,
     aliqCreditoIcms,
     pctImpostoEmbutido: entre(num(e.pctImpostoEmbutido, aliqCreditoIcms), 0, 60),
@@ -191,8 +224,12 @@ export function normalizar(e = {}) {
     rda: e.rda === 'melhor' || e.rda === 'sim' ? e.rda : null,
     aliq2027: aliquotas2027(e.aliq2027),
     anoBase: ANOS.includes(num(e.anoBase, 2026)) ? num(e.anoBase, 2026) : 2026,
-    regimeAtual: REGIMES.includes(e.regimeAtual) ? e.regimeAtual : null
+    regimeAtual: REGIMES.includes(e.regimeAtual) ? e.regimeAtual : null,
+    lucroContabil: e.lucroContabil == null || e.lucroContabil === '' || !Number.isFinite(Number(e.lucroContabil)) ? null : Number(e.lucroContabil),
+    ajustesLalur: num(e.ajustesLalur)
   };
+  const pedidos = Array.isArray(e.regimes) ? REGIMES.filter(r => e.regimes.includes(r)) : [];
+  n.regimes = pedidos.length ? pedidos : REGIMES.slice();
   return n;
 }
 
@@ -322,15 +359,26 @@ function cbsIbsRegular(n, d, ano, icmsDebito, iss) {
 }
 
 // ---------- PIS/Cofins de 2026 ----------
-// a receita sem a revenda monofásica (alíquota zero na revenda) e sem o ICMS destacado só da parte tributada — o ICMS das
-// vendas monofásicas não sai de novo (revisão de 01/11/2026: antes saía o ICMS de todas as vendas). No RDA, o ICMS
-// destacado é 3,5% de todas as vendas de mercadoria.
+// a receita sem a revenda monofásica (alíquota zero na revenda) nem a venda com alíquota zero (pctAliqZero) e sem o ICMS
+// destacado só da parte tributada — o ICMS das vendas sem PIS/Cofins não sai de novo (revisão de 01/11/2026: antes saía o
+// ICMS de todas as vendas). No RDA, o ICMS destacado é 3,5% de todas as vendas de mercadoria.
 function baseSaidasPisCofins(d, rda = false) {
   return Math.max(0, d.atividades.reduce((s, a) => {
-    const mono = a.tributo === 'icms' ? a.pctMonofasico / 100 : 0;
+    const mono = a.tributo === 'icms' ? a.pctSemPisCofins / 100 : 0;
     const icms = a.tributo !== 'icms' ? 0 : rda ? a.receita * RDA_RS : a.receita * (1 - a.pctST / 100) * (1 - a.redIcms / 100) * a.aliqIcms / 100;
     return s + (a.receita - icms) * (1 - mono);
   }, 0));
+}
+// a base das vendas com alíquota zero que a LC 224 alcança (as de fora da Cesta Básica Nacional), de abril a dezembro de
+// 2026: a mesma base do PIS/Cofins (sem o ICMS destacado), na parte do ano de abril em diante
+function baseAliqZeroLc224(n, d, ano, rda = false) {
+  if (ano !== 2026) return 0;
+  const desdeAbril = n.pesos.slice(LC224_MES_PISCOFINS).reduce((s, x) => s + x, 0);
+  return desdeAbril * d.atividades.reduce((s, a) => {
+    if (!(a.pctZeroLc224 > 0)) return s;
+    const icms = rda ? a.receita * RDA_RS : a.receita * (1 - a.pctST / 100) * (1 - a.redIcms / 100) * a.aliqIcms / 100;
+    return s + (a.receita - icms) * a.pctZeroLc224 / 100;
+  }, 0);
 }
 // o IPI a recolher de 2026 (a indústria no Presumido e no Real)
 const ipiDe = (d, ano) => ano >= 2027 ? 0 : d.atividades.reduce((s, a) => s + a.receita * (a.aliqIpi || 0) / 100, 0);
@@ -517,8 +565,9 @@ function calcPresumido(n, d, k, ano) {
   const itens = [{ tributo: 'IRPJ', valor: irpj }, { tributo: 'CSLL', valor: csll }];
   let pis = 0, cofins = 0, cbs = null;
   if (ano < 2027) {
-    const base = baseSaidasPisCofins(d, icms.rda);
-    pis = base * PIS_CUM; cofins = base * COFINS_CUM;
+    // a venda tributada, mais os 10% da alíquota na venda com alíquota zero de fora da Cesta Básica Nacional (LC 224)
+    const base = baseSaidasPisCofins(d, icms.rda), zeroLc = baseAliqZeroLc224(n, d, ano, icms.rda) * LC224_ALIQ_ZERO;
+    pis = (base + zeroLc) * PIS_CUM; cofins = (base + zeroLc) * COFINS_CUM;
     itens.push({ tributo: 'PIS', valor: pis }, { tributo: 'Cofins', valor: cofins });
     const ipi = ipiDe(d, ano);
     if (ipi) itens.push({ tributo: 'IPI', valor: ipi });
@@ -537,23 +586,33 @@ function calcPresumido(n, d, k, ano) {
 }
 
 // ---------- LUCRO REAL (anual) ----------
-// o lucro: a receita menos as compras (o custo das mercadorias, com estoque estável), a folha com os encargos e o FGTS,
-// o pró-labore, as despesas e os tributos sobre a receita (que, pela convenção, saem da margem)
+// O LUCRO. Sem o lucro da contabilidade, é uma estimativa: a receita menos as compras (o custo das mercadorias, com
+// estoque estável), a folha com os encargos e o FGTS, o pró-labore, as despesas e os tributos sobre a receita (que, pela
+// convenção, saem da margem). Serve pra empresa sem escrita em dia; na que forma estoque, investe ou tem prejuízo, erra
+// feio (11/11/2026, a primeira empresa do regime geral: as compras e os serviços tomados dos 12 meses passavam da receita,
+// e a estimativa dava um prejuízo de quase a receita inteira).
+// Com o lucro da contabilidade (entrada.lucroContabil: o resultado da DRE dos 12 meses antes do IRPJ e da CSLL, no regime
+// de hoje), o lucro do Real é ele, mais os ajustes (adições menos exclusões), trocando os tributos que a DRE já descontou
+// — os de hoje que não são IRPJ nem CSLL, pelas regras do ano da base — pelos do Real no ano da conta: o PIS/Cofins
+// cumulativo do Presumido sai e entra o não cumulativo (2026) ou a CBS/IBS (2027 em diante); o ICMS, o ISS e o INSS, iguais
+// nos dois, se anulam. No Simples, sai o DAS inteiro. Nas projeções o lucro cresce com a receita, e a folha que cresce em
+// outro ritmo entra pela diferença. Sem o regime de hoje, o lucro informado entra como veio (com aviso).
 export function irpjCsllReal(lucro) {
   const l = Math.max(0, lucro);
   return { irpj: l * IRPJ + Math.max(0, l - ADICIONAL_ANO) * ADICIONAL, csll: l * CSLL };
 }
-function calcReal(n, d, k, ano) {
+// os tributos do Real que não dependem do lucro: PIS/Cofins (ou CBS/IBS), IPI, ICMS, ISS e INSS
+function outrosDoReal(n, d, ano) {
   const avisos = [];
   const icms = icmsRegimeGeral(n, d, ano);
   const avRda = avisoDoRda(n, icms);
   if (avRda) avisos.push(avRda);
   const iss = issDe(d);
   const inss = inssRegular(n, d, ano);
-  const itens = [];
   let pisCofins = 0, pis = 0, cofins = 0, cbs = null, creditoPisCofins = 0;
   if (ano < 2027) {
-    const debito = baseSaidasPisCofins(d, icms.rda) * (PIS_NC + COFINS_NC);
+    // o débito: a venda tributada, mais os 10% da alíquota na venda com alíquota zero de fora da Cesta Básica Nacional (LC 224)
+    const debito = (baseSaidasPisCofins(d, icms.rda) + baseAliqZeroLc224(n, d, ano, icms.rda) * LC224_ALIQ_ZERO) * (PIS_NC + COFINS_NC);
     // crédito: compras (sem a revenda monofásica, que não credita, e sem o ICMS que incidiu nelas) e as despesas com crédito
     const icmsCompras = icms.debito > 0 ? icms.icmsCompras : 0;
     const baseCred = Math.max(0, d.compras * (1 - n.pctComprasMonofasico / 100) - icmsCompras * (1 - n.pctComprasMonofasico / 100)) + d.despesasCredito;
@@ -567,7 +626,39 @@ function calcReal(n, d, k, ano) {
   }
   const ipi = ipiDe(d, ano);
   const tributosReceita = icms.valor + iss + pisCofins + ipi + (cbs ? cbs.valor : 0);
-  const lucro = d.receita - d.compras - d.folha * (1 + FGTS) - inss.total - d.proLabore - d.despesasCredito - d.outrasDespesas - tributosReceita;
+  return { icms, iss, inss, pisCofins, pis, cofins, cbs, creditoPisCofins, ipi, tributosReceita, total: tributosReceita + inss.total, avisos };
+}
+// os tributos de hoje que a DRE informada já descontou (os que não são IRPJ nem CSLL), nos 12 meses da base, pelas regras
+// do ano da base. No Simples, o DAS inteiro e o que ele paga fora. Null: sem o regime de hoje (ou fora do Simples na base)
+function outrosDeHoje(n) {
+  if (!n.regimeAtual) return null;
+  const d0 = dadosDoAno(n, 0);
+  if (n.regimeAtual === 'simples') { const x = calcSimples(n, d0, 0, n.anoBase); return x.disponivel ? x.total : null; }
+  if (n.regimeAtual === 'presumido') { const x = calcPresumido(n, d0, 0, n.anoBase); return x.total - x.irpj - x.csll; }
+  return outrosDoReal(n, d0, n.anoBase).total;
+}
+function calcReal(n, d, k, ano) {
+  const o = outrosDoReal(n, d, ano);
+  const { icms, iss, inss, pisCofins, pis, cofins, cbs, creditoPisCofins, ipi, tributosReceita } = o;
+  const avisos = o.avisos.slice();
+  const itens = [];
+  const lucroEstimado = d.receita - d.compras - d.folha * (1 + FGTS) - inss.total - d.proLabore - d.despesasCredito - d.outrasDespesas - tributosReceita;
+  let lucro = lucroEstimado, trocaTributos = null;
+  const lucroInformado = n.lucroContabil != null;
+  if (lucroInformado) {
+    const hoje = outrosDeHoje(n);
+    if (hoje != null) {
+      const d0 = dadosDoAno(n, 0);
+      const folhaAlem = (d.folha - d0.folha * d.fr) * (1 + FGTS) + (d.proLabore - d0.proLabore * d.fr);
+      trocaTributos = hoje * d.fr - o.total;
+      lucro = (n.lucroContabil + n.ajustesLalur) * d.fr + trocaTributos - folhaAlem;
+    } else {
+      lucro = (n.lucroContabil + n.ajustesLalur) * d.fr;
+      avisos.push(n.regimeAtual
+        ? 'A conta do Simples dos 12 meses não fecha (a receita passa do limite): o lucro da contabilidade entrou como veio, sem trocar os tributos de hoje pelos do Real.'
+        : 'Sem o regime de hoje, o lucro da contabilidade entrou como veio: informe o regime pra a conta trocar os tributos de hoje pelos do Real.');
+    }
+  }
   const { irpj, csll } = irpjCsllReal(lucro);
   if (lucro < 0) avisos.push('Prejuízo de ' + brl(-lucro) + ' no ano: sem IRPJ e CSLL — o prejuízo compensa até 30% do lucro dos anos seguintes (fora da conta).');
   itens.push({ tributo: 'IRPJ', valor: irpj }, { tributo: 'CSLL', valor: csll });
@@ -580,7 +671,7 @@ function calcReal(n, d, k, ano) {
   if (inss.proLabore) itens.push({ tributo: 'INSS sobre o pró-labore (20%)', valor: inss.proLabore });
   if (inss.cprb) itens.push({ tributo: 'CPRB (desoneração da folha)', valor: inss.cprb });
   const total = itens.reduce((s, x) => s + x.valor, 0);
-  return { disponivel: true, total, itens, lucro, irpj, csll, icms, iss, inss, cbs, pisCofins, creditoPisCofins, tributosReceita, outros: total - irpj - csll, avisos };
+  return { disponivel: true, total, itens, lucro, lucroEstimado, lucroInformado, trocaTributos, irpj, csll, icms, iss, inss, cbs, pisCofins, creditoPisCofins, tributosReceita, outros: total - irpj - csll, avisos };
 }
 
 // ---------- um ano ----------
@@ -590,9 +681,12 @@ export function calcularAno(entrada, ano, k = null) {
   const kk = k != null ? k : ano - n.anoBase;
   if (kk < 0) throw new Error('O ano ' + ano + ' é anterior à base (' + n.anoBase + ').');
   const d = dadosDoAno(n, kk);
-  const simples = calcSimples(n, d, kk, ano);
-  const presumido = calcPresumido(n, d, kk, ano);
-  const real = calcReal(n, d, kk, ano);
+  // o regime que não entrou na comparação (o objetivo do estudo) fica sem conta: fora, e não "fora do limite"
+  const fora = () => ({ disponivel: false, fora: true, motivo: 'Fora desta comparação.', total: null, itens: [], avisos: [] });
+  const tem = r => n.regimes.includes(r);
+  const simples = tem('simples') ? calcSimples(n, d, kk, ano) : fora();
+  const presumido = tem('presumido') ? calcPresumido(n, d, kk, ano) : fora();
+  const real = tem('real') ? calcReal(n, d, kk, ano) : fora();
   const res = { ano, k: kk, receita: d.receita, simples, presumido, real };
   const comTotal = REGIMES.filter(r => res[r].disponivel && res[r].total != null);
   comTotal.forEach(r => { res[r].aliquota = d.receita > 0 ? res[r].total / d.receita : null; });
@@ -613,11 +707,27 @@ export function comparar(entrada, opcoes = {}) {
   const decisao = resumoDaDecisao(n, rd);
   const avisos = [];
   // folha zerada com serviço do fator r: o Anexo V é certo, e o "Anexo III" depende de folha
-  if (n.atividades.some(a => a.fatorR) && !(n.folha + n.proLabore > 0)) avisos.push('Sem folha nem pró-labore informados, o serviço do fator r fica no Anexo V. Informe a folha dos últimos 12 meses.');
-  if (n.atividades.some(a => a.tipo === 'industria')) avisos.push('Indústria: em 2026 o IPI do Presumido e do Real é o informado na atividade (no Simples ele está no DAS); em 2027 vira zero, salvo produto com industrialização incentivada na Zona Franca de Manaus. Em 2027 a indústria do Simples passa ao Anexo I (LC 123, art. 18, §5º, na redação da LC 214).');
+  const comSimples = n.regimes.includes('simples'), comReal = n.regimes.includes('real');
+  if (comSimples && n.atividades.some(a => a.fatorR) && !(n.folha + n.proLabore > 0)) avisos.push('Sem folha nem pró-labore informados, o serviço do fator r fica no Anexo V. Informe a folha dos últimos 12 meses.');
+  if (n.atividades.some(a => a.tipo === 'industria')) avisos.push(comSimples
+    ? 'Indústria: em 2026 o IPI do Presumido e do Real é o informado na atividade (no Simples ele está no DAS); em 2027 vira zero, salvo produto com industrialização incentivada na Zona Franca de Manaus. Em 2027 a indústria do Simples passa ao Anexo I (LC 123, art. 18, §5º, na redação da LC 214).'
+    : 'Indústria: em 2026 o IPI do Presumido e do Real é o informado na atividade; em 2027 vira zero, salvo produto com industrialização incentivada na Zona Franca de Manaus.');
   if (n.anoBase < 2027 && n.atividades.some(a => a.tributo === 'icms' && a.pctST > 0)) avisos.push('O ICMS-ST pago na compra pode sair da base do PIS/Cofins de quem revende (STJ, Tema 1125, aceito pela PGFN): fora da conta — o PIS/Cofins de 2026 do Presumido e do Real com ST fica um pouco maior.');
+  // as vendas sem PIS/Cofins (só a conta de 2026): o que a conta supõe do crédito, e o que não vale no Simples
+  const comGeral = n.regimes.includes('presumido') || comReal;
+  const comZero = n.atividades.some(a => a.tributo === 'icms' && a.pctAliqZero > 0);
+  if (n.anoBase < 2027 && comGeral && n.atividades.some(a => a.pctSemPisCofins > 0)) avisos.push('Vendas sem PIS/Cofins (a revenda monofásica e a venda com alíquota zero): em 2026 a conta tira o débito dessas vendas e, na mesma proporção, o crédito das compras — o que vale pra revenda monofásica e pra compra que também veio sem PIS/Cofins. Na venda com alíquota zero de insumo comprado com PIS/Cofins, o crédito fica e pode ser compensado ou ressarcido (Lei 11.033/2004, art. 17; Lei 11.116/2005, art. 16; depois da LC 224, P&R da RFB, 34): fora da conta, o Real de 2026 pode sair menor.');
+  if (n.anoBase <= 2026 && comGeral && n.atividades.some(a => a.pctZeroLc224 > 0)) avisos.push('Alíquota zero de PIS/Cofins fora da Cesta Básica Nacional: desde 01/04/2026 essas vendas pagam 10% da alíquota padrão — 0,365% no Presumido e 0,925% no Real (LC 224/2025, art. 4º, §4º, I; IN RFB 2.305/2025, art. 7º). A conta de 2026 põe isso de abril a dezembro. Se os produtos são da Cesta Básica Nacional de Alimentos (LC 214, Anexos I e XV: arroz, feijão, leite, carnes, farinhas, hortifrúti, ovos…), marque na atividade: seguem com alíquota zero.');
+  if (n.atividades.some(a => a.tributo === 'icms' && a.pctMonofasico + a.pctAliqZero > 100.005)) avisos.push('A revenda monofásica e a venda com alíquota zero somam mais de 100% das vendas de mercadoria: a conta usou 100% — confira os dois campos.');
+  if (n.anoBase < 2027 && comSimples && comZero) avisos.push('No Simples, a alíquota zero de PIS/Cofins não vale (LC 123, art. 24, §1º): a venda com alíquota zero paga PIS/Cofins no DAS. Só a revenda monofásica sai dele.');
   if (n.cprb) avisos.push('Desoneração da folha: na transição, a CPP reduzida vale pro pró-labore também, e o 13º fica só na CPRB (Lei 12.546, art. 9º-A, na redação da Lei 14.973) — o 13º foi estimado em 1/13,33 da folha.');
-  if (!(n.outrasDespesas > 0)) avisos.push('Sem as outras despesas (aluguel, sistemas, contador, manutenção…), o lucro do Real sai maior que o de verdade e o Real, mais caro. Informe o resto dos custos do ano.');
+  if (comReal && n.lucroContabil == null) {
+    // o lucro estimado: o que ele deixa de fora e quando ele não serve
+    const custos = n.compras + n.despesasCredito + n.folha * (1 + FGTS) + n.proLabore + n.outrasDespesas;
+    if (custos > n.receita) avisos.push('As compras, as despesas com nota e a folha somam ' + brl(custos) + ', mais que a receita de ' + brl(n.receita) + ': a empresa formou estoque, investiu ou teve prejuízo. O lucro estimado do Real não serve pra decidir — informe o lucro da contabilidade (a DRE dos 12 meses).');
+    else if (!(n.outrasDespesas > 0)) avisos.push('Sem as outras despesas (aluguel, sistemas, contador, manutenção…), o lucro do Real sai maior que o de verdade e o Real, mais caro. Informe o resto dos custos do ano.');
+  }
+  if (comReal && n.lucroContabil != null) avisos.push('O lucro do Real parte do lucro da contabilidade (' + brl(n.lucroContabil) + ' nos 12 meses' + (n.ajustesLalur ? ', com ' + brl(n.ajustesLalur) + ' de adições menos exclusões' : '') + '), trocando os tributos de hoje pelos do Real. Fora da conta: a compensação de prejuízo fiscal de anos anteriores e o Real trimestral.');
   return { entrada: n, anos: resultados, anoDecisao, decisao, avisos };
 }
 
@@ -640,7 +750,8 @@ export function resumoDaDecisao(n, r) {
     const l = folga / (IRPJ + CSLL);
     return l <= ADICIONAL_ANO ? l : (folga + ADICIONAL_ANO * ADICIONAL) / (IRPJ + CSLL + ADICIONAL);
   };
-  out.real = { lucro: r.real.lucro, margem: r.receita > 0 ? r.real.lucro / r.receita : null, empate: {} };
+  if (!r.real.disponivel) return out;
+  out.real = { lucro: r.real.lucro, margem: r.receita > 0 ? r.real.lucro / r.receita : null, empate: {}, informado: !!r.real.lucroInformado, estimado: r.real.lucroEstimado };
   ['presumido', 'simples'].forEach(reg => {
     if (!r[reg].disponivel) return;
     const l = lucroDeEmpate(r[reg].total);

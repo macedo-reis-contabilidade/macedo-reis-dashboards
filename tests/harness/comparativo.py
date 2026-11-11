@@ -32,6 +32,14 @@ Confere:
      modo fator_r, a folha e o pró-labore dos 12 meses entram com a origem verde e o período, a missão da folha fica
      cumprida, o estudo grava só os totais do mês; o resumo de outra empresa (pelo CNPJ) não entra nem vai pra leitura;
      a leitura que falha deixa os números como estavam;
+ 11. qual comparativo (11/11/2026, pedido do Samuel): escolhida a empresa, a tela pergunta qual comparativo fazer e só
+     depois mostra o estudo (em todos os casos acima a escolha vem primeiro); a empresa do Presumido com pessoa jurídica
+     entre os sócios e CNAE secundário impeditivo — o Simples vedado, com o porquê (o nome com HTML entra como texto) e o
+     "Presumido × Real" sugerido; escolhido, o caminho dele: as fases (a receita e a presunção, o lucro do Real, o resto
+     da conta), a tabela sem o Simples, sem as empresas dos sócios nem os prazos do Simples, o lucro da contabilidade pra
+     digitar (a missão que decide, com a contabilidade feita até jul/26), a precisão do estudo no resultado e o estudo
+     gravado com o comparativo; o lucro digitado cumpre a missão e a conta diz "o da contabilidade"; "Trocar" pra os três
+     regimes: o Simples volta como simulação, com o aviso e a missão dos impedimentos;
 e nenhum erro de JavaScript. No 7, também o aviso do limite no resultado: a conta põe o Simples em 2027, mas o ano de 2026
 passa do limite.
 Termina com código 1 se alguma checagem falhar. Pré-requisito: pip install playwright e python -m playwright install chromium
@@ -75,6 +83,17 @@ SEMEAR = """
         dominio: { meses: mesesDe('2026-07', 180000, 215000), pgdas: { competencia: '2026-07', aliquotaEfetiva: 9.05, dasTotal: 19457.5 } } }) },
       { id: 'rc6', cliente_id: 'c6', anexo: 'II', rbt12: 2165000, receita_mensal: 180416.67, atualizado_em: '2026-10-01T12:00:00Z', sim_obs: JSON.stringify({ v: 1, input: { anexo: 'II' },
         dominio: { meses: mesesDe('2026-07', 160000, 195000) } }) });
+    v.clientes.push({ id: 'c7', nome_principal: 'INDUSTRIA DE TESTE LTDA', nome_fantasia: null, documento: '77777777777777', status: 'ativo', regime_tributario: 'Lucro Presumido',
+      cnae_principal: '1091-1/02 - Fabricação de produtos de padaria e confeitaria com predominância de produção própria', cidade: 'Igrejinha', uf: 'RS', natureza_juridica: '2062',
+      cnaes_secundarios: ['4637-1/04 - Comércio atacadista de pães, bolos, biscoitos e similares', '7820-5/00 - Locação de mão-de-obra temporária'] });
+    v.carteira_info.push({ cliente_id: 'c7', saida: null });
+    v.socios.push({ id: 's7', cliente_id: 'c7', nome: 'SOCIA DE TESTE', cpf: '99988877766', participacao_percentual: 50 },
+      { id: 's8', cliente_id: 'c7', nome: 'HOLDING <b>TESTE</b> LTDA', cpf: '12.345.678/0001-99', participacao_percentual: 50 });
+    v.dominio_mensal = Array.from({ length: 12 }, (_, i) => { const d = new Date(Date.UTC(2025, 9 + i, 1)); const c = d.toISOString().slice(0, 7);
+      return { codigo: 700, cliente_id: 'c7', competencia: c, receita_bruta: 50000, receita_mercadorias: 50000, receita_servicos: 0, receita_simples: null, compras: 30000, servicos_tomados: 2000, ativo_e_consumo: 0,
+        salarios: 0, decimo_terceiro: 0, pro_labore_valor: 1621 }; });
+    v.contabil_empresas = [{ cliente_id: 'c7', faz: true, inicio: '2025-01', fim: null }];
+    v.contabil_meses = Array.from({ length: 19 }, (_, i) => { const d = new Date(Date.UTC(2025, i, 1)); return { cliente_id: 'c7', competencia: d.toISOString().slice(0, 7), situacao: 'feita', feita_em: '2026-08-10' }; });
     v.comparativos = [{ id: 'est3', cliente_id: 'c3', nome: null, entrada: { v: 1, entrada: { atividades: [{ tipo: 'comercio', receita: 500000 }] }, origens: {} }, resultado: null, atualizado_em: '2026-10-30T12:00:00Z', atualizado_por: 'fiscal@macedoereis.com.br' }];
   } });
 })();
@@ -96,12 +115,20 @@ def texto(p, sel):
     # o "R$" da moeda vem com espaço inquebrável
     return p.inner_text(sel).replace('\xa0', ' ')
 
-def escolher(p, texto, nome):
+def comparativo(p, objetivo):
+    # a pergunta "qual comparativo": aberta (a empresa sem estudo gravado), a escolha; já escolhido, nada a fazer
+    p.wait_for_selector('#pergunta:not([hidden])', timeout=5000)
+    if objetivo and p.locator('#pergunta .ct-opcao').count():
+        p.click(f'#pergunta .ct-opcao[data-objetivo="{objetivo}"]')
+        p.wait_for_selector('#trocarObjetivo', timeout=3000)
+
+def escolher(p, texto, nome, objetivo=None):
     p.fill('#busca', '')
     p.type('#busca', texto)
     p.wait_for_selector('#sugestoes button', timeout=3000)
     p.locator('#sugestoes button', has_text=nome).first.click()
     p.wait_for_function("n => document.querySelector('#escolhida h3') && document.querySelector('#escolhida h3').textContent === n", arg=nome, timeout=5000)
+    comparativo(p, objetivo)
 
 def main():
     from playwright.sync_api import sync_playwright
@@ -124,6 +151,13 @@ def main():
         p.wait_for_selector('#sugestoes button', timeout=3000)
         ok('<img src=x' in p.inner_text('#sugestoes') and p.evaluate('() => window.__pego') is None, 'o nome com <img onerror> aparece como texto')
         escolher(p, 'modelo', 'COMÉRCIO MODELO ME')
+        ops = p.eval_on_selector_all('#pergunta .ct-opcao', 'bs => bs.map(b => [b.dataset.objetivo, !!b.querySelector(".ct-sugerido")])')
+        ok('Qual comparativo você quer fazer?' in p.inner_text('#pergunta') and ops == [['presumido_real', False], ['todos', True]],
+           f'escolhida a empresa, a tela pergunta qual comparativo; pra a do Simples, o sugerido são os três regimes ({ops})')
+        ok(p.is_hidden('#grade') and p.is_hidden('#roteiro') and p.is_hidden('#caixaRelatorios') and 'nada veda o Simples' in p.inner_text('#pergunta'),
+           'antes da escolha, sem o roteiro, os números e o resultado; pelo cadastro, nada veda o Simples')
+        comparativo(p, 'todos')
+        ok(p.inner_text('#objetivoAtual') == 'Simples × Presumido × Real' and not p.is_hidden('#grade') and not p.is_hidden('#caixaRelatorios'), 'escolhido, o comparativo fica dito, com o "Trocar", e o estudo aparece')
 
         print('2. O que o sistema sabe e o resultado')
         p.wait_for_selector('#resultado table.ct', timeout=5000)
@@ -138,6 +172,16 @@ def main():
         frase = p.evaluate("() => { const f = document.querySelector('.ct-frase').cloneNode(true); f.querySelectorAll('.ct-prov-tag, .ct-pronto-tag').forEach(x => x.remove()); return f.textContent; }")
         ok(frase.startswith('Em 2027, o Simples Nacional sai mais barato') and 'É o regime de hoje' in frase, f'a frase da decisão ({frase[:90]}…)')
         ok(p.locator('.ct-frase .ct-prov-tag').count() == 1 and 'a folha e o pró-labore' in p.inner_text('#resultado'), 'sem a folha, o resultado é "Provisório" e diz o que falta')
+        pr = texto(p, '#precisao')
+        ok('Precisão do estudo: falta o que pode virar o resultado' in pr and p.get_attribute('#precisao li[data-id="folha"]', 'data-peso') == 'decide' and 'decide o resultado' in p.inner_text('#precisao li[data-id="folha"]')
+           and 'Já está na conta: a receita dos 12 meses (veio do caso da Reforma)' in pr,
+           'a precisão do estudo: o que falta (a folha decide, com o efeito) e o que já está na conta, com a origem (' + pr.replace('\n', ' | ')[:400] + ')')
+        p.click('#trilha button[data-fase="0"]')
+        mv = texto(p, '#fase .ct-m[data-id="vedacoes"]')
+        ok(p.get_attribute('#fase .ct-m[data-id="vedacoes"]', 'data-estado') == 'aberta' and 'Pelo cadastro, nada veda o Simples: o CNAE principal (sem secundário no cadastro).' in mv
+           and 'Faltou no cadastro pra conferir: os sócios e a natureza jurídica.' in mv and 'O sistema não confere: sócio domiciliado no exterior' in mv and 'Extras' in p.inner_text('#fase'),
+           f'na fase 1, a missão dos impedimentos do Simples (extra): o que o cadastro deixou conferir, o que faltou e o que o sistema não confere ({mv[:100]}…)')
+        p.click('#trilha button[data-fase="1"]')
         ok(not p.is_hidden('#roteiro') and p.locator('#trilha li').count() == 4 and p.get_attribute('#trilha li:nth-child(1)', 'data-estado') == 'feita',
            'por onde começar: as 4 fases, a 1ª já concluída (a receita veio do caso)')
         ok('Os números da empresa' in p.inner_text('#trilha li[aria-current="step"]'), 'a fase de agora é a 2, os números da empresa')
@@ -164,9 +208,11 @@ def main():
         ok(linha['entrada']['entrada']['outrasDespesas'] == 300000 and linha['resultado']['melhor'] and linha['atualizado_por'], f'o estudo gravou os números e o resumo ({linha["resultado"]["melhor"]})')
         p.wait_for_function("() => /Gravado às/.test(document.getElementById('gravado').textContent)", timeout=3000)
         ok(True, 'o aviso "Gravado às"')
+        ok(linha['entrada']['entrada'].get('objetivo') == 'todos' and linha['resultado'].get('regimes') == ['simples', 'presumido', 'real'], 'o comparativo escolhido fica gravado com o estudo')
         escolher(p, 'exemplo', 'EMPRESA EXEMPLO LTDA')
         escolher(p, 'modelo', 'COMÉRCIO MODELO ME')
         p.wait_for_selector('#f_outrasDespesas', timeout=3000)
+        ok(p.locator('#pergunta .ct-opcao').count() == 0 and p.inner_text('#objetivoAtual') == 'Simples × Presumido × Real', 'com o estudo gravado, a tela não pergunta de novo')
         ok(p.input_value('#f_outrasDespesas') == '300.000,00' and 'Estudo gravado em' in p.inner_text('#gravado'), 'abrir de novo traz o estudo gravado')
         ok(p.get_attribute('.ct-orig[data-orig="outrasDespesas"]', 'data-fonte') == 'digitado', 'com a origem de cada número')
 
@@ -185,7 +231,11 @@ def main():
 
         print('5. Só com o Fator R')
         escolher(p, 'exemplo', 'EMPRESA EXEMPLO LTDA')
+        sug = p.inner_text('#pergunta .ct-opcao[data-objetivo="presumido_real"]')
+        ok('sugerido' in sug and 'A empresa está no Lucro Presumido' in sug, f'pra empresa do Presumido, o sugerido é o Presumido × Real ({sug[:80]!r})')
+        comparativo(p, 'todos')
         p.wait_for_selector('#f_folha', timeout=3000)
+        ok('Ela pode entrar no Simples?' in p.inner_text('#trilha'), 'a empresa do regime geral com os três regimes: a fase 1 pergunta se ela pode entrar no Simples')
         ok(p.input_value('#f_folha') == '120.000,00' and p.input_value('#f_proLabore') == '60.000,00', 'a folha e o pró-labore do Fator R (12 meses)')
         ok(p.get_attribute('.ct-orig[data-orig="folha"]', 'data-fonte') == 'fator_r', 'a origem da folha: Fator R')
         ok('Informe a receita' in p.inner_text('#resultado'), 'sem receita, a tela pede a receita')
@@ -202,12 +252,14 @@ def main():
         p.click('#semCadastro')
         p.wait_for_function("() => document.querySelector('#escolhida h3') && document.querySelector('#escolhida h3').textContent === 'PROSPECT TESTE'", timeout=3000)
         ok('sem cadastro no sistema' in p.inner_text('#escolhida') and p.input_value('#regimeAtual') == '', 'a empresa sem cadastro, sem regime de hoje')
+        ok('o sistema não confere os impedimentos do Simples' in p.inner_text('#pergunta'), 'sem cadastro, a pergunta diz que os impedimentos do Simples não são conferidos')
+        comparativo(p, 'todos')
         p.fill('#f_atividades_0_receita', '1200000')
         p.wait_for_selector('#resultado table.ct', timeout=3000)
         ok(celula(p, 'Simples Nacional', 1).startswith('R$ 105.900,00'), 'a conta roda sem cadastro')
 
         print('7. Por onde começar: a refeição no RS e as empresas dos mesmos sócios')
-        escolher(p, 'restaurante', 'RESTAURANTE EXEMPLO LTDA')
+        escolher(p, 'restaurante', 'RESTAURANTE EXEMPLO LTDA', 'todos')
         p.wait_for_selector('#grupoSocios', timeout=5000)
         val = lambda sel: p.input_value(sel)
         fonte = lambda campo: p.get_attribute('.ct-orig[data-orig="' + campo + '"]', 'data-fonte')
@@ -304,6 +356,7 @@ def main():
           return { data: ev({ tipo: 'resposta', texto: 'Resposta pra: ' + opts.body.pergunta }), error: null }; }; })()""")
         p3.goto(base + 'fiscal-comparativo.html?cliente=c5')
         p3.wait_for_function("() => document.querySelector('#escolhida h3') && document.querySelector('#escolhida h3').textContent === 'RESTAURANTE EXEMPLO LTDA'", timeout=8000)
+        comparativo(p3, 'todos')
         p3.wait_for_selector('.as-lancador', timeout=5000)
         p3.click('.as-lancador'); p3.wait_for_selector('.as-painel:not([hidden])', timeout=3000)
         ok(p3.inner_text('.as-ctx') == 'Sobre o estudo aberto: RESTAURANTE EXEMPLO LTDA', f'a faixa do assistente diz qual estudo ({p3.inner_text(".as-ctx")!r})')
@@ -341,6 +394,7 @@ def main():
         })()''')
         p4.goto(base + 'fiscal-comparativo.html?cliente=c1')
         p4.wait_for_function("() => document.querySelector('#escolhida h3') && document.querySelector('#escolhida h3').textContent === 'COMÉRCIO MODELO ME'", timeout=8000)
+        comparativo(p4, 'todos')
         p4.wait_for_selector('#resultado table.ct', timeout=5000)
         mf = '#fase .ct-m[data-id="folha"]'
         ok(p4.get_attribute(mf, 'data-estado') == 'aberta' and p4.locator(mf + ' [data-relatorio]').inner_text() == 'Soltar o resumo da folha',
@@ -387,6 +441,120 @@ def main():
         ch3 = p4.locator('#lidos .ct-chip', has_text='folha-falha.pdf')
         ok('a leitura da folha não deu certo' in ch3.inner_text() and 'ct-err' in (ch3.get_attribute('class') or '') and p4.input_value('#f_folha') == '130.000,00',
            'a leitura que falha avisa e deixa a folha como estava')
+
+        print('11. Qual comparativo: a empresa do regime geral com o Simples vedado')
+        p5 = cx.new_page()
+        p5.on('pageerror', lambda e: erros.append('comparativo: ' + str(e)))
+        p5.add_init_script(TOUR); p5.add_init_script(SEMEAR)
+        p5.clock.set_fixed_time('2026-11-01T12:00:00')
+        p5.goto(base + 'fiscal-comparativo.html?cliente=c7')
+        p5.wait_for_function("() => document.querySelector('#escolhida h3') && document.querySelector('#escolhida h3').textContent === 'INDUSTRIA DE TESTE LTDA'", timeout=8000)
+        p5.wait_for_selector('#pergunta .ct-opcao', timeout=5000)
+        sug = texto(p5, '#pergunta .ct-opcao[data-objetivo="presumido_real"]')
+        ok('sugerido' in sug and 'A empresa está no Lucro Presumido e o Simples está vedado pra ela.' in sug, f'o sugerido é o Presumido × Real, com o porquê ({sug[-70:]!r})')
+        ved = texto(p5, '#vedado')
+        ok('O Simples está vedado pra ela hoje.' in ved and 'CNAE secundário impeditivo: 7820-5/00 (Locação de mão-de-obra temporária)' in ved and 'Anexo VI' in ved
+           and 'tirar o CNAE por alteração resolve' in ved and 'Pessoa jurídica no quadro de sócios: HOLDING <b>TESTE</b> LTDA (50% do capital)' in ved and 'LC 123, art. 3º, §4º, I' in ved,
+           f'o porquê: o CNAE secundário impeditivo (com o remédio) e a pessoa jurídica entre os sócios ({ved[:80]}…)')
+        ok(p5.locator('#vedado b').count() == 1 and '4637-1/04' not in ved and '12.345.678' not in p5.inner_text('body') and '12345678000199' not in p5.content(),
+           'o nome do sócio com HTML entra como texto, o CNAE permitido não aparece e o documento do sócio não vai pra tela')
+        ok('O sistema não confere: sócio domiciliado no exterior' in ved, 'e o que o cadastro não deixa conferir vem dito')
+        ok(p5.is_hidden('#grade') and p5.is_hidden('#roteiro'), 'antes da escolha, só a pergunta')
+        p5.click('#pergunta .ct-opcao[data-objetivo="presumido_real"]')
+        p5.wait_for_selector('#resultado table.ct', timeout=5000)
+        ok(p5.inner_text('#objetivoAtual') == 'Presumido × Real' and 'CNAE secundário impeditivo: 7820-5/00' in p5.inner_text('#pergunta'), 'escolhido: o comparativo dito e o porquê do Simples fora, à vista')
+        trilha = p5.eval_on_selector_all('#trilha .ct-tr-t', 'els => els.map(e => e.textContent)')
+        ok(trilha == ['A receita e a presunção', 'O lucro do Real', 'O resto da conta', 'O veredito'], f'o caminho do Presumido × Real ({trilha})')
+        ok(celula(p5, 'Simples Nacional', 1) is None and celula(p5, 'Lucro Presumido', 1).startswith('R$') and celula(p5, 'Lucro Real', 1).startswith('R$'), 'a tabela só com o Presumido e o Real')
+        res = texto(p5, '#resultado')
+        ok('só diferem no IRPJ e na CSLL' in res and 'Entrar no Simples' not in res and 'A escolha vale pro ano inteiro' in res and 'Real empata com o Simples' not in res,
+           'o resultado: em 2027 só o IRPJ e a CSLL diferem, sem os prazos nem o empate do Simples')
+        ok(p5.locator('#grupoSocios').count() == 0 and p5.locator('#f_difalSimples').count() == 0 and p5.locator('button[data-acao="mais-grupo"]').count() == 0
+           and p5.locator('#f_lucroContabil').count() == 1 and p5.locator('#f_atividades_0_pctAliqZero').count() == 1 and p5.locator('#f_atividades_0_pctMonofasico').count() == 0,
+           'os campos do caminho: sem as empresas dos sócios e o ICMS fora do DAS; com o lucro da contabilidade e as vendas com alíquota zero de PIS/Cofins (a revenda monofásica é só do comércio)')
+        ok('Vendas com alíquota zero de PIS/Cofins' in p5.inner_text('#grade') and p5.get_attribute('.ct-orig[data-orig="atividades.0.pctAliqZero"]', 'data-fonte') == 'padrao',
+           'o campo das vendas com alíquota zero de PIS/Cofins, no padrão (nenhuma), a conferir')
+        ok(p5.input_value('#f_atividades_0_receita') == '600.000,00' and p5.get_attribute('.ct-orig[data-orig="atividades.0.receita"]', 'data-fonte') == 'ponte'
+           and p5.input_value('#f_compras') == '360.000,00' and 'contabilidade feita até jul/26' in p5.inner_text('#escolhida'),
+           'os números do Domínio pela ponte (a receita e as compras) e a contabilidade feita até jul/26')
+        fontes = p5.inner_text('#escolhida')
+        ok('Domínio pela ponte (12 meses fechados)' in fontes and 'sem caso na Reforma' not in fontes and 'sem folha no Fator R' not in fontes and 'sem PGDAS da Receita' not in fontes,
+           'na empresa do Presumido, as fontes não dizem a falta do que é só do Simples (a Reforma, o Fator R, o PGDAS)')
+        aj = texto(p5, '#ajudaLucro')
+        ok('dos mesmos 12 meses da receita (de out/25 a set/26)' in aj and 'Pelo Controle das contabilidades, ela está feita até jul/26.' in aj, f'o campo do lucro diz os meses da DRE e até onde a contabilidade vai ({aj[:70]}…)')
+        ok('A atividade e a presunção' in p5.inner_text('#fase .ct-m.ct-prox') and 'Indústria, 8% no IRPJ e 12% na CSLL' in texto(p5, '#fase .ct-m[data-id="presuncao"]'),
+           'fase 1: a presunção da atividade pra conferir (veio do CNAE)')
+        pr = texto(p5, '#precisao')
+        ok(p5.get_attribute('#precisao li[data-id="lucro"]', 'data-peso') == 'decide' and 'O lucro da contabilidade' in pr and 'o IRPJ e a CSLL do Real saem dele' in pr
+           and 'a receita dos 12 meses (veio do Domínio pela ponte)' in pr, f'a precisão: falta o lucro da contabilidade, que decide ({pr[:90]}…)')
+        p5.click('#fase .ct-m[data-id="presuncao"] [data-conferir]')
+        p5.wait_for_function("() => document.querySelector('#trilha li:nth-child(1)').dataset.estado === 'feita'", timeout=3000)
+        ok('No Presumido, o IRPJ e a CSLL de 2027 dão R$ 13.680' in texto(p5, '#banner'), f'a presunção conferida fecha a fase 1, com o IRPJ e a CSLL do Presumido ({texto(p5, "#banner")[:90]})')
+        ml = texto(p5, '#fase .ct-m[data-id="lucro"]')
+        ok(p5.get_attribute('#fase .ct-m[data-id="lucro"]', 'data-estado') == 'aberta' and 'Falta o lucro da DRE' in ml and 'O Real empata com o Presumido com lucro de R$ 57.000' in ml
+           and 'feita até jul/26: a DRE até set/26 ainda não fecha' in ml and 'Digitar o lucro da DRE' in ml and 'Seguir com a estimativa' in ml,
+           f'fase 2: o lucro da contabilidade falta e decide, com o empate e a contabilidade feita até jul/26 ({ml[:90]}…)')
+        fd = texto(p5, '#fase .ct-usar-item[data-id="dre"]')
+        ok('Domínio Contabilidade: a DRE' in fd and 'faltam ago/26 e set/26' in fd and p5.get_attribute('#fase .ct-usar-item[data-id="dre"]', 'data-estado') == 'falta', 'o que usar: a DRE do Domínio, com os meses que faltam na contabilidade')
+        p5.click('#fase .ct-m[data-id="lucro"] [data-ir]')
+        ok(p5.evaluate("() => document.activeElement && document.activeElement.id") == 'f_lucroContabil', '"Digitar o lucro da DRE" põe o cursor no campo')
+        p5.fill('#f_lucroContabil', '40000')
+        p5.wait_for_function("() => document.querySelector('#trilha li:nth-child(2)').dataset.estado === 'feita'", timeout=3000)
+        ok('Fase 2 concluída' in texto(p5, '#banner') and 'pela contabilidade' in texto(p5, '#banner'), f'o lucro digitado fecha a fase 2 ({texto(p5, "#banner")[:100]})')
+        p5.click('#trilha button[data-fase="1"]')
+        ml = texto(p5, '#fase .ct-m[data-id="lucro"]')
+        ok('Lucro de R$ 40.000 na DRE de out/25 a set/26' in ml and 'da troca dos tributos de hoje pelos do Real' in ml and 'digitado' in ml, f'o lucro digitado cumpre a missão e diz a troca dos tributos ({ml[:110]}…)')
+        p5.click('details.ct-det > summary')
+        ok('Lucro antes do IR (o da contabilidade, com os tributos trocados)' in p5.inner_text('details.ct-det'), 'no detalhe por tributo, o lucro do Real é o da contabilidade')
+        p5.wait_for_function("() => (window.__mockDb.comparativos || []).some(r => r.cliente_id === 'c7' && r.entrada.entrada.lucroContabil === 40000)", timeout=5000)
+        gr = p5.evaluate("() => JSON.parse(JSON.stringify(window.__mockDb.comparativos.find(r => r.cliente_id === 'c7')))")
+        ok(gr['entrada']['entrada']['objetivo'] == 'presumido_real' and gr['resultado']['regimes'] == ['presumido', 'real'] and gr['resultado']['totais']['2027']['simples'] is None,
+           'o estudo grava o comparativo escolhido, o lucro e o resumo só com os dois regimes')
+        p5.fill('#f_lucroContabil', '')
+        p5.wait_for_function("() => { const m = document.querySelector('#fase .ct-m[data-id=\"lucro\"]'); return m && m.dataset.estado === 'aberta'; }", timeout=3000)
+        ok(p5.get_attribute('.ct-orig[data-orig="lucroContabil"]', 'data-fonte') == 'padrao', 'o lucro apagado volta à estimativa (a origem volta ao padrão)')
+        # o resto da conta: as vendas com alíquota zero de PIS/Cofins (a cesta básica da Lei 10.925/2004)
+        p5.click('#trilha button[data-fase="2"]')
+        mp = texto(p5, '#fase .ct-m[data-id="piscofins"]')
+        ok(p5.get_attribute('#fase .ct-m[data-id="piscofins"]', 'data-estado') == 'aberta' and 'No padrão, toda a venda paga PIS/Cofins' in mp and 'informe a parte das vendas com alíquota zero' in mp
+           and 'Toda a venda paga' in mp and 'Só pesa em 2026' in mp, f'fase 3: o PIS/Cofins das vendas, no padrão, a conferir ({mp[:90]}…)')
+        pres26 = celula(p5, 'Lucro Presumido', 1)
+        p5.fill('#f_atividades_0_pctAliqZero', '100')
+        p5.wait_for_function("() => { const m = document.querySelector('#fase .ct-m[data-id=\"piscofins\"]'); return m && m.dataset.estado === 'feita'; }", timeout=3000)
+        mp = texto(p5, '#fase .ct-m[data-id="piscofins"]')
+        # PIS/Cofins do Presumido de 2026: 0,365% × (600.000 − 17% × 600.000) × 9/12 = 1.363,28 (os 10% da alíquota, de abril a dezembro)
+        ok('R$ 600.000 das vendas com alíquota zero: em 2026, R$ 1.363 no Presumido' in mp and 'paga 10% da alíquota: 0,365% no Presumido e 0,925% no Real' in mp and 'LC 224/2025' in mp and 'digitado' in mp
+           and celula(p5, 'Lucro Presumido', 1) != pres26 and p5.get_attribute('.ct-orig[data-orig="atividades.0.pctAliqZero"]', 'data-fonte') == 'digitado',
+           f'com toda a venda em alíquota zero, fora da cesta básica: a missão cumprida, com os 10% da alíquota desde abril de 2026 (LC 224), e o total dos 12 meses menor ({pres26} → {celula(p5, "Lucro Presumido", 1)})')
+        ok('Vendas sem PIS/Cofins (a revenda monofásica e a venda com alíquota zero)' in p5.inner_text('#resultado') and 'No Simples, a alíquota zero de PIS/Cofins não vale' not in p5.inner_text('#resultado')
+           and 'Alíquota zero de PIS/Cofins fora da Cesta Básica Nacional: desde 01/04/2026' in p5.inner_text('#resultado'),
+           'os avisos: o que a conta supõe do crédito e os 10% da LC 224 (sem o do Simples, que não está na comparação)')
+        lc = celula(p5, 'Lucro Presumido', 1)
+        p5.check('#f_atividades_0_aliqZeroCesta')
+        p5.wait_for_function("() => /sem PIS\\/Cofins a pagar no Presumido nem no Real/.test(document.querySelector('#fase .ct-m[data-id=\"piscofins\"]').textContent)", timeout=3000)
+        ok(celula(p5, 'Lucro Presumido', 1) != lc and 'Alíquota zero de PIS/Cofins fora da Cesta Básica Nacional' not in p5.inner_text('#resultado'),
+           f'marcada a Cesta Básica Nacional: a alíquota zero segue, sem PIS/Cofins a pagar em 2026, e o aviso da LC 224 some ({lc} → {celula(p5, "Lucro Presumido", 1)})')
+        p5.wait_for_function("() => (window.__mockDb.comparativos || []).some(r => r.cliente_id === 'c7' && r.entrada.entrada.atividades[0].aliqZeroCesta === true && r.entrada.entrada.atividades[0].pctAliqZero === 100)", timeout=5000)
+        ok(True, 'e o estudo grava as duas coisas (a parte com alíquota zero e a marca da cesta básica)')
+        # trocar pra os três regimes: o Simples volta como simulação
+        p5.click('#trocarObjetivo')
+        p5.wait_for_selector('#pergunta .ct-opcao', timeout=3000)
+        ok(p5.get_attribute('#pergunta .ct-opcao[data-objetivo="presumido_real"]', 'aria-pressed') == 'true', '"Trocar" abre a pergunta de novo, com o de agora marcado')
+        p5.click('#pergunta .ct-opcao[data-objetivo="todos"]')
+        p5.wait_for_function("() => [...document.querySelectorAll('#resultado table.ct:not(.ct-mini) tr')].some(t => t.cells[0] && t.cells[0].textContent.startsWith('Simples Nacional'))", timeout=5000)
+        av = texto(p5, '#alertaVedado') if p5.locator('#alertaVedado').count() else ''
+        ok('O Simples está vedado hoje pelo cadastro' in av and 'a linha dele vale como simulação' in av and 'Ela pode entrar no Simples?' in p5.inner_text('#trilha'),
+           f'com os três regimes: o Simples entra como simulação, com o aviso ({av[:80]}…)')
+        ok('Sem o Simples, o mais barato em 2027 é o Lucro ' in av and p5.evaluate("() => document.querySelector('#resultado').firstElementChild.id") == 'alertaVedado' and 'HOLDING <b>TESTE</b> LTDA' in av and p5.locator('#alertaVedado b').count() == 0,
+           'o aviso vem antes da frase do mais barato e diz o mais barato sem o Simples (o nome com HTML, como texto)')
+        p5.click('#trilha button[data-fase="0"]')
+        mv = texto(p5, '#fase .ct-m[data-id="vedacoes"]')
+        ok(p5.get_attribute('#fase .ct-m[data-id="vedacoes"]', 'data-estado') == 'aberta' and 'O Simples está vedado hoje.' in mv and 'Vai tirar os impedimentos' in mv and 'Entrar no Simples' in texto(p5, '.ct-prazos')
+           and 'Antes, a empresa precisa tirar os impedimentos do cadastro.' in texto(p5, '.ct-prazos'),
+           'a missão dos impedimentos, aberta, e o prazo do Simples com a ressalva')
+        ok(p5.locator('#f_lucroContabil').count() == 1 and p5.locator('button[data-acao="mais-grupo"]').count() == 1, 'e os campos do Simples voltam, com o lucro da contabilidade junto')
+        ok(p5.input_value('#f_atividades_0_pctAliqZero') == '100' and p5.is_checked('#f_atividades_0_aliqZeroCesta') and 'No Simples, a alíquota zero de PIS/Cofins não vale (LC 123, art. 24, §1º)' in p5.inner_text('#resultado'),
+           'com o Simples na comparação, a alíquota zero informada e a marca ficam, e a tela avisa que no Simples ela paga no DAS')
 
         ok(not erros, 'nenhum erro de JavaScript' + ('' if not erros else ': ' + ' | '.join(erros[:3])))
         b.close()

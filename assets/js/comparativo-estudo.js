@@ -5,12 +5,17 @@
 // as premissas que viram o resultado, o roteiro das fases, os prazos, o que muda o resultado e os avisos). Uma regra só
 // pra tela (fiscal-comparativo.html) e pro assistente (a ferramenta comparativo da função assistente — pergunta do
 // Samuel, 01/11/2026: "o assistente sabe tirar dúvidas sobre o comparativo?"), com o "e se" do assistente (os números
-// trocados só na conta, nada gravado). Testado por tests/comparativo-estudo.test.mjs.
+// trocados só na conta, nada gravado). Desde 11/11/2026, o comparativo escolhido (entrada.objetivo: só o Presumido contra o
+// Real, ou os três), o que o cadastro veda no Simples (simples-vedacoes.js), a contabilidade feita até que mês (o Controle
+// das contabilidades) e a precisão do estudo. Testado por tests/comparativo-estudo.test.mjs.
 // ============================================================
 
-import { comparar, testarPremissas, REGIMES, ROTULO_REGIME, TIPOS } from './comparativo-motor.js';
-import { entradaDoSistema, empresasDosSocios, receitaDaEmpresa, situacaoDoGrupo, premissasParaTestar, prazosDaEscolha, foraDaSoma, avisoDaSoma, mesclarSerie, CAMPOS_PONTE } from './comparativo-dados.js';
-import { roteiroDoEstudo, ultimoMesFechado } from './comparativo-roteiro.js';
+import { comparar, testarPremissas, REGIMES, ROTULO_REGIME, TIPOS, OBJETIVOS, regimesDoObjetivo } from './comparativo-motor.js';
+import { entradaDoSistema, empresasDosSocios, receitaDaEmpresa, situacaoDoGrupo, premissasParaTestar, prazosDaEscolha, foraDaSoma, avisoDaSoma, mesclarSerie, CAMPOS_PONTE,
+  objetivoSugerido, objetivoValido, porQueDoObjetivo, rotuloComp } from './comparativo-dados.js';
+import { roteiroDoEstudo, ultimoMesFechado, precisaoDoEstudo } from './comparativo-roteiro.js';
+import { vedacoesDoSimples, resumoDasVedacoes } from './simples-vedacoes.js';
+import { resumoDaEmpresa as resumoDoControle } from './contabil-controle.js';
 
 const brl = v => (Number(v) || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 const pct = (v, d = 1) => (Number(v) || 0).toLocaleString('pt-BR', { maximumFractionDigits: d });
@@ -19,11 +24,14 @@ const num = v => (v == null || v === '' || !Number.isFinite(Number(v)) ? null : 
 // ---------- os padrões (os mesmos do motor): ficam na entrada pra aparecer nos campos ----------
 export const PADROES = { compras: 0, aliqCreditoIcms: 12, pctComprasSimples: 0, despesasCredito: 0, outrasDespesas: 0, difalSimples: 0,
   folha: 0, proLabore: 0, rat: 2, fap: 1, terceiros: 5.8, cprb: null, crescimentoReceita: 0, crescimentoFolha: 0, semLc224: false,
-  mix: { cheia: 100, red60: 0, red40: 0, red30: 0, zero: 0 }, pctImpostoEmbutido: null, pctComprasComCredito: null };
-export const PADRAO_ATIV = a => ({ aliqIcms: 17, aliqIss: 3, pctST: 0, pctMonofasico: 0, aliqIpi: 0, redIcms: 0, redIcmsSimples: 0, ...a });
+  mix: { cheia: 100, red60: 0, red40: 0, red30: 0, zero: 0 }, pctImpostoEmbutido: null, pctComprasComCredito: null,
+  lucroContabil: null, ajustesLalur: 0 };
+export const PADRAO_ATIV = a => ({ aliqIcms: 17, aliqIss: 3, pctST: 0, pctMonofasico: 0, pctAliqZero: 0, aliqZeroCesta: false, aliqIpi: 0, redIcms: 0, redIcmsSimples: 0, ...a });
 export function comPadroes(e) {
   const out = { ...PADROES, ...e, mix: { ...PADROES.mix, ...(e && e.mix) } };
   out.atividades = ((e && e.atividades) || [{ tipo: 'comercio', receita: 0 }]).map(PADRAO_ATIV);
+  // o comparativo escolhido: só um dos dois nomes (o que veio do banco com outro valor volta à pergunta)
+  if (out.objetivo != null && !objetivoValido(out.objetivo)) delete out.objetivo;
   return out;
 }
 export const ORIGENS_PADRAO = {
@@ -33,7 +41,9 @@ export const ORIGENS_PADRAO = {
   pctComprasSimples: { fonte: 'padrao', texto: 'padrão: nenhuma', dica: 'em 2027 o crédito de CBS/IBS de compra de fornecedor do Simples é só o que ele pagou no DAS' },
   difalSimples: { fonte: 'padrao', texto: 'padrão: nada', dica: 'diferencial de alíquota e antecipação do ICMS que o optante paga fora do DAS no ano' },
   despesasCredito: { fonte: 'padrao', texto: 'falta no sistema' },
-  cprb: { fonte: 'padrao', texto: 'vazio: sem desoneração', dica: 'preencha a alíquota cheia da CPRB se a empresa está na desoneração da folha' }
+  cprb: { fonte: 'padrao', texto: 'vazio: sem desoneração', dica: 'preencha a alíquota cheia da CPRB se a empresa está na desoneração da folha' },
+  lucroContabil: { fonte: 'padrao', texto: 'vazio: a conta estima o lucro', dica: 'o resultado da DRE dos 12 meses antes do IRPJ e da CSLL (prejuízo, com o sinal de menos). Sem ele, a conta estima o lucro do Real pelas compras, a folha e as despesas' },
+  ajustesLalur: { fonte: 'padrao', texto: 'padrão: sem ajustes', dica: 'adições (despesa indedutível: multa, brinde, doação) menos exclusões (receita que não é tributada) do lucro real' }
 };
 
 // ---------- os campos: o nome e a unidade de cada um (a tela e o assistente falam igual) ----------
@@ -43,6 +53,8 @@ export const CAMPOS = {
   pctComprasSimples: { rotulo: 'Compras de fornecedor do Simples', un: '%' },
   despesasCredito: { rotulo: 'Despesas com crédito (energia, aluguel de empresa, frete)', un: 'R$' },
   outrasDespesas: { rotulo: 'Outras despesas (o resto dos custos)', un: 'R$' },
+  lucroContabil: { rotulo: 'Lucro contábil antes do IRPJ e da CSLL (a DRE dos 12 meses)', un: 'R$' },
+  ajustesLalur: { rotulo: 'Adições menos exclusões do lucro real', un: 'R$' },
   difalSimples: { rotulo: 'ICMS pago fora do DAS (diferencial e antecipação)', un: 'R$' },
   folha: { rotulo: 'Folha (salários, 13º e férias)', un: 'R$' },
   proLabore: { rotulo: 'Pró-labore', un: 'R$' },
@@ -54,7 +66,7 @@ export const CAMPOS = {
   'mix.cheia': { rotulo: 'Vendas com alíquota cheia', un: '%' }, 'mix.red60': { rotulo: 'Com redução de 60%', un: '%' }, 'mix.red30': { rotulo: 'Com redução de 30%', un: '%' },
   'mix.red40': { rotulo: 'Bares e restaurantes (−40%)', un: '%' }, 'mix.zero': { rotulo: 'Alíquota zero', un: '%' },
   'ativ.receita': { rotulo: 'Receita dos 12 meses', un: 'R$' }, 'ativ.aliqIcms': { rotulo: 'ICMS das vendas', un: '%' }, 'ativ.pctST': { rotulo: 'Vendas com ICMS-ST', un: '%' },
-  'ativ.pctMonofasico': { rotulo: 'Revenda monofásica (PIS/Cofins)', un: '%' }, 'ativ.aliqIss': { rotulo: 'ISS', un: '%' },
+  'ativ.pctMonofasico': { rotulo: 'Revenda monofásica (PIS/Cofins)', un: '%' }, 'ativ.pctAliqZero': { rotulo: 'Vendas com alíquota zero de PIS/Cofins', un: '%' }, 'ativ.aliqIss': { rotulo: 'ISS', un: '%' },
   'ativ.presIrpj': { rotulo: 'Presunção do IRPJ', un: '%' }, 'ativ.presCsll': { rotulo: 'Presunção da CSLL', un: '%' },
   'ativ.aliqIpi': { rotulo: 'IPI a recolher em 2026 (Presumido e Real)', un: '%' },
   'ativ.redIcms': { rotulo: 'Redução da base do ICMS no regime geral', un: '%' }, 'ativ.redIcmsSimples': { rotulo: 'Redução do ICMS no DAS', un: '%' },
@@ -65,11 +77,23 @@ export const CAMPOS = {
 export const erroSemTabela = e => !!e && (e.code === 'PGRST205' || e.code === '42P01' || /comparativos/.test(e.message || '') && /(exist|find|schema)/i.test(e.message || ''));
 
 // a entrada como o motor lê: os padrões vazios (null) ficam de fora pra o motor usar os dele; aliq2027: a CBS de 2027
-// (rt_parametros.aliq_ref_2027)
-export function entradaDoMotor(entrada, aliq2027 = null) {
+// (rt_parametros.aliq_ref_2027); objetivo: o comparativo escolhido (sem ele, o da entrada; sem nenhum, os três regimes)
+export function entradaDoMotor(entrada, aliq2027 = null, objetivo = null) {
   const e = JSON.parse(JSON.stringify(entrada || {}));
-  ['cprb', 'pctImpostoEmbutido', 'pctComprasComCredito'].forEach(k => { if (e[k] == null) delete e[k]; });
-  return { ...e, aliq2027 };
+  ['cprb', 'pctImpostoEmbutido', 'pctComprasComCredito', 'lucroContabil'].forEach(k => { if (e[k] == null || e[k] === '') delete e[k]; });
+  return { ...e, aliq2027, regimes: regimesDoObjetivo(objetivoValido(objetivo) || objetivoValido(e.objetivo)) };
+}
+
+// ---------- qual comparativo ----------
+// o comparativo do estudo: o escolhido na tela (entrada.objetivo), senão o que o sistema sugere pelo regime de hoje e pelo
+// que o cadastro veda no Simples
+export function objetivoDoEstudo(entrada, vedacoes = null, objetivo = null) {
+  return objetivoValido(objetivo) || objetivoValido(entrada && entrada.objetivo) || objetivoSugerido(entrada && entrada.regimeAtual, vedacoes);
+}
+// as duas opções, como a tela pergunta: [{ id, rotulo, texto, sugerido, porque }]
+export function opcoesDeObjetivo(regimeAtual, vedacoes = null) {
+  const sug = objetivoSugerido(regimeAtual, vedacoes);
+  return Object.entries(OBJETIVOS).map(([id, x]) => ({ id, rotulo: x.rotulo, texto: x.texto, sugerido: id === sug, porque: id === sug ? porQueDoObjetivo(regimeAtual, vedacoes) : '' }));
 }
 
 // ---------- abrir a empresa: o que o sistema sabe e o estudo gravado ----------
@@ -91,12 +115,16 @@ const soFechados = (linhas, fechado) => (linhas || []).filter(l => l && fechado 
 export async function carregarEstudo({ ler, cliente, cadastroDe = null, hoje = null }) {
   const c = cliente;
   const fechado = ultimoMesFechado(hoje || hojeEmBrasilia());
-  const [rCaso, rFr, rPg, rEst, rDom] = await Promise.all([
+  const [rCaso, rFr, rPg, rEst, rDom, rRec, rCtb, rCtbM] = await Promise.all([
     ler('rt_casos', { cols: 'id, anexo, rbt12, receita_mensal, sim_obs, atualizado_em', eq: { cliente_id: c.id }, ordem: { coluna: 'atualizado_em', desc: true }, limite: 1 }),
     ler('fr_empresas', { cols: 'id', eq: { cliente_id: c.id }, limite: 1 }),
     ler('receita_pgdas', { cols: 'competencia, receita_mes', eq: { cliente_id: c.id }, ordem: { coluna: 'competencia', desc: true }, limite: 12 }),
     ler('comparativos', { cols: 'id, entrada, atualizado_em, atualizado_por', eq: { cliente_id: c.id }, ordem: { coluna: 'atualizado_em', desc: true }, limite: 1 }),
-    ler('dominio_mensal', { cols: 'codigo, competencia, ' + CAMPOS_PONTE.join(', '), eq: { cliente_id: c.id }, ordem: { coluna: 'competencia', desc: true }, limite: 48 })
+    ler('dominio_mensal', { cols: 'codigo, competencia, ' + CAMPOS_PONTE.join(', '), eq: { cliente_id: c.id }, ordem: { coluna: 'competencia', desc: true }, limite: 48 }),
+    // o que o cadastro não diz das vedações do Simples (as pendências na Receita) e a contabilidade feita até que mês
+    ler('receita_empresas', { cols: 'pendencias, situacao_fiscal_em', eq: { cliente_id: c.id }, limite: 1 }),
+    ler('contabil_empresas', { cols: 'faz, inicio, fim', eq: { cliente_id: c.id }, limite: 1 }),
+    ler('contabil_meses', { cols: 'competencia, situacao, feita_em', eq: { cliente_id: c.id } })
   ]);
   const dominio = soFechados(rDom && !rDom.error ? rDom.data : [], fechado);
   let fr = [];
@@ -105,11 +133,15 @@ export async function carregarEstudo({ ler, cliente, cadastroDe = null, hoje = n
   // as outras empresas dos mesmos sócios (pelo CPF; sem CPF, pelo nome) e a receita de cada uma — a que não entra na soma
   // pela regra (a que não é ME nem EPP, com o sócio até 10% e sem administrar) fica em grupoFora, com o porquê
   const grupo = [], grupoSeries = [], grupoFora = [], notasGrupo = [];
-  let nSocios = null;
+  let nSocios = null, sociosVed = null;
   try {
-    const rSoc = await ler('socios', { cols: 'nome, cpf', eq: { cliente_id: c.id } });
+    const rSoc = await ler('socios', { cols: 'nome, cpf, participacao_percentual', eq: { cliente_id: c.id } });
     const socios = (rSoc && rSoc.data) || [];
-    if (rSoc && !rSoc.error) nSocios = socios.length;
+    if (rSoc && !rSoc.error) {
+      nSocios = socios.length;
+      // pra vedação do Simples: quem é pessoa jurídica (o documento com 14 dígitos) — o documento não sai daqui
+      sociosVed = socios.map(s => ({ nome: s.nome || null, pj: String(s.cpf || '').replace(/\D/g, '').length === 14, participacao: s.participacao_percentual == null ? null : Number(s.participacao_percentual) }));
+    }
     const cpfs = [...new Set(socios.map(s => String(s.cpf || '').replace(/\D/g, '')).filter(x => x.length === 11))];
     const semCpf = socios.filter(s => String(s.cpf || '').replace(/\D/g, '').length !== 11).map(s => s.nome).filter(Boolean);
     const outros = [];
@@ -147,16 +179,28 @@ export async function carregarEstudo({ ler, cliente, cadastroDe = null, hoje = n
   sis.notas.push(...notasGrupo);
   sis.entrada.grupo = grupo.map(({ origem, ...g }) => g);
   grupo.forEach((g, i) => { sis.origens['grupo.' + i + '.receita'] = g.origem; });
+  // o que o cadastro veda no Simples (o CNAE principal e os secundários, pessoa jurídica entre os sócios, a natureza
+  // jurídica) e o que pede conferência (o CNAE ambíguo, as pendências na Receita)
+  const rec = rRec && !rRec.error && rRec.data && rRec.data[0];
+  const vedacoes = vedacoesDoSimples({ cnaePrincipal: c.cnae_principal, cnaesSecundarios: c.cnaes_secundarios, naturezaJuridica: c.natureza_juridica, socios: sociosVed,
+    pendencias: rec ? rec.pendencias : null, pendenciasEm: rec ? rec.situacao_fiscal_em : null });
+  // a contabilidade feita até que mês (o Controle das contabilidades): o lucro da DRE só vale até lá
+  const ctbEmp = rCtb && !rCtb.error && rCtb.data && rCtb.data[0];
+  const contabil = !ctbEmp ? null : ctbEmp.faz === false ? { faz: false, feitaAte: null }
+    : { faz: true, feitaAte: resumoDoControle(ctbEmp, (rCtbM && !rCtbM.error && rCtbM.data) || [], hoje || hojeEmBrasilia()).feitaAte };
+  // a campanha da Reforma, o Fator R e o PGDAS são do Simples: na empresa do Presumido ou do Real, a falta deles não é notícia
+  const geral = sis.entrada.regimeAtual === 'presumido' || sis.entrada.regimeAtual === 'real';
   const fontes = [
-    { ok: !!caso, txt: caso ? 'caso da Reforma' : 'sem caso na Reforma' },
-    { ok: fr.length > 0, txt: fr.length ? 'Fator R (' + fr.length + (fr.length === 1 ? ' mês)' : ' meses)') : 'sem folha no Fator R' },
-    { ok: pg.length > 0, txt: pg.length ? 'PGDAS na Receita (' + pg.length + (pg.length === 1 ? ' mês)' : ' meses)') : 'sem PGDAS da Receita' },
+    { ok: !!caso, soSimples: true, txt: caso ? 'caso da Reforma' : 'sem caso na Reforma' },
+    { ok: fr.length > 0, soSimples: true, txt: fr.length ? 'Fator R (' + fr.length + (fr.length === 1 ? ' mês)' : ' meses)') : 'sem folha no Fator R' },
+    { ok: pg.length > 0, soSimples: true, txt: pg.length ? 'PGDAS na Receita (' + pg.length + (pg.length === 1 ? ' mês)' : ' meses)') : 'sem PGDAS da Receita' },
     { ok: !!sis.ponte, txt: sis.ponte ? 'Domínio pela ponte (' + sis.ponte.n + (sis.ponte.n === 1 ? ' mês fechado)' : ' meses fechados)') : 'sem o Domínio pela ponte' }
-  ];
+  ].filter(f => f.ok || !(geral && f.soSimples)).map(({ ok, txt }) => ({ ok, txt }));
+  if (contabil) fontes.push({ ok: !!contabil.feitaAte, txt: contabil.faz === false ? 'contabilidade fora do escritório' : contabil.feitaAte ? 'contabilidade feita até ' + rotuloComp(contabil.feitaAte) : 'contabilidade sem mês feito' });
   const semTabela = erroSemTabela(rEst && rEst.error);
   const salvo = !semTabela && rEst && rEst.data && rEst.data[0];
   const est = { cliente: c, nome: c.nome_principal, notas: sis.notas, serie: sis.serie, serieRel: null, folhaRel: null, grupoSeries, grupoFora, socios: nSocios, sistema: sis, fontes, semTabela,
-    estudoId: null, gravadoEm: null, gravadoPor: null };
+    vedacoes, contabil, estudoId: null, gravadoEm: null, gravadoPor: null };
   if (salvo && salvo.entrada && salvo.entrada.entrada) {
     Object.assign(est, { estudoId: salvo.id, gravadoEm: salvo.atualizado_em, gravadoPor: salvo.atualizado_por });
     // os meses do faturamento que a equipe soltou na tela (serieRel) entram na série do sistema
@@ -178,6 +222,7 @@ export function estudoGravado(linha) {
   const folhaRel = Array.isArray(g.folhaRel) && g.folhaRel.length ? g.folhaRel : null;
   return { cliente: null, nome: (linha && linha.nome) || 'empresa sem cadastro', entrada: comPadroes(g.entrada || {}), origens: g.origens || {}, conferencia: g.conferencia || null,
     notas: [], serie: serieRel ? mesclarSerie(null, serieRel) : null, serieRel, folhaRel, grupoSeries: [], grupoFora: [], socios: null, sistema: null, fontes: [], semTabela: false,
+    vedacoes: null, contabil: null,
     estudoId: (linha && linha.id) || null, gravadoEm: (linha && linha.atualizado_em) || null, gravadoPor: (linha && linha.atualizado_por) || null };
 }
 
@@ -194,10 +239,14 @@ export function situacaoComGrupo(serie, grupo, grupoSeries) {
 export function oQueMuda(c, testes) {
   const muda = [];
   const d = c && c.decisao;
+  // só o Presumido contra o Real, de 2027 em diante: a diferença é o IRPJ e a CSLL
+  if (d && c.entrada && Array.isArray(c.entrada.regimes) && !c.entrada.regimes.includes('simples') && d.ano >= 2027)
+    muda.push({ txt: 'Em ' + d.ano + ' o Presumido e o Real só diferem no IRPJ e na CSLL: o PIS/Cofins acaba, e a CBS, o IBS, o ICMS, o ISS e o INSS são iguais nos dois.', alerta: false });
   if (d && d.real) {
     const ep = d.real.empate.presumido, es = d.real.empate.simples;
     const rDec = c.anos.find(r => r.ano === d.ano) || c.anos[0];
-    const lucroTxt = d.real.lucro < 0 ? 'a conta deu prejuízo de ' + brl(-d.real.lucro) : 'a conta usou lucro de ' + brl(d.real.lucro) + (d.real.margem != null ? ' (' + pct(d.real.margem * 100) + '% da receita)' : '');
+    const deOnde = d.real.informado ? ', pela contabilidade' : '';
+    const lucroTxt = d.real.lucro < 0 ? 'a conta deu prejuízo de ' + brl(-d.real.lucro) + deOnde : 'a conta usou lucro de ' + brl(d.real.lucro) + (d.real.margem != null ? ' (' + pct(d.real.margem * 100) + '% da receita)' : '') + deOnde;
     if (ep) muda.push({ txt: ep.nunca ? 'Nem com lucro zero o Real fica abaixo do Presumido em ' + d.ano + '.' : 'O Real empata com o Presumido em ' + d.ano + ' com lucro de ' + brl(ep.lucro) + ' antes do IR (' + pct(ep.margem * 100) + '% da receita) — abaixo disso, o Real é mais barato; ' + lucroTxt + '.', alerta: false });
     if (es && rDec && rDec.simples && rDec.simples.disponivel) muda.push({ txt: es.nunca ? 'Nem com lucro zero o Real fica abaixo do Simples em ' + d.ano + '.' : 'O Real empata com o Simples em ' + d.ano + ' com lucro de ' + brl(es.lucro) + ' (' + pct(es.margem * 100) + '% da receita).', alerta: false });
   }
@@ -240,26 +289,46 @@ export function alertaDoLimite(c, situacao, grupo) {
     + ROTULO_REGIME[alt] + ', ' + brl(rDec[alt].total) + '.';
 }
 
+// com o Simples na comparação e impedimento no cadastro, a linha dele é simulação (só vale se a empresa tirar os
+// impedimentos): o aviso diz quais são e o mais barato entre os que ela pode escolher hoje, o Presumido e o Real
+export function alertaDasVedacoes(c, vedacoes, regimes = null) {
+  if (!c || !c.anos || !vedacoes || !vedacoes.vedado || !(regimes || REGIMES).includes('simples')) return null;
+  const rDec = c.anos.find(r => r.ano === c.anoDecisao) || c.anos[0];
+  const alt = ['presumido', 'real'].filter(g => rDec[g].disponivel).sort((a, b) => rDec[a].total - rDec[b].total)[0];
+  return 'O Simples está vedado hoje pelo cadastro (' + resumoDasVedacoes(vedacoes, { comBase: false }) + '): a linha dele vale como simulação, se a empresa tirar os impedimentos.'
+    + (alt ? ' Sem o Simples, o mais barato em ' + rDec.ano + ' é o ' + ROTULO_REGIME[alt] + ', ' + brl(rDec[alt].total) + '.' : '');
+}
+
 // a conta inteira do estudo, como a tela mostra: comparar, as premissas no padrão testadas, o ano-calendário com as
 // empresas dos sócios, o roteiro (as fases e as missões), os prazos, o que muda o resultado e os avisos. Sem receita (ou
 // com o mix fora de 100%), a conta não roda: erro com o porquê, e o roteiro diz o que falta. hoje: 'AAAA-MM-DD'
-export function contaDoEstudo({ entrada, origens = {}, conferencia = null, notas = [], serie = null, grupoSeries = [], grupoFora = [], socios = null, aliq2027 = null, hoje = null } = {}) {
+// objetivo: o comparativo escolhido (sem ele, o da entrada; sem nenhum, o que o sistema sugere) · vedacoes: o que o cadastro
+// veda no Simples (carregarEstudo) · contabil: o Controle das contabilidades ({ faz, feitaAte }). A volta diz o objetivo e
+// os regimes da conta, as vedações (e `vedado`: o aviso de que a linha do Simples é simulação) e a precisão (o que já está
+// na conta e o que falta, com o efeito de cada item).
+export function contaDoEstudo({ entrada, origens = {}, conferencia = null, notas = [], serie = null, grupoSeries = [], grupoFora = [], socios = null, aliq2027 = null, hoje = null,
+  objetivo = null, vedacoes = null, contabil = null } = {}) {
   const achadas = (grupoSeries || []).length;
+  const obj = objetivoDoEstudo(entrada, vedacoes, objetivo);
+  const regimes = regimesDoObjetivo(obj);
+  const comSimples = regimes.includes('simples');
   let comparacao = null, testes = [], erro = null;
   try {
-    comparacao = comparar(entradaDoMotor(entrada, aliq2027));
-    testes = testarPremissas(entradaDoMotor(entrada, aliq2027), premissasParaTestar(entrada, origens));
+    comparacao = comparar(entradaDoMotor(entrada, aliq2027, obj));
+    testes = testarPremissas(entradaDoMotor(entrada, aliq2027, obj), premissasParaTestar(entrada, origens, regimes));
   } catch (e) { comparacao = null; testes = []; erro = (e && e.message) || 'A conta não rodou.'; }
   if (!comparacao) {
-    return { comparacao: null, testes: [], situacao: null, erro, prazos: [], muda: [], avisos: [], limite: null,
-      roteiro: roteiroDoEstudo({ entrada, origens, serie, socios, achadas, grupoFora, conferencia, hoje }) };
+    const roteiro = roteiroDoEstudo({ entrada, origens, serie, socios, achadas, grupoFora, conferencia, hoje, objetivo: obj, vedacoes, contabil });
+    return { comparacao: null, testes: [], situacao: null, erro, prazos: [], muda: [], avisos: [], limite: null, vedado: null, objetivo: obj, regimes, vedacoes, roteiro, precisao: precisaoDoEstudo(roteiro) };
   }
-  const situacao = situacaoComGrupo(serie, entrada.grupo, grupoSeries);
+  const situacao = comSimples ? situacaoComGrupo(serie, entrada.grupo, grupoSeries) : null;
+  const roteiro = roteiroDoEstudo({ entrada, origens, comparacao, testes, situacao, serie, socios, achadas, grupoFora, conferencia, hoje, objetivo: obj, vedacoes, contabil });
   return {
-    comparacao, testes, situacao, erro: null,
-    limite: alertaDoLimite(comparacao, situacao, entrada.grupo),
-    roteiro: roteiroDoEstudo({ entrada, origens, comparacao, testes, situacao, serie, socios, achadas, grupoFora, conferencia, hoje }),
-    prazos: prazosDaEscolha(hoje, entrada.regimeAtual, comparacao.anoDecisao, situacao),
+    comparacao, testes, situacao, erro: null, objetivo: obj, regimes, vedacoes,
+    limite: comSimples ? alertaDoLimite(comparacao, situacao, entrada.grupo) : null,
+    vedado: alertaDasVedacoes(comparacao, vedacoes, regimes),
+    roteiro, precisao: precisaoDoEstudo(roteiro),
+    prazos: prazosDaEscolha(hoje, entrada.regimeAtual, comparacao.anoDecisao, situacao, { objetivo: obj, vedado: !!(vedacoes && vedacoes.vedado) }),
     muda: oQueMuda(comparacao, testes),
     avisos: avisosDoEstudo({ notas, entrada, comparacao })
   };
@@ -270,6 +339,8 @@ export function resumoParaGravar(c) {
   if (!c || !c.decisao) return null;
   return {
     anoDecisao: c.anoDecisao, melhor: c.decisao.melhor, diferenca: c.decisao.diferenca,
+    // os regimes da comparação (o objetivo do estudo): o que ficou fora dela vai nulo nos totais, e não é "fora do Simples"
+    regimes: (c.entrada && c.entrada.regimes) || REGIMES.slice(),
     totais: Object.fromEntries(c.anos.map(r => [r.k === 0 ? 'base' : String(r.ano), Object.fromEntries(REGIMES.map(g => [g, r[g].disponivel ? Math.round(r[g].total * 100) / 100 : null]))]))
   };
 }
@@ -286,12 +357,15 @@ export const E_SE = {
   pro_labore_12_meses: { campo: 'proLabore', un: 'R$' },
   compras_12_meses: { campo: 'compras', un: 'R$' },
   outras_despesas_12_meses: { campo: 'outrasDespesas', un: 'R$' },
+  lucro_contabil_12_meses: { campo: 'lucroContabil', un: 'R$' },
   margem_lucro_real: { rotulo: 'Lucro do Real antes do IR', un: '% da receita' },
   crescimento_receita: { campo: 'crescimentoReceita', un: '% ao ano' },
   crescimento_folha: { campo: 'crescimentoFolha', un: '% ao ano' },
   credito_icms_compras: { campo: 'aliqCreditoIcms', un: '%' },
   icms_vendas: { ativ: 'aliqIcms', tributo: 'icms', un: '%' },
   iss: { ativ: 'aliqIss', tributo: 'iss', un: '%' },
+  vendas_aliquota_zero_pis_cofins: { ativ: 'pctAliqZero', tributo: 'icms', un: '% das vendas' },
+  aliquota_zero_da_cesta_basica: { rotulo: 'Alíquota zero de PIS/Cofins: os produtos são da Cesta Básica Nacional' },
   compras_fornecedor_simples: { campo: 'pctComprasSimples', un: '% das compras' },
   rat: { campo: 'rat', un: '%' },
   sem_empresas_dos_socios: { rotulo: 'Empresas dos sócios na soma do limite' },
@@ -320,6 +394,12 @@ export function aplicarESe(entrada, origens, eSe, { aliq2027 = null } = {}) {
         mudancas.push({ rotulo: CAMPOS[k].rotulo + ' (acompanha a receita)', antes: v, depois: e[k], un: 'R$' });
       });
       if (e.creditoIcms != null && e.creditoIcms !== '') e.creditoIcms = Number(e.creditoIcms) * f;
+      // o lucro da contabilidade acompanha a receita (o mesmo % dela), com os ajustes
+      if (num(e.lucroContabil) != null) {
+        const v = Number(e.lucroContabil);
+        e.lucroContabil = v * f; if (num(e.ajustesLalur)) e.ajustesLalur = Number(e.ajustesLalur) * f;
+        mudancas.push({ rotulo: CAMPOS.lucroContabil.rotulo + ' (acompanha a receita)', antes: v, depois: e.lucroContabil, un: 'R$' });
+      }
     } else e.atividades[0].receita = rec;
     e.atividades.forEach((a, i) => marca('atividades.' + i + '.receita'));
     mudancas.unshift({ rotulo: E_SE.receita_12_meses.rotulo, antes, depois: rec, un: 'R$' });
@@ -338,7 +418,7 @@ export function aplicarESe(entrada, origens, eSe, { aliq2027 = null } = {}) {
     if (v == null) return;
     const alvo = e.atividades.map((a, i) => ({ a, i })).filter(({ a }) => tributoDe(a) === d.tributo);
     if (!alvo.length) { avisos.push('A empresa não tem atividade com ' + (d.tributo === 'icms' ? 'ICMS' : 'ISS') + ': ' + k.replace(/_/g, ' ') + ' não entrou na conta.'); return; }
-    const antes = [...new Set(alvo.map(({ a }) => Number(a[d.ativ])))];
+    const antes = [...new Set(alvo.map(({ a }) => Number(a[d.ativ]) || 0))];
     alvo.forEach(({ a, i }) => { a[d.ativ] = v; marca('atividades.' + i + '.' + d.ativ); });
     mudancas.push({ rotulo: CAMPOS['ativ.' + d.ativ].rotulo, antes: antes.length === 1 ? antes[0] : antes.map(y => pct(y, 2)).join(' e '), depois: v, un: d.un });
   });
@@ -351,6 +431,15 @@ export function aplicarESe(entrada, origens, eSe, { aliq2027 = null } = {}) {
     mudancas.push({ rotulo: E_SE.regime_atual.rotulo, antes: ROTULO_REGIME[e.regimeAtual] || '—', depois: ROTULO_REGIME[x.regime_atual], un: '' });
     e.regimeAtual = x.regime_atual;
   }
+  // a alíquota zero de PIS/Cofins: da Cesta Básica Nacional (segue zero) ou não (10% da alíquota desde abril de 2026, LC 224)
+  if (typeof x.aliquota_zero_da_cesta_basica === 'boolean') {
+    const alvo = e.atividades.filter(a => tributoDe(a) === 'icms');
+    const dizer = v => (v ? 'sim (seguem com zero)' : 'não (10% da alíquota desde abril de 2026)');
+    if (alvo.some(a => !!a.aliqZeroCesta !== x.aliquota_zero_da_cesta_basica)) {
+      mudancas.push({ rotulo: E_SE.aliquota_zero_da_cesta_basica.rotulo, antes: dizer(alvo.every(a => a.aliqZeroCesta)), depois: dizer(x.aliquota_zero_da_cesta_basica), un: '' });
+      alvo.forEach(a => { a.aliqZeroCesta = x.aliquota_zero_da_cesta_basica; });
+    }
+  }
   // o lucro do Real: por último, com as outras mudanças já feitas
   const m = num(x.margem_lucro_real);
   if (m != null) {
@@ -358,6 +447,13 @@ export function aplicarESe(entrada, origens, eSe, { aliq2027 = null } = {}) {
       const c = comparar(entradaDoMotor(e, aliq2027));
       const r = c.anos.find(a => a.ano === c.anoDecisao) || c.anos[0];
       const fr = c.entrada.receita > 0 ? r.receita / c.entrada.receita : 1;
+      if (num(e.lucroContabil) != null) {
+        // com o lucro da contabilidade na conta, é ele que muda (as outras despesas não entram no lucro)
+        const antesL = Number(e.lucroContabil);
+        e.lucroContabil = antesL + (m / 100 * r.receita - r.real.lucro) / fr; marca('lucroContabil');
+        mudancas.push({ rotulo: CAMPOS.lucroContabil.rotulo + ', pra o lucro do Real antes do IR dar ' + pct(m) + '% da receita em ' + r.ano, antes: antesL, depois: e.lucroContabil, un: 'R$' });
+        return { entrada: e, origens: o, mudancas, avisos };
+      }
       const antes = Number(e.outrasDespesas) || 0;
       let depois = antes + (r.real.lucro - m / 100 * r.receita) / fr;
       if (depois < 0) {

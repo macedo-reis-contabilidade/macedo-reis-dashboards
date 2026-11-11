@@ -5,12 +5,17 @@
 // os últimos 12 meses e 2027 e 2028), em texto pro modelo: o resultado, por tributo, o que muda o resultado, as empresas
 // dos sócios, os números e de onde veio cada um, as fases do estudo, os prazos e os avisos. Com o "e se", refaz com os
 // números trocados (aplicarESe) — só na resposta, nada é gravado. O CPF dos sócios, que casa as empresas dos mesmos
-// sócios como na tela, é lido só dentro de carregarEstudo e não sai no texto. Testado em tests/assistente-funcao.test.mjs.
+// sócios como na tela, é lido só dentro de carregarEstudo e não sai no texto. Desde 11/11/2026, o comparativo escolhido na
+// tela (só o Presumido contra o Real, ou com o Simples; sem escolha, o que o sistema sugere — e `objetivo` pede o outro),
+// o que o cadastro veda no Simples, o lucro da contabilidade no Real e a precisão do estudo (o que falta e o efeito de cada
+// item). Testado em tests/assistente-funcao.test.mjs.
 // ============================================================
 
-import { REGIMES, ROTULO_REGIME, TIPOS, fraseDaDecisao } from '../../../assets/js/comparativo-motor.js';
-import { FONTES, rotuloComp } from '../../../assets/js/comparativo-dados.js';
+import { REGIMES, ROTULO_REGIME, TIPOS, OBJETIVOS, fraseDaDecisao } from '../../../assets/js/comparativo-motor.js';
+import { FONTES, rotuloComp, objetivoValido, porQueDoObjetivo } from '../../../assets/js/comparativo-dados.js';
 import { CAMPOS, carregarEstudo, estudoGravado, contaDoEstudo, aplicarESe } from '../../../assets/js/comparativo-estudo.js';
+import { NIVEL_DA_PRECISAO, PESO_DA_PRECISAO } from '../../../assets/js/comparativo-roteiro.js';
+import { NAO_CONFERE, oQueConferiu } from '../../../assets/js/simples-vedacoes.js';
 import { nomePorEmail } from '../../../assets/js/equipe.js';
 
 const enc = v => encodeURIComponent(String(v));
@@ -21,7 +26,7 @@ const moeda = v => (fin(v) ? Number(v).toLocaleString('pt-BR', { minimumFraction
 const pct = (v, d = 2) => (Number(v) || 0).toLocaleString('pt-BR', { maximumFractionDigits: d });
 const momento = iso => { const d = new Date(iso || ''); return iso && !isNaN(d) ? new Intl.DateTimeFormat('pt-BR', { timeZone: 'America/Sao_Paulo', dateStyle: 'short', timeStyle: 'short' }).format(d) : '—'; };
 const COLS_ESTUDO = 'id,cliente_id,nome,entrada,atualizado_em,atualizado_por';
-const COLS_CLIENTE = 'id,nome_principal,nome_fantasia,documento,tipo_pessoa,regime_tributario,cnae_principal,cidade,uf,status';
+const COLS_CLIENTE = 'id,nome_principal,nome_fantasia,documento,tipo_pessoa,regime_tributario,cnae_principal,cnaes_secundarios,natureza_juridica,cidade,uf,status';
 
 // ---------- a leitura do estudo (a mesma da tela, pelo PostgREST com o login de quem pergunta) ----------
 export function lerDoBanco(banco) {
@@ -70,24 +75,29 @@ const rotAno = r => (r.k === 0 ? 'últimos 12 meses' : String(r.ano));
 const origemDe = (origens, k) => { const o = origens && origens[k]; return o ? (o.texto || FONTES[o.fonte] || o.fonte) : FONTES.padrao; };
 const tributoDe = a => a.tributo || (TIPOS[a.tipo] || TIPOS.comercio).tributo;
 
-function blocoResultado(c) {
+// os regimes do comparativo escolhido (sem a conta dizer, os três)
+const regimesDe = conta => REGIMES.filter(g => !conta || !conta.regimes || conta.regimes.includes(g));
+const lucroDoReal = c => (c.anos.some(r => r.real.lucroInformado) ? 'lucro antes do IR, o da contabilidade com os tributos de hoje trocados pelos do Real' : 'lucro antes do IR estimado (a receita menos as compras, a folha e as despesas)');
+function blocoResultado(c, conta) {
   const out = [];
   out.push('- Receita: ' + c.anos.map(r => rotAno(r) + ' ' + brl(r.receita)).join(' · '));
   const motivos = [];
-  REGIMES.forEach(g => {
+  regimesDe(conta).forEach(g => {
     const partes = c.anos.map(r => {
       const x = r[g];
       if (!x.disponivel) { if (x.motivo && !motivos.includes(x.motivo)) motivos.push(x.motivo); return rotAno(r) + ' FORA (não pode ficar no Simples)'; }
       return rotAno(r) + ' ' + brl(x.total) + ' (' + pct(x.aliquota * 100) + '% da receita)' + (r.melhor === g ? ' ← o mais barato' : '');
     });
     out.push('- ' + ROTULO_REGIME[g] + (g === c.entrada.regimeAtual ? ' (o regime de hoje)' : '') + ': ' + partes.join(' · ')
-      + (g === 'real' ? ' — lucro antes do IR calculado: ' + c.anos.map(r => rotAno(r) + ' ' + brl(r.real.lucro)).join(' · ') : ''));
+      + (g === 'real' ? ' — ' + lucroDoReal(c) + ': ' + c.anos.map(r => rotAno(r) + ' ' + brl(r.real.lucro)).join(' · ') : ''));
   });
   if (motivos.length) out.push('- Por que o Simples fica fora: ' + motivos.join(' | '));
+  const fora = REGIMES.filter(g => !regimesDe(conta).includes(g));
+  if (fora.length) out.push('- Fora desta comparação: ' + fora.map(g => ROTULO_REGIME[g]).join(' e ') + ' (o comparativo é ' + OBJETIVOS[conta.objetivo].rotulo + '; com objetivo "todos", a conta põe os três).');
   return out;
 }
-function blocoTributos(c) {
-  return REGIMES.map(g => {
+function blocoTributos(c, conta) {
+  return regimesDe(conta).map(g => {
     const nomes = [];
     c.anos.forEach(r => (r[g].itens || []).forEach(it => { if (!nomes.includes(it.tributo)) nomes.push(it.tributo); }));
     if (!nomes.length) return null;
@@ -121,8 +131,9 @@ function blocoGrupo(estudo, conta) {
   return out;
 }
 // os números do estudo e de onde veio cada um
-function blocoNumeros(estudo) {
+function blocoNumeros(estudo, conta = null) {
   const e = estudo.entrada, o = estudo.origens || {};
+  const comSimples = regimesDe(conta).includes('simples');
   const v = (k, un) => (un === 'R$' ? brl(e[k]) : pct(e[k]) + (un ? (un.startsWith('%') ? un : ' ' + un) : ''));
   const linha = (k, rot) => '- ' + (rot || CAMPOS[k].rotulo) + ': ' + v(k, CAMPOS[k].un) + ' [' + origemDe(o, k) + ']';
   const out = ['OS NÚMEROS DO ESTUDO (R$ dos últimos 12 meses) E DE ONDE VEIO CADA UM'];
@@ -133,20 +144,32 @@ function blocoNumeros(estudo) {
       partes.push('ICMS das vendas ' + pct(a.aliqIcms) + '% [' + origemDe(o, p + 'aliqIcms') + ']');
       if (Number(a.pctST) > 0 || o[p + 'pctST']) partes.push('vendas com ICMS-ST ' + pct(a.pctST, 1) + '% [' + origemDe(o, p + 'pctST') + ']');
       if (Number(a.pctMonofasico) > 0) partes.push('revenda monofásica ' + pct(a.pctMonofasico, 1) + '% [' + origemDe(o, p + 'pctMonofasico') + ']');
+      // a venda com alíquota zero de PIS/Cofins (a cesta básica): sai do PIS/Cofins do Presumido e do Real; no Simples, paga no DAS
+      // (da Cesta Básica Nacional, segue zero; fora dela, 10% da alíquota desde abril de 2026 — LC 224/2025)
+      if (Number(a.pctAliqZero) > 0 || o[p + 'pctAliqZero']) partes.push('vendas com alíquota zero de PIS/Cofins ' + pct(a.pctAliqZero, 1) + '% [' + origemDe(o, p + 'pctAliqZero') + ']'
+        + (Number(a.pctAliqZero) > 0 ? (a.aliqZeroCesta ? ' (da Cesta Básica Nacional, LC 214, Anexos I e XV: seguem com zero)' : ' (fora da Cesta Básica Nacional: pagam 10% da alíquota desde abril de 2026, LC 224/2025 — 0,365% no Presumido e 0,925% no Real)') : ''));
       if (Number(a.redIcms) > 0 || o[p + 'redIcms']) partes.push('redução da base do ICMS no regime geral ' + pct(a.redIcms) + '% [' + origemDe(o, p + 'redIcms') + ']');
-      if (Number(a.redIcmsSimples) > 0 || o[p + 'redIcmsSimples']) partes.push('redução do ICMS no DAS ' + pct(a.redIcmsSimples) + '% [' + origemDe(o, p + 'redIcmsSimples') + ']');
+      if (comSimples && (Number(a.redIcmsSimples) > 0 || o[p + 'redIcmsSimples'])) partes.push('redução do ICMS no DAS ' + pct(a.redIcmsSimples) + '% [' + origemDe(o, p + 'redIcmsSimples') + ']');
     } else partes.push('ISS ' + pct(a.aliqIss) + '% [' + origemDe(o, p + 'aliqIss') + ']');
     if (a.tipo === 'industria') partes.push('IPI de 2026 ' + pct(a.aliqIpi) + '% da receita [' + origemDe(o, p + 'aliqIpi') + ']' + (a.ipiMantido ? ', IPI mantido (Zona Franca)' : ''));
     const anexo = a.anexo || t.anexo;
-    if (anexo !== t.anexo) partes.push('Anexo ' + anexo + ' do Simples');
-    if (a.presIrpj != null && Number(a.presIrpj) !== t.presIrpj) partes.push('presunção do IRPJ ' + pct(a.presIrpj) + '%');
-    if (a.presCsll != null && Number(a.presCsll) !== t.presCsll) partes.push('presunção da CSLL ' + pct(a.presCsll) + '%');
-    if (a.tipo === 'servico_r' && a.fatorR === false) partes.push('sem o fator r (fica no Anexo V)');
+    if (comSimples && anexo !== t.anexo) partes.push('Anexo ' + anexo + ' do Simples');
+    if (!comSimples) partes.push('presunção de ' + pct(a.presIrpj != null ? a.presIrpj : t.presIrpj) + '% no IRPJ e ' + pct(a.presCsll != null ? a.presCsll : t.presCsll) + '% na CSLL');
+    if (comSimples && a.presIrpj != null && Number(a.presIrpj) !== t.presIrpj) partes.push('presunção do IRPJ ' + pct(a.presIrpj) + '%');
+    if (comSimples && a.presCsll != null && Number(a.presCsll) !== t.presCsll) partes.push('presunção da CSLL ' + pct(a.presCsll) + '%');
+    if (comSimples && a.tipo === 'servico_r' && a.fatorR === false) partes.push('sem o fator r (fica no Anexo V)');
     out.push('- Atividade ' + (i + 1) + ': ' + t.rotulo + ' [' + origemDe(o, p + 'tipo') + '] — ' + partes.join('; '));
   });
   ['compras', 'aliqCreditoIcms', 'pctComprasSimples', 'despesasCredito', 'outrasDespesas', 'folha', 'proLabore'].forEach(k => out.push(linha(k)));
+  // o lucro do Real: o da contabilidade (a DRE dos 12 meses), com os ajustes; sem ele, a conta estima
+  if (fin(e.lucroContabil)) {
+    out.push(linha('lucroContabil'));
+    out.push(linha('ajustesLalur'));
+  } else out.push('- ' + CAMPOS.lucroContabil.rotulo + ': não informado — a conta estima o lucro do Real pela receita menos as compras, a folha e as despesas [' + origemDe(o, 'lucroContabil') + ']');
+  const ctb = estudo.contabil;
+  if (ctb) out.push('- A contabilidade, pelo Controle das contabilidades: ' + (ctb.faz === false ? 'o escritório não faz a desta empresa' : ctb.feitaAte ? 'feita até ' + rotuloComp(ctb.feitaAte) + ' (a DRE só fecha até lá)' : 'nenhum mês feito') + '.');
   if (e.rda || o.rda) out.push('- ICMS do restaurante no Presumido e no Real: ' + (e.rda === 'sim' ? 'optante do RDA (3,5% de todas as vendas de mercadoria, sem crédito)' : e.rda === 'melhor' ? 'o mais barato entre o RDA (3,5% das vendas, sem crédito) e o débito e crédito — os avisos dizem qual a conta usou' : 'débito e crédito, sem o RDA') + ' [' + origemDe(o, 'rda') + ']');
-  if (Number(e.difalSimples) > 0) out.push(linha('difalSimples'));
+  if (comSimples && Number(e.difalSimples) > 0) out.push(linha('difalSimples'));
   out.push('- RAT ' + pct(e.rat) + '% · FAP ' + pct(e.fap) + ' · terceiros ' + pct(e.terceiros) + '% [' + origemDe(o, 'rat') + ']' + (Number(e.cprb) > 0 ? ' · CPRB ' + pct(e.cprb) + '% (desoneração da folha)' : ''));
   out.push('- Crescimento: da receita ' + pct(e.crescimentoReceita) + '% ao ano [' + origemDe(o, 'crescimentoReceita') + '] · da folha ' + pct(e.crescimentoFolha) + '% ao ano');
   const m = e.mix || {};
@@ -169,7 +192,8 @@ function blocoFases(rot) {
     // preferido: a origem fica verde), digitar ou marcar como conferido
     const comoCumprir = m => {
       if (m.estado === 'feita') return '';
-      const jeitos = [m.relatorio ? 'soltar ' + m.relatorio + ' na caixa dos relatórios do Domínio' : null, m.campo ? (m.irRotulo || 'ir ao campo').toLowerCase() : null,
+      const minuscula = t => t.charAt(0).toLowerCase() + t.slice(1);   // só a primeira letra: "digitar o lucro da DRE"
+      const jeitos = [m.relatorio ? 'soltar ' + m.relatorio + ' na caixa dos relatórios do Domínio' : null, m.campo ? minuscula(m.irRotulo || 'ir ao campo') : null,
         m.conferir ? 'marcar "' + (m.conferirRotulo || 'Está certo') + '"' : null].filter(Boolean);
       return jeitos.length ? ' (na tela: ' + jeitos.join(', ou ') + ')' : '';
     };
@@ -202,6 +226,45 @@ function blocoSistemaHoje(estudo) {
   });
   return partes.length ? ['O SISTEMA HOJE tem números diferentes dos do estudo gravado: ' + partes.join('; ') + '. Na tela, "Recomeçar com os números do sistema" troca pelos de hoje (o que foi digitado se perde).'] : [];
 }
+// qual comparativo a conta fez e por quê: o escolhido na tela, o pedido nesta pergunta ou, sem escolha, o que o sistema
+// sugere (na tela, a pergunta "Qual comparativo você quer fazer?" ainda está aberta)
+function linhaDoObjetivo(estudo, conta, pedido) {
+  const obj = conta && conta.objetivo;
+  if (!objetivoValido(obj)) return [];
+  const naTela = objetivoValido(estudo.entrada && estudo.entrada.objetivo);
+  const outro = Object.keys(OBJETIVOS).find(k => k !== obj);
+  const de = pedido && pedido === obj && pedido !== naTela ? 'pedido nesta pergunta' + (naTela ? '; o escolhido na tela é ' + OBJETIVOS[naTela].rotulo : '; na tela, a escolha ainda não foi feita')
+    : naTela === obj ? 'o escolhido na tela'
+    : 'ainda não escolhido na tela (ela abre perguntando "Qual comparativo você quer fazer?"): o sistema sugere este — ' + porQueDoObjetivo(estudo.entrada && estudo.entrada.regimeAtual, estudo.vedacoes);
+  return ['Comparativo: ' + OBJETIVOS[obj].rotulo + ' (' + de + '). O outro é ' + OBJETIVOS[outro].rotulo + ': outra chamada, com objetivo "' + outro + '".'];
+}
+// o que o cadastro veda no Simples (o CNAE principal e os secundários, pessoa jurídica entre os sócios, a natureza jurídica)
+function blocoVedacoes(estudo) {
+  const v = estudo.vedacoes;
+  if (!v) return ['IMPEDIMENTOS DO SIMPLES: não conferidos (empresa sem cadastro: o sistema não tem o CNAE, os sócios nem a natureza jurídica).'];
+  const item = i => '- ' + i.texto + ' (' + i.base + ')' + (i.remedio ? ' ' + i.remedio : '');
+  const sem = v.semDado && v.semDado.length ? ['- Faltou no cadastro pra conferir: ' + v.semDado.join(', ') + '.'] : [];
+  const nao = '- O sistema não confere: ' + NAO_CONFERE.join('; ') + '.';
+  if (v.vedado) return ['IMPEDIMENTOS DO SIMPLES, PELO CADASTRO: o Simples está vedado pra ela hoje', ...v.impedimentos.map(item),
+    ...(v.conferir.length ? ['- A conferir: ' + v.conferir.map(i => i.texto + ' (' + i.base + ')').join('; ') + '.'] : []), ...sem, nao];
+  return ['IMPEDIMENTOS DO SIMPLES, PELO CADASTRO: ' + (oQueConferiu(v) ? 'nada veda — o sistema olhou ' + oQueConferiu(v) + '.' : 'o cadastro não tem o que conferir.'),
+    ...(v.conferir.length ? ['- A conferir: ' + v.conferir.map(i => i.texto + ' (' + i.base + ')').join('; ') + '.'] : []), ...sem, nao];
+}
+// a precisão do estudo: o que falta (o que decide primeiro), com o efeito de cada item, e o que já está na conta
+function blocoPrecisao(conta) {
+  const p = conta.precisao;
+  if (!p) return [];
+  const out = ['PRECISÃO DO ESTUDO: ' + NIVEL_DA_PRECISAO[p.nivel]];
+  if (p.falta.length) out.push('Falta, pra ficar mais preciso (o que decide primeiro):', ...p.falta.map(x => '- ' + x.titulo + ' [' + PESO_DA_PRECISAO[x.peso] + ']' + (x.efeito ? ': ' + x.efeito : '') + '.'));
+  else out.push('Nada falta: as missões estão todas cumpridas.');
+  if (p.tem.length) out.push('Já está na conta: ' + p.tem.map(x => x.titulo.charAt(0).toLowerCase() + x.titulo.slice(1) + ' (' + x.como + ')').join(' · ') + '.');
+  return out;
+}
+// a decisão provisória: as missões que decidem e ainda faltam (a linha "Ainda pode virar" da tela)
+function aindaPodeVirar(rot) {
+  const decidem = rot && rot.provisorio ? rot.passos.filter(p => p.estado !== 'feito' && p.peso === 'decide') : [];
+  return decidem.length ? ['PROVISÓRIO, ainda pode virar — ' + (decidem.length === 1 ? 'missão que falta: ' : 'missões que faltam: ') + decidem.map(p => p.curto || p.titulo).join('; ') + '.'] : [];
+}
 function cabecalho(estudo) {
   const c = estudo.cliente;
   const nome = c ? c.nome_principal + (c.nome_fantasia && c.nome_fantasia !== c.nome_principal ? ' (' + c.nome_fantasia + ')' : '') + ' · id ' + c.id : estudo.nome + ' (empresa sem cadastro no sistema)';
@@ -213,23 +276,33 @@ function cabecalho(estudo) {
 }
 // com o aviso do limite, ele é a notícia: a conta põe o Simples, mas o ano de agora tira a empresa dele
 const LIMITE_PRIMEIRO = 'o aviso do limite vem na primeira frase, junto com o resultado (a conta dos 12 meses põe o Simples, mas pelo ano de agora a empresa sai dele: diga desde quando e qual fica mais barato entre o Presumido e o Real); depois, ';
-const fim = conta => 'Na resposta: ' + (conta.limite ? LIMITE_PRIMEIRO : '') + 'o resultado em uma ou duas frases (o mais barato no ano da decisão e quanto), o porquê pelos tributos que mais pesam e, se ainda pode virar, o quê (as missões que decidem, as premissas no padrão — diga que são padrão a conferir). Use os números daqui, sem refazer conta: outro cenário é outra chamada, com e_se. Mudar o estudo é na tela Comparativo tributário.';
+// com o Simples vedado pelo cadastro e na comparação, a linha dele é simulação: vem na frente, com o mais barato sem ele
+const VEDADO_PRIMEIRO = 'o Simples está vedado hoje pelo cadastro e a linha dele é simulação: diga isso na primeira frase, com os impedimentos e o mais barato sem ele; depois, ';
+// só o Presumido contra o Real: de 2027 em diante a diferença é o IRPJ e a CSLL — a presunção de um lado, o lucro do outro
+const GERAL = ' Entre o Presumido e o Real, de 2027 em diante a diferença é só o IRPJ e a CSLL (a presunção contra o lucro): diga o lucro em que os dois empatam e de onde veio o lucro da conta — o da contabilidade (a DRE) ou a estimativa, que não serve pra decidir quando as compras passam da receita.';
+const fim = conta => 'Na resposta: ' + (conta.limite ? LIMITE_PRIMEIRO : conta.vedado ? VEDADO_PRIMEIRO : '') + 'o resultado em uma ou duas frases (o mais barato no ano da decisão e quanto), o porquê pelos tributos que mais pesam e, se ainda pode virar, o quê (as missões que decidem, as premissas no padrão — diga que são padrão a conferir).'
+  + (conta.regimes && !conta.regimes.includes('simples') ? GERAL : '') + ' Perguntaram o que falta pra o estudo ficar mais preciso: a precisão do estudo, com o efeito de cada item, o que decide primeiro. Use os números daqui, sem refazer conta: outro cenário é outra chamada, com e_se. Mudar o estudo é na tela Comparativo tributário.';
 
-export function textoDoComparativo({ estudo, conta }) {
-  const out = [...cabecalho(estudo)];
+export function textoDoComparativo({ estudo, conta, pedido = null }) {
+  const out = [...cabecalho(estudo), ...linhaDoObjetivo(estudo, conta, pedido)];
+  const comSimples = regimesDe(conta).includes('simples');
   if (!conta.comparacao) {
     out.push('A CONTA NÃO RODA: ' + conta.erro);
-    out.push(...blocoNumeros(estudo), '', ...blocoFases(conta.roteiro));
+    out.push(...blocoNumeros(estudo, conta), '', ...blocoVedacoes(estudo), '', ...blocoFases(conta.roteiro));
     out.push('Na resposta: diga o que falta (a receita dos 12 meses, na tela Comparativo tributário — digitada ou pelo faturamento do Domínio) e o que o sistema já tem.');
     return out.join('\n');
   }
   const c = conta.comparacao;
   out.push('', 'RESULTADO — os tributos a recolher no ano, a mesma conta da tela (os últimos 12 meses com as regras de ' + c.anos[0].ano + '; ' + c.anos.slice(1).map(r => r.ano).join(' e ') + ' projetados)',
-    ...blocoResultado(c), 'A decisão (' + c.anoDecisao + '): ' + fraseDaDecisao(c), ...(conta.limite ? ['ATENÇÃO, O LIMITE DO SIMPLES: ' + conta.limite] : []), ...blocoConferencia(estudo, c));
-  out.push('', 'POR TRIBUTO (R$ no ano: ' + c.anos.map(rotAno).join(' · ') + ')', ...blocoTributos(c));
+    ...blocoResultado(c, conta), 'A decisão (' + c.anoDecisao + '): ' + fraseDaDecisao(c), ...aindaPodeVirar(conta.roteiro), ...(conta.limite ? ['ATENÇÃO, O LIMITE DO SIMPLES: ' + conta.limite] : []),
+    ...(conta.vedado ? ['ATENÇÃO, OS IMPEDIMENTOS DO SIMPLES: ' + conta.vedado] : []), ...blocoConferencia(estudo, c));
+  out.push('', ...blocoPrecisao(conta));
+  out.push('', 'POR TRIBUTO (R$ no ano: ' + c.anos.map(rotAno).join(' · ') + ')', ...blocoTributos(c, conta));
   if (conta.muda.length) out.push('', 'O QUE MUDA O RESULTADO', ...conta.muda.map(m => '- ' + (m.alerta ? '[premissa no padrão que vira o resultado] ' : '') + m.txt));
-  out.push('', ...blocoGrupo(estudo, conta));
-  out.push('', ...blocoNumeros(estudo));
+  out.push('', ...blocoVedacoes(estudo));
+  // o limite do Simples com as empresas dos sócios só interessa com o Simples na comparação
+  if (comSimples) out.push('', ...blocoGrupo(estudo, conta));
+  out.push('', ...blocoNumeros(estudo, conta));
   out.push('', ...blocoFases(conta.roteiro));
   if (conta.prazos.length) out.push('', 'PRAZOS PRA DECIDIR', ...conta.prazos.map(p => '- ' + p.titulo + ': ' + p.texto));
   if (conta.avisos.length) out.push('', 'AVISOS DA CONTA', ...conta.avisos.map(a => '- ' + a));
@@ -241,49 +314,55 @@ export function textoDoComparativo({ estudo, conta }) {
 
 // o "e se": o que mudou, o resultado com a mudança e o de antes, lado a lado no ano da decisão
 const valorMud = (v, un) => (typeof v === 'string' ? v : !fin(v) ? '—' : un === 'R$' ? brl(v) : pct(v) + (un ? (un.startsWith('%') ? un : ' ' + un) : ''));
-export function textoDoESe({ estudo, conta, eSe, contaESe }) {
+export function textoDoESe({ estudo, conta, eSe, contaESe, pedido = null }) {
   const c0 = conta.comparacao;
-  const out = [cabecalho(estudo)[0] + ' — E SE', 'Só nesta conta: nada foi gravado. Pra valer, a pessoa muda o campo na tela Comparativo tributário.'];
+  const out = [cabecalho(estudo)[0] + ' — E SE', 'Só nesta conta: nada foi gravado. Pra valer, a pessoa muda o campo na tela Comparativo tributário.', ...linhaDoObjetivo(estudo, contaESe, pedido)];
   out.push('O que mudou:', ...(eSe.mudancas.length ? eSe.mudancas.map(m => '- ' + m.rotulo + ': ' + valorMud(m.antes, m.un) + ' → ' + valorMud(m.depois, m.un)) : ['- nada (nenhum número válido no e_se)']));
   if (eSe.avisos.length) out.push(...eSe.avisos.map(a => '- Atenção: ' + a));
   out.push(estudo.estudoId ? 'Os outros números são os do estudo gravado.' : 'Os outros números são os do sistema (não há estudo gravado).');
   if (!contaESe.comparacao) { out.push('', 'COM A MUDANÇA, A CONTA NÃO RODA: ' + contaESe.erro); return out.join('\n'); }
   const c = contaESe.comparacao;
-  out.push('', 'RESULTADO COM A MUDANÇA', ...blocoResultado(c), 'A decisão (' + c.anoDecisao + '): ' + fraseDaDecisao(c),
-    ...(contaESe.limite ? ['ATENÇÃO, O LIMITE DO SIMPLES: ' + contaESe.limite] : []));
-  out.push('', 'POR TRIBUTO, COM A MUDANÇA (R$ no ano: ' + c.anos.map(rotAno).join(' · ') + ')', ...blocoTributos(c));
+  out.push('', 'RESULTADO COM A MUDANÇA', ...blocoResultado(c, contaESe), 'A decisão (' + c.anoDecisao + '): ' + fraseDaDecisao(c),
+    ...(contaESe.limite ? ['ATENÇÃO, O LIMITE DO SIMPLES: ' + contaESe.limite] : []), ...(contaESe.vedado ? ['ATENÇÃO, OS IMPEDIMENTOS DO SIMPLES: ' + contaESe.vedado] : []));
+  out.push('', 'POR TRIBUTO, COM A MUDANÇA (R$ no ano: ' + c.anos.map(rotAno).join(' · ') + ')', ...blocoTributos(c, contaESe));
   if (contaESe.muda.length) out.push('', 'O QUE MUDA O RESULTADO, COM A MUDANÇA', ...contaESe.muda.map(m => '- ' + (m.alerta ? '[premissa no padrão que vira o resultado] ' : '') + m.txt));
   if (c0) {
     const r0 = c0.anos.find(r => r.ano === c0.anoDecisao) || c0.anos[0];
-    out.push('', 'SEM A MUDANÇA (o estudo), em ' + r0.ano + ': ' + REGIMES.map(g => ROTULO_REGIME[g] + ' ' + (r0[g].disponivel ? brl(r0[g].total) : 'fora')).join(' · ')
+    out.push('', 'SEM A MUDANÇA (o estudo), em ' + r0.ano + ': ' + regimesDe(conta).map(g => ROTULO_REGIME[g] + ' ' + (r0[g].disponivel ? brl(r0[g].total) : 'fora')).join(' · ')
       + ' — o mais barato: ' + (ROTULO_REGIME[r0.melhor] || '—') + '. ' + fraseDaDecisao(c0));
   } else out.push('', 'Sem a mudança, a conta do estudo não roda: ' + conta.erro);
   const rot = conta.roteiro;
   out.push('O estudo em si (sem a mudança): ' + (rot.pronto ? 'pronto pra apresentar.' : rot.provisorio ? 'provisório — faltam ' + rot.passos.filter(p => p.estado !== 'feito' && p.peso === 'decide').map(p => p.curto || p.titulo).join('; ') + '.' : 'quase lá.'));
   if (contaESe.avisos.length) out.push('', 'AVISOS DA CONTA, COM A MUDANÇA', ...contaESe.avisos.map(a => '- ' + a));
-  out.push('', 'Na resposta: ' + (contaESe.limite ? LIMITE_PRIMEIRO : '') + 'o que muda com o "e se" (o mais barato antes e depois, e a diferença), sem refazer conta, e que nada foi gravado.');
+  out.push('', 'Na resposta: ' + (contaESe.limite ? LIMITE_PRIMEIRO : contaESe.vedado ? VEDADO_PRIMEIRO : '') + 'o que muda com o "e se" (o mais barato antes e depois, e a diferença), sem refazer conta, e que nada foi gravado.');
   return out.join('\n');
 }
 
 // a ferramenta inteira: o estudo, a conta e o texto (com o "e se", os dois)
-export async function comparativoDaEmpresa({ banco, termo, eSe = null, contexto = {}, acharEmpresa, hoje }) {
+// objetivo: o comparativo pedido na pergunta ('presumido_real' ou 'todos'); sem ele, o escolhido na tela e, sem escolha,
+// o que o sistema sugere pelo regime de hoje e pelo que o cadastro veda no Simples
+export async function comparativoDaEmpresa({ banco, termo, eSe = null, objetivo = null, contexto = {}, acharEmpresa, hoje }) {
   const r = await estudoDaPergunta({ banco, termo, contexto, acharEmpresa });
   if (r.erro) return r.erro;
   const estudo = r.estudo;
   const { linhas: par } = await banco.ler('rt_parametros?select=valor&chave=eq.aliq_ref_2027').catch(() => ({ linhas: [] }));
   const aliq2027 = par[0] && par[0].valor ? par[0].valor : null;
-  const conta = contaDoEstudo({ ...estudo, aliq2027, hoje });
-  const pedido = eSe && typeof eSe === 'object' && Object.keys(eSe).length ? eSe : null;
-  if (!pedido) return textoDoComparativo({ estudo, conta });
-  const e2 = aplicarESe(estudo.entrada, estudo.origens, pedido, { aliq2027 });
-  const contaESe = contaDoEstudo({ ...estudo, entrada: e2.entrada, origens: e2.origens, aliq2027, hoje });
-  return textoDoESe({ estudo, conta, eSe: e2, contaESe });
+  const pedido = objetivoValido(objetivo);
+  const conta = contaDoEstudo({ ...estudo, aliq2027, hoje, objetivo: pedido });
+  const troca = eSe && typeof eSe === 'object' && Object.keys(eSe).length ? eSe : null;
+  if (!troca) return textoDoComparativo({ estudo, conta, pedido });
+  const e2 = aplicarESe(estudo.entrada, estudo.origens, troca, { aliq2027 });
+  // o "e se" fica no mesmo comparativo da conta de antes (trocar o regime de hoje não troca o caminho no meio)
+  const contaESe = contaDoEstudo({ ...estudo, entrada: e2.entrada, origens: e2.origens, aliq2027, hoje, objetivo: conta.objetivo });
+  return textoDoESe({ estudo, conta, eSe: e2, contaESe, pedido });
 }
 
 // o resumo gravado com o estudo (comparativos.resultado), numa linha — pro ver_empresa
 export function resumoDoResultado(res) {
   if (!res || !res.melhor) return 'sem resultado gravado';
   const t = (res.totais && res.totais[String(res.anoDecisao)]) || {};
-  return 'em ' + res.anoDecisao + ' o mais barato é o ' + (ROTULO_REGIME[res.melhor] || res.melhor) + ' (' + REGIMES.map(g => ROTULO_REGIME[g] + ' ' + (fin(t[g]) ? brl(t[g]) : 'fora')).join(' · ') + ')'
+  // os regimes do comparativo do estudo (o gravado antes de 11/11/2026 não diz: os três)
+  const regs = Array.isArray(res.regimes) && res.regimes.length ? REGIMES.filter(g => res.regimes.includes(g)) : REGIMES;
+  return 'em ' + res.anoDecisao + ' o mais barato é o ' + (ROTULO_REGIME[res.melhor] || res.melhor) + ' (' + regs.map(g => ROTULO_REGIME[g] + ' ' + (fin(t[g]) ? brl(t[g]) : 'fora')).join(' · ') + ')'
     + (fin(res.diferenca) ? ', ' + brl(res.diferenca) + ' a menos que o segundo' : '');
 }

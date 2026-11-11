@@ -17,6 +17,8 @@
 // O vigia do sistema (vigia_achados) entra na lista e no ver_empresa: o que o banco achou de desencontrado ou parado.
 // Desde 01/11/2026, o comparativo tributário (a ferramenta comparativo, em comparativo.js: o estudo como a tela abre e a
 // mesma conta, com o "e se" que não grava nada) e os estudos gravados (comparativos, só o resumo) — e no ver_empresa.
+// Desde 11/11/2026, o comparativo escolhido (o objetivo: só o Presumido contra o Real, ou com o Simples), o que o cadastro
+// veda no Simples, o lucro da contabilidade no Real e a precisão do estudo.
 // Desde 20/10/2026, o feed de notícias (noticias, com a fonte pelo nome e as empresas que cada uma alcança pelo nome) e a
 // revisão do honorário dos clientes (revisoes_honorario, só dos sócios) também — e as duas no ver_empresa.
 // Desde 02/11/2026, o Domínio pela ponte do PC do escritório (dominio_empresas, dominio_mensal, dominio_rodadas: a folha,
@@ -298,11 +300,11 @@ export const TABELAS = {
   // o comparativo tributário (01/11/2026): o estudo que a tela grava sozinha; aqui só o resumo — os números, a conta, o
   // porquê e o "e se" vêm da ferramenta comparativo
   comparativos: { rotulo: 'os estudos do comparativo tributário',
-    desc: 'Os estudos da tela Comparativo tributário (Simples × Presumido × Real: os últimos 12 meses e 2027 e 2028), um por empresa; a de fora do cadastro, pelo nome. Aqui só o resumo do resultado: os números, o porquê, o que falta e o "e se", pela ferramenta comparativo.',
+    desc: 'Os estudos da tela Comparativo tributário (Presumido × Real, ou com o Simples: os últimos 12 meses e 2027 e 2028), um por empresa; a de fora do cadastro, pelo nome. Aqui só o resumo do resultado: os números, o porquê, o que falta e o "e se", pela ferramenta comparativo.',
     cols: ['id', 'cliente_id', 'nome', 'resultado', 'criado_por', 'criado_em', 'atualizado_por', 'atualizado_em'],
     padrao: ['cliente_id', 'nome', 'resultado', 'atualizado_por', 'atualizado_em'],
     notas: { cliente_id: 'vazio = empresa sem cadastro (o nome dela em nome)', nome: 'só no estudo de empresa sem cadastro',
-      resultado: '{ anoDecisao, melhor (simples | presumido | real: o mais barato no ano da decisão), diferenca (R$ no ano, pro segundo mais barato), totais: { base (os últimos 12 meses), "2027", "2028": { simples, presumido, real } } } — R$ de tributos no ano; vazio = fora do Simples',
+      resultado: '{ anoDecisao, melhor (simples | presumido | real: o mais barato no ano da decisão), diferenca (R$ no ano, pro segundo mais barato), regimes (os do comparativo do estudo: sem "simples", é só Presumido × Real; o estudo de antes de 11/11/2026 não diz, e são os três), totais: { base (os últimos 12 meses), "2027", "2028": { simples, presumido, real } } } — R$ de tributos no ano; vazio = fora do Simples (ou fora do comparativo)',
       atualizado_por: 'e-mail de quem mexeu por último', criado_por: 'e-mail de quem começou o estudo' } },
   nf_documentos: { rotulo: 'as notas fiscais importadas', desc: 'Notas importadas (XML) por empresa.',
     cols: ['id', 'cliente_id', 'modelo', 'numero', 'data_emissao', 'tipo', 'natureza_operacao', 'emit_nome', 'emit_doc', 'dest_nome', 'dest_doc', 'valor_total', 'cfop_principal', 'status'],
@@ -443,22 +445,26 @@ export const DEFINICOES = [
       empresa: { type: 'string', description: 'id, nome ou CNPJ (sem: a empresa aberta na tela)' },
       termo: { type: 'string', description: 'palavras do nome do arquivo ou da pasta, sem o nome da empresa (ex.: "contrato social", "alvará", "DAS setembro 2026"); sem: os mais recentes' } } } },
   { name: 'comparativo',
-    description: 'O comparativo tributário de uma empresa (a tela Comparativo tributário, no Fiscal): os tributos a recolher no Simples Nacional, no Lucro Presumido e no Lucro Real nos últimos 12 meses (regras de 2026) e em 2027 e 2028, o mais barato de cada ano e a decisão, por tributo, o lucro em que o Real empata, as premissas no padrão que viram o resultado, o limite do Simples com as empresas dos mesmos sócios, os prazos pra mudar de regime, o que falta no estudo (as fases e as missões da tela) e de onde veio cada número. Lê o estudo gravado na tela (sem ele, os números do sistema, como a tela ao abrir a empresa) e faz a mesma conta da tela. Com e_se, refaz com os números trocados — só na resposta, nada é gravado. Sem "empresa", a aberta na tela.',
+    description: 'O comparativo tributário de uma empresa (a tela Comparativo tributário, no Fiscal): os tributos a recolher no Lucro Presumido e no Lucro Real — e, quando o comparativo é com os três, no Simples Nacional — nos últimos 12 meses (regras de 2026) e em 2027 e 2028, o mais barato de cada ano e a decisão, por tributo, o lucro em que o Real empata (e se o lucro da conta é o da contabilidade ou estimado), as premissas no padrão que viram o resultado, o que o cadastro veda no Simples (CNAE impeditivo, sócio pessoa jurídica, natureza jurídica), o limite do Simples com as empresas dos mesmos sócios, os prazos pra mudar de regime, a precisão do estudo (o que falta, com o efeito de cada item, e as fases e as missões da tela) e de onde veio cada número. Lê o estudo gravado na tela (sem ele, os números do sistema) e faz a mesma conta da tela, no comparativo escolhido nela (sem escolha, o que o sistema sugere: a empresa do Presumido ou do Real, ou com o Simples vedado, compara só o Presumido com o Real). Com e_se, refaz com os números trocados — só na resposta, nada é gravado. Sem "empresa", a aberta na tela.',
     input_schema: { type: 'object', properties: {
       empresa: { type: 'string', description: 'id, nome ou CNPJ (sem: a empresa ou o estudo aberto na tela); estudo de empresa sem cadastro: o nome dele' },
+      objetivo: { type: 'string', enum: ['presumido_real', 'todos'], description: 'opcional: qual comparativo — presumido_real (só o Lucro Presumido contra o Lucro Real) ou todos (com o Simples Nacional). Sem: o escolhido na tela ou, sem escolha, o que o sistema sugere. Use quando pedirem o outro ("e no Simples?", "só Presumido e Real")' },
       e_se: { type: 'object', description: 'opcional: só os números que a pessoa quer trocar. Valores em R$ dos 12 meses (o mensal × 12); percentuais como a equipe fala (17 = 17%)',
         properties: {
           receita_12_meses: { type: 'number', description: 'a receita dos 12 meses: as compras e as despesas acompanham (o mesmo % da receita); a folha e o pró-labore ficam' },
           folha_12_meses: { type: 'number', description: 'salários, 13º e férias dos 12 meses' },
           pro_labore_12_meses: { type: 'number' },
           compras_12_meses: { type: 'number', description: 'mercadorias e insumos dos 12 meses' },
-          outras_despesas_12_meses: { type: 'number', description: 'o resto dos custos (aluguel, sistemas, contador, manutenção…): fazem o lucro do Real' },
-          margem_lucro_real: { type: 'number', description: 'o lucro do Real antes do IR, em % da receita do ano da decisão: a conta acha as outras despesas que dão esse lucro' },
+          outras_despesas_12_meses: { type: 'number', description: 'o resto dos custos (aluguel, sistemas, contador, manutenção…): fazem o lucro estimado do Real (com o lucro da contabilidade no estudo, não entram)' },
+          lucro_contabil_12_meses: { type: 'number', description: 'o lucro da contabilidade nos 12 meses, antes do IRPJ e da CSLL (a DRE; prejuízo, negativo): o lucro do Real sai dele, com os tributos de hoje trocados pelos do Real' },
+          margem_lucro_real: { type: 'number', description: 'o lucro do Real antes do IR, em % da receita do ano da decisão: a conta acha as outras despesas (ou, com o lucro da contabilidade no estudo, o lucro contábil) que dão esse lucro' },
           crescimento_receita: { type: 'number', description: '% ao ano nas projeções (2027 e 2028)' },
           crescimento_folha: { type: 'number', description: '% ao ano nas projeções' },
           credito_icms_compras: { type: 'number', description: '% do crédito de ICMS das compras' },
           icms_vendas: { type: 'number', description: '% do ICMS das vendas (todas as atividades com ICMS)' },
           iss: { type: 'number', description: '% do ISS (todas as atividades com ISS)' },
+          vendas_aliquota_zero_pis_cofins: { type: 'number', description: '% das vendas de mercadoria com alíquota zero de PIS/Cofins (a Lei 10.925/2004: óleos vegetais, arroz, feijão, carnes, leite, higiene…): sai do PIS/Cofins cheio do Presumido e do Real até 2026 (fora da Cesta Básica Nacional, paga 10% da alíquota desde abril de 2026, LC 224/2025); no Simples, paga no DAS' },
+          aliquota_zero_da_cesta_basica: { type: 'boolean', description: 'true = os produtos com alíquota zero são da Cesta Básica Nacional de Alimentos (LC 214, Anexos I e XV: arroz, feijão, leite, carnes, farinhas, hortifrúti, ovos…) e seguem com zero em 2026; false = não são (óleos vegetais, higiene, insumos agropecuários…) e pagam 10% da alíquota desde abril de 2026 (LC 224/2025)' },
           compras_fornecedor_simples: { type: 'number', description: '% das compras feitas de fornecedor do Simples' },
           rat: { type: 'number', description: 'o RAT, de 1 a 3 (%)' },
           sem_empresas_dos_socios: { type: 'boolean', description: 'tirar da soma do limite do Simples as outras empresas dos sócios' },
@@ -1837,9 +1843,11 @@ export function criarFerramentas({ banco, contexto = {}, usuario = {}, hoje, ago
   // busca com palavras que achou algo vale mais que "os mais recentes", que vale mais que a busca que não achou nada
   // o comparativo tributário: o estudo como a tela abre e a mesma conta (comparativo.js); com o "e se", os números trocados
   // só na conta — nada é gravado
+  // objetivo (11/11/2026): o comparativo pedido — só o Presumido contra o Real, ou com o Simples
   async function comparativo(e) {
     const x = e && typeof e === 'object' ? e : {};
-    return comparativoDaEmpresa({ banco, termo: x.empresa, eSe: x.e_se && typeof x.e_se === 'object' && !Array.isArray(x.e_se) ? x.e_se : null, contexto, acharEmpresa, hoje });
+    return comparativoDaEmpresa({ banco, termo: x.empresa, eSe: x.e_se && typeof x.e_se === 'object' && !Array.isArray(x.e_se) ? x.e_se : null,
+      objetivo: typeof x.objetivo === 'string' ? x.objetivo : null, contexto, acharEmpresa, hoje });
   }
 
   // ---------- os boletos × o Conta Azul (05/11/2026) ----------

@@ -4,7 +4,7 @@
 // Leis 9.718, 10.637 e 10.833; Lei 8.212; LC 224/2025; Lei 14.973/2024; LC 214 e Res. CGSN 190/2026), escritas
 // do lado de cada caso. Tolerância: R$ 0,01 por linha. Se não bater, o motor está errado, não o teste.
 
-import { comparar, calcularAno, normalizar, testarPremissas, irpjCsllReal, fraseDaDecisao, excessosLc224 } from '../assets/js/comparativo-motor.js';
+import { comparar, calcularAno, normalizar, testarPremissas, irpjCsllReal, fraseDaDecisao, excessosLc224, OBJETIVOS, regimesDoObjetivo, REGIMES } from '../assets/js/comparativo-motor.js';
 
 let falhas = 0, total = 0;
 function igual(nome, esperado, obtido, tol = 0.01) {
@@ -358,6 +358,177 @@ verdade('sem receita: erro em português', /receita/.test(erro || ''));
 erro = null;
 try { comparar({ atividades: [{ tipo: 'comercio', receita: 1000 }], mix: { cheia: 50, red60: 20 } }); } catch (e) { erro = e.message; }
 verdade('mix que não soma 100: erro', /mix/.test(erro || ''));
+
+// ----------------------------------------------------------------------------------------------------------------
+{
+console.log('=== S · qual comparativo: só o Presumido contra o Real (11/11/2026) ===');
+verdade('os dois comparativos e os regimes de cada um', Object.keys(OBJETIVOS).join() === 'presumido_real,todos' && regimesDoObjetivo('presumido_real').join() === 'presumido,real'
+  && regimesDoObjetivo('todos').join() === REGIMES.join() && regimesDoObjetivo('qualquer').join() === REGIMES.join() && regimesDoObjetivo(null).join() === REGIMES.join());
+verdade('sem dizer os regimes, os três (como antes)', normalizar({ atividades: [{ tipo: 'comercio', receita: 1000 }] }).regimes.join() === REGIMES.join());
+// comércio do Presumido, R$ 1 milhão, compras de R$ 500 mil (ICMS 17% nas vendas, crédito de 12% das compras), sem folha
+const S = { atividades: [{ tipo: 'comercio', receita: 1000000, aliqIcms: 17 }], compras: 500000, aliqCreditoIcms: 12, regimeAtual: 'presumido', regimes: ['presumido', 'real'] };
+const cS = comparar(S), s26 = cS.anos[0], s27 = cS.anos[1];
+verdade('o Simples fica fora da comparação: sem conta, e não "fora do limite"', s27.simples.disponivel === false && s27.simples.fora === true && s27.simples.total === null && s27.simples.itens.length === 0);
+verdade('o mais barato e a ordem só entre os dois', s27.ordem.join() === [...s27.ordem].filter(g => g !== 'simples').join() && s27.ordem.length === 2 && !('simples' in cS.decisao.real.empate));
+verdade('a frase não fala do Simples', !/Simples/.test(fraseDaDecisao(cS)));
+const tS = testarPremissas(S, [{ campo: 'aliqCreditoIcms', valores: [7, 17], rotulo: 'o crédito de ICMS das compras' }])[0];
+verdade('nos testes das premissas, o Simples segue sem conta', tS.variantes.every(v => v.totais.simples === null && v.totais.presumido > 0 && v.totais.real > 0));
+// 2026: ICMS 17% × 1.000.000 − 12% × 500.000 = 110.000; PIS/Cofins do Presumido 3,65% × (1.000.000 − 170.000) = 30.295
+igual('S Presumido 2026: PIS + Cofins (3,65% sem o ICMS na base)', 30295, item(s26.presumido, 'PIS') + item(s26.presumido, 'Cofins'));
+igual('S Presumido 2026: ICMS', 110000, item(s26.presumido, 'ICMS'));
+// o lucro estimado do Real: 1.000.000 − 500.000 − ICMS 110.000 − PIS/Cofins do Real [9,25% × 830.000 − 9,25% × (500.000 − 60.000)] 36.075
+igual('S Real 2026: lucro estimado', 353925, s26.real.lucro);
+verdade('S sem o lucro da contabilidade: estimado, sem a troca', s26.real.lucroInformado === false && s26.real.trocaTributos === null && cS.decisao.real.informado === false);
+
+console.log('=== T · o lucro do Real pela contabilidade (a DRE dos 12 meses) ===');
+// a DRE do Presumido dá R$ 100.000 antes do IRPJ e da CSLL. Ela já descontou os tributos de hoje: PIS/Cofins 30.295 + ICMS
+// 110.000 = 140.295. No Real de 2026: PIS/Cofins 36.075 + ICMS 110.000 = 146.075. A troca: 140.295 − 146.075 = −5.780
+const cT = comparar({ ...S, lucroContabil: 100000 }), t26 = cT.anos[0], t27 = cT.anos[1];
+igual('T Real 2026: a troca dos tributos de hoje pelos do Real', -5780, t26.real.trocaTributos);
+igual('T Real 2026: lucro = 100.000 − 5.780', 94220, t26.real.lucro);
+igual('T Real 2026: IRPJ 15%', 14133, item(t26.real, 'IRPJ'));
+igual('T Real 2026: CSLL 9%', 8479.8, item(t26.real, 'CSLL'));
+verdade('T o lucro estimado fica guardado, e a conta diz que o lucro é o informado', Math.abs(t26.real.lucroEstimado - 353925) < 0.01 && t26.real.lucroInformado === true && cT.decisao.real.informado === true && Math.abs(cT.decisao.real.estimado - t27.real.lucroEstimado) < 0.01);
+// 2027: sai o PIS/Cofins e entra a CBS/IBS, igual nos dois regimes — CBS 11,2% × (830.000 − 440.000) = 43.680; IBS 0,1% = 390.
+// Os tributos do Real que não são IR: 110.000 + 44.070 = 154.070. A troca: 140.295 − 154.070 = −13.775; lucro = 86.225
+igual('T Real 2027: CBS + IBS (iguais aos do Presumido)', 44070, item(t27.real, 'CBS') + item(t27.real, 'IBS'));
+igual('T Presumido 2027: CBS + IBS', 44070, item(t27.presumido, 'CBS') + item(t27.presumido, 'IBS'));
+igual('T Real 2027: a troca', -13775, t27.real.trocaTributos);
+igual('T Real 2027: lucro', 86225, t27.real.lucro);
+igual('T Real 2027: IRPJ + CSLL (24% de 86.225)', 20694, t27.real.irpj + t27.real.csll);
+// o Presumido de 2027: IRPJ 15% × 8% × 1.000.000 = 12.000; CSLL 9% × 12% × 1.000.000 = 10.800
+igual('T Presumido 2027: IRPJ + CSLL', 22800, t27.presumido.irpj + t27.presumido.csll);
+igual('T em 2027 a diferença entre os dois é só o IRPJ e a CSLL: 22.800 − 20.694', 2106, t27.presumido.total - t27.real.total);
+verdade('T o Real sai mais barato em 2027', cT.decisao.melhor === 'real' && cT.decisao.segundo === 'presumido' && Math.abs(cT.decisao.diferenca - 2106) < 0.01);
+// o empate: 24% × L = 22.800 → L = 95.000
+igual('T o lucro em que o Real empata com o Presumido em 2027', 95000, cT.decisao.real.empate.presumido.lucro);
+verdade('T o aviso diz de onde veio o lucro e o que fica fora', cT.avisos.some(a => /^O lucro do Real parte do lucro da contabilidade \(R\$\s100\.000,00 nos 12 meses\), trocando os tributos de hoje pelos do Real\. Fora da conta: a compensação de prejuízo fiscal/.test(a))
+  && !cT.avisos.some(a => /lucro estimado|outras despesas/.test(a)));
+// as adições menos as exclusões somam no lucro
+igual('T com R$ 10.000 de adições: lucro de 2027', 96225, comparar({ ...S, lucroContabil: 100000, ajustesLalur: 10000 }).anos[1].real.lucro);
+// prejuízo na contabilidade: sem IRPJ nem CSLL
+const cPrej = comparar({ ...S, lucroContabil: -50000 });
+verdade('T prejuízo na DRE: sem IRPJ e CSLL no Real, com o aviso', cPrej.anos[1].real.irpj === 0 && cPrej.anos[1].real.csll === 0 && cPrej.anos[1].real.lucro < 0 && cPrej.anos[1].real.avisos.some(a => /^Prejuízo de /.test(a)));
+// o zero informado é lucro zero, não "vazio"
+verdade('T o zero informado vale (lucro zero na DRE)', comparar({ ...S, lucroContabil: 0 }).anos[0].real.lucroInformado === true && normalizar({ ...S, lucroContabil: '' }).lucroContabil === null && normalizar({ ...S, lucroContabil: null }).lucroContabil === null);
+// o regime de hoje é o Real: a DRE já é a do Real — em 2026 o lucro entra como veio; em 2027 troca o PIS/Cofins pela CBS/IBS
+const cR = comparar({ ...S, regimeAtual: 'real', lucroContabil: 100000 });
+igual('T hoje no Real: em 2026 a troca é zero', 0, cR.anos[0].real.trocaTributos);
+igual('T hoje no Real: o lucro de 2026 é o da DRE', 100000, cR.anos[0].real.lucro);
+igual('T hoje no Real: em 2027, 146.075 − 154.070', -7995, cR.anos[1].real.trocaTributos);
+// o regime de hoje é o Simples: sai o DAS inteiro (e o que ele paga fora) e entram os tributos do Real
+const cSi = comparar({ ...S, regimes: REGIMES, regimeAtual: 'simples', lucroContabil: 100000 });
+igual('T hoje no Simples: a troca de 2026 é o Simples inteiro menos os tributos do Real que não são IR', cSi.anos[0].simples.total - 146075, cSi.anos[0].real.trocaTributos);
+igual('T hoje no Simples: o lucro de 2026', 100000 + cSi.anos[0].simples.total - 146075, cSi.anos[0].real.lucro);
+// sem o regime de hoje: o lucro entra como veio, com o aviso
+const cN = comparar({ ...S, regimeAtual: null, lucroContabil: 100000 });
+verdade('T sem o regime de hoje: o lucro entra como veio, sem a troca, com o aviso', cN.anos[1].real.lucro === 100000 && cN.anos[1].real.trocaTributos === null && cN.anos[1].real.avisos.some(a => /^Sem o regime de hoje, o lucro da contabilidade entrou como veio/.test(a)));
+// hoje no Simples, mas com a receita acima do limite: a conta do Simples da base não fecha, e a troca não tem de onde sair
+const cLim = comparar({ atividades: [{ tipo: 'comercio', receita: 6000000, aliqIcms: 17 }], compras: 3000000, regimeAtual: 'simples', lucroContabil: 300000, regimes: ['presumido', 'real'] });
+verdade('T hoje no Simples acima do limite: o lucro entra como veio, com o aviso próprio', cLim.anos[0].real.lucro === 300000 && cLim.anos[0].real.trocaTributos === null
+  && cLim.anos[0].real.avisos.some(a => /^A conta do Simples dos 12 meses não fecha \(a receita passa do limite\): o lucro da contabilidade entrou como veio/.test(a)));
+// com crescimento: o lucro cresce com a receita; a folha que não cresce no mesmo ritmo entra pela diferença.
+// folha de 100.000, receita +10% ao ano, folha sem crescimento: em 2027 a DRE × 1,1 teria descontado 10% a mais de folha
+// com o FGTS (10.000 × 1,08 = 10.800), que volta pro lucro
+const G = { ...S, folha: 100000, lucroContabil: 100000, crescimentoReceita: 10, crescimentoFolha: 0 };
+const g27 = comparar(G).anos[1];
+igual('T com crescimento: lucro de 2027 = 100.000 × 1,1 + a troca + 10.800', 110000 + g27.real.trocaTributos + 10800, g27.real.lucro);
+verdade('T com crescimento, a troca usa os tributos de hoje × 1,1', Math.abs(g27.real.trocaTributos - ((comparar(G).anos[0].presumido.total - comparar(G).anos[0].presumido.irpj - comparar(G).anos[0].presumido.csll) * 1.1 - g27.real.outros)) < 0.01);
+
+console.log('=== U · o lucro estimado que não serve ===');
+// as compras, as despesas com nota e a folha passam da receita: a empresa formou estoque, investiu ou teve prejuízo
+const U = { atividades: [{ tipo: 'industria', receita: 600000, aliqIcms: 17 }], compras: 850000, despesasCredito: 300000, proLabore: 20000, regimeAtual: 'presumido', regimes: ['presumido', 'real'] };
+const cU = comparar(U);
+verdade('U o aviso: os custos passam da receita, e o lucro estimado não serve pra decidir', cU.avisos.some(a => /^As compras, as despesas com nota e a folha somam R\$\s1\.170\.000,00, mais que a receita de R\$\s600\.000,00: a empresa formou estoque, investiu ou teve prejuízo\. O lucro estimado do Real não serve pra decidir — informe o lucro da contabilidade/.test(a)));
+verdade('U sem o aviso das outras despesas (o problema é outro)', !cU.avisos.some(a => /^Sem as outras despesas/.test(a)));
+verdade('U com o lucro da contabilidade, o aviso some', !comparar({ ...U, lucroContabil: 30000 }).avisos.some(a => /não serve pra decidir/.test(a)));
+verdade('U a indústria sem o Simples na comparação: o aviso do IPI não fala do DAS nem do Anexo I', cU.avisos.some(a => /^Indústria: em 2026 o IPI do Presumido e do Real é o informado na atividade; em 2027 vira zero/.test(a) && !/Simples|Anexo I/.test(a))
+  && comparar({ ...U, regimes: REGIMES }).avisos.some(a => /no Simples ele está no DAS/.test(a) && /passa ao Anexo I/.test(a)));
+verdade('U com custos abaixo da receita e sem as outras despesas: o aviso de sempre', comparar({ ...S }).avisos.some(a => /^Sem as outras despesas/.test(a)));
+
+console.log('=== Z · a venda com alíquota zero de PIS/Cofins (Lei 10.925/2004), separada da revenda monofásica, e a LC 224 ===');
+// DA CESTA BÁSICA NACIONAL (LC 214, Anexos I e XV: a LC 224 não alcança). Toda a venda com alíquota zero: o PIS/Cofins de
+// 2026 zera no Presumido e no Real (a compra também veio sem PIS/Cofins, sem crédito); o ICMS não muda
+const Z = { ...S, atividades: [{ ...S.atividades[0], pctAliqZero: 100, aliqZeroCesta: true }] };
+const cZ = comparar(Z), z26 = cZ.anos[0], z27 = cZ.anos[1];
+igual('Z da cesta básica: Presumido 2026, PIS + Cofins zerados', 0, item(z26.presumido, 'PIS') + item(z26.presumido, 'Cofins'));
+igual('Z da cesta básica: Real 2026, PIS + Cofins zerados', 0, item(z26.real, 'PIS') + item(z26.real, 'Cofins'));
+igual('Z o ICMS não muda', 110000, item(z26.presumido, 'ICMS'));
+// o lucro estimado do Real em 2026: 1.000.000 − 500.000 − 110.000 de ICMS = 390.000
+igual('Z da cesta básica: Real 2026, lucro estimado sem o PIS/Cofins', 390000, z26.real.lucro);
+// 2027: a CBS e o IBS não dependem da alíquota zero de hoje — 44.070, como na base
+igual('Z 2027: CBS + IBS iguais aos da base', 44070, item(z27.presumido, 'CBS') + item(z27.presumido, 'IBS'));
+igual('Z 2027: o Presumido não muda (o PIS/Cofins já acabou)', s27.presumido.total, z27.presumido.total);
+// metade com alíquota zero: a base é (1.000.000 − 170.000) × 50% = 415.000 → Presumido 3,65% = 15.147,50
+const cZm = comparar({ ...S, atividades: [{ ...S.atividades[0], pctAliqZero: 50, aliqZeroCesta: true }] });
+igual('Z da cesta básica, metade: PIS + Cofins do Presumido', 15147.5, item(cZm.anos[0].presumido, 'PIS') + item(cZm.anos[0].presumido, 'Cofins'));
+// no Real: débito 9,25% × 415.000 = 38.387,50; crédito 9,25% × (500.000 − 60.000 de ICMS) × 50% = 20.350 → 18.037,50
+igual('Z da cesta básica, metade: PIS + Cofins do Real', 18037.5, item(cZm.anos[0].real, 'PIS') + item(cZm.anos[0].real, 'Cofins'));
+// com a DRE (R$ 100.000): os tributos de hoje são só o ICMS (110.000). Em 2026 o Real também só tem o ICMS: a troca é zero.
+// Em 2027 entra a CBS/IBS: 110.000 − 154.070 = −44.070 → lucro de 55.930 → IRPJ + CSLL de 24% = 13.423,20
+const cZd = comparar({ ...Z, lucroContabil: 100000 });
+igual('Z da cesta básica, com a DRE: a troca de 2026 é zero', 0, cZd.anos[0].real.trocaTributos);
+igual('Z da cesta básica, com a DRE: a troca de 2027', -44070, cZd.anos[1].real.trocaTributos);
+igual('Z da cesta básica, com a DRE: o lucro do Real de 2027', 55930, cZd.anos[1].real.lucro);
+igual('Z da cesta básica, com a DRE: IRPJ + CSLL do Real de 2027 (24% de 55.930)', 13423.2, cZd.anos[1].real.irpj + cZd.anos[1].real.csll);
+
+// FORA DA CESTA BÁSICA NACIONAL (o padrão: o óleo vegetal, a higiene…): desde 01/04/2026 a alíquota zero paga 10% da
+// alíquota padrão (LC 224/2025, art. 4º, §4º, I) — de abril a dezembro, 9 dos 12 meses de receita igual
+const L = { ...S, atividades: [{ ...S.atividades[0], pctAliqZero: 100 }] };
+const cL = comparar(L), l26 = cL.anos[0], l27 = cL.anos[1];
+// Presumido: PIS 0,065% × 830.000 × 9/12 = 404,625; Cofins 0,3% × 830.000 × 9/12 = 1.867,50
+igual('Z LC 224: Presumido 2026, PIS de 0,065% de abril a dezembro', 404.63, item(l26.presumido, 'PIS'));
+igual('Z LC 224: Presumido 2026, Cofins de 0,3% de abril a dezembro', 1867.5, item(l26.presumido, 'Cofins'));
+// Real: 0,925% × 830.000 × 9/12 = 5.758,125, sem crédito (a compra veio sem PIS/Cofins e não há despesa com crédito)
+igual('Z LC 224: Real 2026, PIS + Cofins de 0,925% de abril a dezembro', 5758.13, item(l26.real, 'PIS') + item(l26.real, 'Cofins'));
+// o lucro estimado do Real em 2026: 1.000.000 − 500.000 − 110.000 − 5.758,125 = 384.241,875
+igual('Z LC 224: Real 2026, lucro estimado', 384241.88, l26.real.lucro);
+igual('Z LC 224: em 2027 nada muda (o PIS/Cofins acabou)', s27.presumido.total, l27.presumido.total);
+// metade com alíquota zero: 15.147,50 da parte tributada + 0,365% × 415.000 × 9/12 = 1.136,0625 → 16.283,5625
+const cLm = comparar({ ...S, atividades: [{ ...S.atividades[0], pctAliqZero: 50 }] });
+igual('Z LC 224, metade: PIS + Cofins do Presumido', 16283.56, item(cLm.anos[0].presumido, 'PIS') + item(cLm.anos[0].presumido, 'Cofins'));
+// no Real: débito 38.387,50 + 0,925% × 415.000 × 9/12 = 2.879,0625; crédito 20.350 → 20.916,5625
+igual('Z LC 224, metade: PIS + Cofins do Real', 20916.56, item(cLm.anos[0].real, 'PIS') + item(cLm.anos[0].real, 'Cofins'));
+// com a revenda monofásica junto: 30% + 50% = 80% sem o PIS/Cofins cheio → 3,65% × 830.000 × 20% = 6.059; a LC 224 pega
+// só os 50% com alíquota zero (a revenda monofásica não é benefício): + 1.136,0625 → 7.195,0625
+igual('Z LC 224, 30% monofásica + 50% com alíquota zero: PIS + Cofins do Presumido', 7195.06,
+  (c => item(c.anos[0].presumido, 'PIS') + item(c.anos[0].presumido, 'Cofins'))(comparar({ ...S, atividades: [{ ...S.atividades[0], pctMonofasico: 30, pctAliqZero: 50 }] })));
+igual('Z só a revenda monofásica: a LC 224 não pega (3,65% × 830.000 × 50%)', 15147.5,
+  (c => item(c.anos[0].presumido, 'PIS') + item(c.anos[0].presumido, 'Cofins'))(comparar({ ...S, atividades: [{ ...S.atividades[0], pctMonofasico: 50 }] })));
+// a receita toda de janeiro a março (antes da LC 224 valer pro PIS/Cofins): zero; toda de abril em diante: 0,365% × 830.000
+const jan = [400000, 300000, 300000, 0, 0, 0, 0, 0, 0, 0, 0, 0], abr = [0, 0, 0, 400000, 300000, 300000, 0, 0, 0, 0, 0, 0];
+const pcP = c => item(c.anos[0].presumido, 'PIS') + item(c.anos[0].presumido, 'Cofins');
+igual('Z LC 224: a receita toda de janeiro a março fica com zero', 0, pcP(comparar({ ...L, meses: jan })));
+igual('Z LC 224: a receita toda de abril em diante paga 0,365% × 830.000', 3029.5, pcP(comparar({ ...L, meses: abr })));
+// com a DRE (R$ 100.000): os tributos de hoje são 110.000 + 2.272,125 = 112.272,125; os do Real de 2026, 110.000 + 5.758,125:
+// a troca é −3.486. Em 2027: 112.272,125 − 154.070 = −41.797,875 → lucro de 58.202,125 → 24% = 13.968,51
+const cLd = comparar({ ...L, lucroContabil: 100000 });
+igual('Z LC 224, com a DRE: a troca de 2026', -3486, cLd.anos[0].real.trocaTributos);
+igual('Z LC 224, com a DRE: a troca de 2027', -41797.88, cLd.anos[1].real.trocaTributos);
+igual('Z LC 224, com a DRE: o lucro do Real de 2027', 58202.13, cLd.anos[1].real.lucro);
+igual('Z LC 224, com a DRE: IRPJ + CSLL do Real de 2027 (24%)', 13968.51, cLd.anos[1].real.irpj + cLd.anos[1].real.csll);
+verdade('Z as duas juntas travam em 100%; em serviço (ISS) não vale; fora da faixa, entra na faixa; a parte que a LC 224 alcança', normalizar({ ...S, atividades: [{ ...S.atividades[0], pctMonofasico: 70, pctAliqZero: 60 }] }).atividades[0].pctSemPisCofins === 100
+  && normalizar({ ...S, atividades: [{ ...S.atividades[0], pctMonofasico: 70, pctAliqZero: 60 }] }).atividades[0].pctZeroLc224 === 30
+  && normalizar({ atividades: [{ tipo: 'servico', receita: 1000, pctAliqZero: 50 }] }).atividades[0].pctSemPisCofins === 0 && normalizar({ atividades: [{ tipo: 'servico', receita: 1000, pctAliqZero: 50 }] }).atividades[0].pctZeroLc224 === 0
+  && normalizar({ ...S, atividades: [{ ...S.atividades[0], pctAliqZero: 250 }] }).atividades[0].pctAliqZero === 100 && normalizar(S).atividades[0].pctAliqZero === 0
+  && normalizar(Z).atividades[0].pctZeroLc224 === 0 && normalizar(L).atividades[0].pctZeroLc224 === 100 && normalizar(L).atividades[0].aliqZeroCesta === false);
+// no Simples, a alíquota zero não vale (LC 123, art. 24, §1º): o DAS é o mesmo; só a revenda monofásica sai dele
+const sB = { atividades: [{ tipo: 'comercio', receita: 1000000 }], compras: 500000 };
+const dasB = calcularAno(sB, 2026).simples.das;
+igual('Z no Simples, a alíquota zero não muda o DAS', dasB, calcularAno({ ...sB, atividades: [{ ...sB.atividades[0], pctAliqZero: 100 }] }, 2026).simples.das);
+verdade('Z no Simples, a revenda monofásica tira o PIS/Cofins do DAS', calcularAno({ ...sB, atividades: [{ ...sB.atividades[0], pctMonofasico: 100 }] }, 2026).simples.das < dasB - 1);
+// os avisos: o do crédito (Presumido e Real) e o de que no Simples a alíquota zero paga no DAS
+verdade('Z o aviso do que a conta supõe do crédito, com as leis', cZ.avisos.some(a => /^Vendas sem PIS\/Cofins \(a revenda monofásica e a venda com alíquota zero\): em 2026 a conta tira o débito dessas vendas/.test(a) && /Lei 11\.033\/2004, art\. 17; Lei 11\.116\/2005, art\. 16/.test(a))
+  && !cZ.avisos.some(a => /^No Simples, a alíquota zero/.test(a)));
+verdade('Z o aviso da LC 224 na alíquota zero de fora da cesta básica (com os 0,365% e os 0,925%), e não na da cesta nem na revenda monofásica',
+  cL.avisos.some(a => /^Alíquota zero de PIS\/Cofins fora da Cesta Básica Nacional: desde 01\/04\/2026 essas vendas pagam 10% da alíquota padrão — 0,365% no Presumido e 0,925% no Real \(LC 224\/2025, art\. 4º, §4º, I; IN RFB 2\.305\/2025, art\. 7º\)/.test(a) && /marque na atividade: seguem com alíquota zero\.$/.test(a))
+  && !cZ.avisos.some(a => /^Alíquota zero de PIS\/Cofins fora da Cesta/.test(a)) && !comparar({ ...S, atividades: [{ ...S.atividades[0], pctMonofasico: 50 }] }).avisos.some(a => /^Alíquota zero de PIS\/Cofins fora da Cesta/.test(a)));
+verdade('Z com o Simples na comparação: o aviso de que no Simples a alíquota zero paga no DAS', comparar({ ...Z, regimes: REGIMES }).avisos.some(a => /^No Simples, a alíquota zero de PIS\/Cofins não vale \(LC 123, art\. 24, §1º\): a venda com alíquota zero paga PIS\/Cofins no DAS\. Só a revenda monofásica sai dele\.$/.test(a)));
+verdade('Z só com a revenda monofásica: o aviso do crédito, sem o do Simples', (av => av.some(a => /^Vendas sem PIS\/Cofins/.test(a)) && !av.some(a => /^No Simples, a alíquota zero/.test(a)))(comparar({ ...S, regimes: REGIMES, atividades: [{ ...S.atividades[0], pctMonofasico: 50 }] }).avisos));
+verdade('Z as duas somando mais de 100%: o aviso de que a conta usou 100%', comparar({ ...S, atividades: [{ ...S.atividades[0], pctMonofasico: 70, pctAliqZero: 60 }] }).avisos.some(a => /^A revenda monofásica e a venda com alíquota zero somam mais de 100% das vendas de mercadoria: a conta usou 100%/.test(a))
+  && !comparar({ ...S, atividades: [{ ...S.atividades[0], pctMonofasico: 40, pctAliqZero: 60 }] }).avisos.some(a => /somam mais de 100%/.test(a)));
+verdade('Z sem venda sem PIS/Cofins, nenhum dos dois avisos', !cS.avisos.some(a => /^Vendas sem PIS\/Cofins|^No Simples, a alíquota zero/.test(a)));
+}
 
 console.log('\n' + (total - falhas) + ' de ' + total + ' conferências ok' + (falhas ? ' — ' + falhas + ' FALHA(S)' : ''));
 process.exit(falhas ? 1 : 0);

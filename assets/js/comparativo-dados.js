@@ -8,7 +8,7 @@
 // tests/comparativo-dados.test.mjs.
 // ============================================================
 
-import { TIPOS } from './comparativo-motor.js';
+import { TIPOS, ROTULO_REGIME, ehObjetivo } from './comparativo-motor.js';
 import { digitosCnae } from './dominio-relatorios.js';
 import { diaUtil, somaDias, fmtData } from './rescisao-datas.js';
 
@@ -17,6 +17,7 @@ const MES_CURTO = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set'
 export const rotuloComp = c => c ? MES_CURTO[Number(String(c).slice(5, 7)) - 1] + '/' + String(c).slice(2, 4) : '';
 const brl = v => (Number(v) || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 const pct1 = v => (Number(v) || 0).toLocaleString('pt-BR', { maximumFractionDigits: 1 });
+const pct2 = v => (Number(v) || 0).toLocaleString('pt-BR', { maximumFractionDigits: 2 });
 
 // ---------- de onde veio ----------
 export const FONTES = {
@@ -45,6 +46,24 @@ export function regimeDoCadastro(r) {
   if (t.includes('mei')) return 'mei';
   return t ? 'outro' : null;
 }
+// ---------- qual comparativo ----------
+// Pedido do Samuel, 11/11/2026: a tela abre perguntando qual comparativo a equipe quer fazer, e o sistema sugere um. A
+// empresa do regime geral (Presumido ou Real) e a que não pode optar pelo Simples (vedacoes: vedacoesDoSimples, de
+// simples-vedacoes.js) comparam o Presumido com o Real; a do Simples, a do MEI e a sem regime, os três.
+export function objetivoSugerido(regimeAtual, vedacoes = null) {
+  if (vedacoes && vedacoes.vedado) return 'presumido_real';
+  return regimeAtual === 'presumido' || regimeAtual === 'real' ? 'presumido_real' : 'todos';
+}
+// o porquê da sugestão, numa frase (a tela mostra ao lado da opção sugerida)
+export function porQueDoObjetivo(regimeAtual, vedacoes = null) {
+  const hoje = ROTULO_REGIME[regimeAtual] ? 'A empresa está no ' + ROTULO_REGIME[regimeAtual] : null;
+  if (vedacoes && vedacoes.vedado) return (hoje ? hoje + ' e o' : 'O') + ' Simples está vedado pra ela.';
+  if (regimeAtual === 'presumido' || regimeAtual === 'real') return hoje + ': a escolha de todo ano é entre o Presumido e o Real.';
+  if (regimeAtual === 'simples') return hoje + ': ficar ou sair é a pergunta.';
+  return 'Sem o regime de hoje no cadastro, a conta mostra os três.';
+}
+export const objetivoValido = o => (ehObjetivo(o) ? o : null);
+
 const POR_ANEXO = { I: 'comercio', II: 'industria', III: 'servico', IV: 'servico_iv', V: 'servico_r' };
 export const tipoPeloAnexo = anexo => POR_ANEXO[String(anexo || '').trim().toUpperCase()] || null;
 // pelo CNAE principal, só o grosso — o anexo certo depende da atividade de cada receita (LC 123, art. 18, §§4º a 5º-I):
@@ -131,7 +150,7 @@ const periodo = s => s.n === 12 ? rotuloComp(s.de) + ' a ' + rotuloComp(s.ate) :
 // (o bloco não foi lido, a folha de empresa inativa lá, a apuração do Simples de quem não apura): nunca vira zero.
 export const CAMPOS_PONTE = ['receita_bruta', 'receita_mercadorias', 'receita_servicos', 'receita_simples', 'receita_st', 'receita_monofasica', 'receita_exportacao',
   'receita_anexo_1', 'receita_anexo_2', 'receita_anexo_3', 'receita_anexo_4', 'receita_anexo_5', 'compras', 'servicos_tomados', 'ativo_e_consumo',
-  'salarios', 'decimo_terceiro', 'pro_labore_valor'];
+  'salarios', 'decimo_terceiro', 'pro_labore_valor', 'base_inss', 'inss_rat', 'inss_terceiros'];
 export function mesesDaPonte(linhas) {
   const por = new Map();
   (linhas || []).forEach(l => {
@@ -315,6 +334,9 @@ export function entradaDoSistema({ cliente = null, caso = null, fatorR = [], pgd
     }
   }
   atividades.forEach((a, i) => { if (TIPOS[a.tipo].tributo === 'iss') origens['atividades.' + i + '.aliqIss'] = origem('padrao', 'padrão: 3% — confira', 'a alíquota do ISS da atividade no município'); });
+  // a venda de mercadoria com alíquota zero de PIS/Cofins: nenhum sistema traz ainda (a apuração do PIS/Cofins do Domínio
+  // diria) — padrão a conferir. A revenda monofásica vem da apuração do Simples (a ponte) ou do caso da Reforma
+  atividades.forEach((a, i) => { if (TIPOS[a.tipo].tributo === 'icms') origens['atividades.' + i + '.pctAliqZero'] = origem('padrao', 'padrão: nenhuma — confira', 'a parte das vendas de mercadoria com alíquota zero de PIS/Cofins (a Lei 10.925/2004, art. 1º: óleos vegetais, arroz, feijão, carnes, leite, higiene…). No Presumido e no Real: as da Cesta Básica Nacional (LC 214, Anexos I e XV) seguem com zero; as outras pagam 10% da alíquota desde abril de 2026 (LC 224/2025). No Simples, paga no DAS. Só pesa na conta de 2026: em 2027 a CBS toma o lugar'); });
   atividades.forEach((a, i) => { if (a.tipo === 'industria') origens['atividades.' + i + '.aliqIpi'] = origem('padrao', 'padrão: zero — confira', 'o IPI a recolher no ano, em % da receita da indústria, já com os créditos; só 2026 — em 2027 ele vira zero'); });
 
   const e = { atividades, meses };
@@ -357,6 +379,8 @@ export function entradaDoSistema({ cliente = null, caso = null, fatorR = [], pgd
   if (!origens.compras) origens.compras = origem('padrao', 'falta no sistema', 'solte o acompanhamento de entradas do Domínio ou digite as compras dos 12 meses');
   origens.aliqCreditoIcms = origem('padrao', 'padrão: 12% — confira', 'fornecedor do RS no regime normal dá 17%, de outro estado 12%, do Simples bem menos');
   origens.outrasDespesas = origem('padrao', 'falta no sistema: fazem o lucro do Real', 'aluguel de pessoa física, sistemas, contador, manutenção — o resto dos custos do ano, sem compras nem folha');
+  origens.lucroContabil = origem('padrao', 'falta no sistema: a DRE dos 12 meses', 'o resultado da DRE antes do IRPJ e da CSLL (prejuízo, com o sinal de menos). Sem ele, a conta estima o lucro do Real pelas compras, a folha e as despesas');
+  origens.ajustesLalur = origem('padrao', 'padrão: sem ajustes', 'adições (despesa indedutível: multa, brinde, doação) menos exclusões (receita que não é tributada) do lucro real');
 
   // a folha: o Domínio pela ponte (os proventos dos empregados, com as férias, as rescisões e o 13º, e o pró-labore, dos
   // 12 meses fechados) quando tem pelo menos os meses do Fator R; senão o Fator R (os últimos 12 meses lançados); senão
@@ -382,6 +406,20 @@ export function entradaDoSistema({ cliente = null, caso = null, fatorR = [], pgd
   }
   origens.rat = origem('padrao', 'padrão: 2% e FAP 1', 'o RAT vai de 1% a 3% pelo CNAE');
   origens.terceiros = origem('padrao', 'padrão: 5,8%', 'o de terceiros da maioria dos FPAS');
+  // o RAT e terceiros que a folha recolheu (11/11/2026): na empresa do Presumido ou do Real, as guias do Domínio dizem — o
+  // INSS do RAT (já com o FAP) e o de terceiros sobre a base do INSS dos empregados, nos 12 meses. No Simples a guia não tem
+  // (a CPP está no DAS) e fica o padrão. Só o que parece RAT (até 6%: 3% com o FAP em 2) e terceiros (até 8%)
+  const regimeHoje = cliente ? regimeDoCadastro(cliente.regime_tributario) : null;
+  const bi = somaDaPonte(mp, ['base_inss']), ri = somaDaPonte(mp, ['inss_rat']), ti = somaDaPonte(mp, ['inss_terceiros']);
+  if ((regimeHoje === 'presumido' || regimeHoje === 'real') && origens.folha.fonte === 'ponte' && bi && bi.soma > 0 && ri && ti) {
+    const rat = Math.round(ri.soma / bi.soma * 10000) / 100, terc = Math.round(ti.soma / bi.soma * 10000) / 100;
+    if (rat > 0 && rat <= 6 && terc >= 0 && terc <= 8) {
+      e.rat = rat; e.fap = 1; e.terceiros = terc;
+      origens.rat = origem('ponte', 'Domínio, pela ponte: RAT com o FAP de ' + pct2(rat) + '% nas guias de ' + periodo(bi), 'o INSS do RAT que a folha recolheu (já com o FAP) dividido pela base do INSS dos empregados');
+      origens.fap = origem('ponte', 'já está no RAT das guias');
+      origens.terceiros = origem('ponte', 'Domínio, pela ponte: ' + pct2(terc) + '% nas guias de ' + periodo(bi), 'o INSS de terceiros que a folha recolheu dividido pela base do INSS dos empregados');
+    }
+  }
 
   e.regimeAtual = cliente ? ['simples', 'presumido', 'real'].includes(regimeDoCadastro(cliente.regime_tributario)) ? regimeDoCadastro(cliente.regime_tributario) : null : null;
   if (cliente && regimeDoCadastro(cliente.regime_tributario) === 'mei') notas.push('A empresa é MEI hoje: o comparativo é pra quando ela passar do limite do MEI (Simples como ME × Presumido × Real).');
@@ -646,9 +684,12 @@ export function aplicarFolha(entrada, origens, r) {
 
 // ---------- as premissas que valem um teste ----------
 // as que ficaram no padrão e mexem na conta: o motor refaz o ano da decisão com os valores de cada lado
-export function premissasParaTestar(entrada, origens) {
+export function premissasParaTestar(entrada, origens, regimes = null) {
   const e = entrada || {}, o = origens || {};
+  // sem o Simples na comparação, o que só mexe no DAS não vale teste
+  const comSimples = !Array.isArray(regimes) || regimes.includes('simples');
   const padrao = k => !o[k] || o[k].fonte === 'padrao';
+  const geralHoje = e.regimeAtual === 'presumido' || e.regimeAtual === 'real';
   const out = [];
   const ats = e.atividades || [];
   const temIcms = ats.some(a => TIPOS[a.tipo] && TIPOS[a.tipo].tributo === 'icms' && num(a.receita) > 0);
@@ -659,7 +700,12 @@ export function premissasParaTestar(entrada, origens) {
     const qual = ats.length > 1 ? ' (' + t.rotulo.toLowerCase() + ')' : '';
     if (t.tributo === 'icms' && padrao('atividades.' + i + '.aliqIcms')) out.push({ campo: 'atividades.' + i + '.aliqIcms', valores: [num(a.aliqIcms, 17) === 12 ? 17 : 12], rotulo: 'o ICMS das vendas' + qual, unidade: '%' });
     if (t.tributo === 'icms' && num(a.redIcms) > 0 && padrao('atividades.' + i + '.redIcms')) out.push({ campo: 'atividades.' + i + '.redIcms', valores: [0], rotulo: 'a redução da base do ICMS no regime geral' + qual, unidade: '%' });
-    if (t.tributo === 'icms' && num(a.redIcmsSimples) > 0 && padrao('atividades.' + i + '.redIcmsSimples')) out.push({ campo: 'atividades.' + i + '.redIcmsSimples', valores: [0], rotulo: 'a redução do ICMS no DAS' + qual, unidade: '%' });
+    if (comSimples && t.tributo === 'icms' && num(a.redIcmsSimples) > 0 && padrao('atividades.' + i + '.redIcmsSimples')) out.push({ campo: 'atividades.' + i + '.redIcmsSimples', valores: [0], rotulo: 'a redução do ICMS no DAS' + qual, unidade: '%' });
+    // as vendas com alíquota zero de PIS/Cofins mudam o PIS/Cofins de 2026 do Presumido e do Real e o que a DRE descontou
+    // (o lucro do Real, pela troca dos tributos): valem teste só no Presumido contra o Real e na empresa que hoje é do
+    // Presumido ou do Real (no Simples, a alíquota zero não sai do DAS). O teste é com toda a venda sem PIS/Cofins
+    if ((!comSimples || geralHoje) && t.tributo === 'icms' && padrao('atividades.' + i + '.pctAliqZero') && !(num(a.pctAliqZero) > 0) && num(a.pctMonofasico) < 100) out.push({ campo: 'atividades.' + i + '.pctAliqZero', valores: [100], rotulo: 'as vendas com alíquota zero de PIS/Cofins' + qual, unidade: '%',
+      confira: 'A conta supõe que toda a venda paga PIS/Cofins — confira se o produto tem alíquota zero (a Lei 10.925/2004: óleos vegetais, arroz, carnes, leite, higiene…) ou é monofásico.' });
     if (t.tributo === 'iss' && padrao('atividades.' + i + '.aliqIss')) out.push({ campo: 'atividades.' + i + '.aliqIss', valores: [2, 5], rotulo: 'o ISS' + (ats.length > 1 ? ' (' + t.rotulo.toLowerCase() + ')' : ''), unidade: '%' });
   });
   if (padrao('rat') && num(e.folha) > 0) out.push({ campo: 'rat', valores: [1, 3], rotulo: 'o RAT', unidade: '%' });
@@ -712,22 +758,27 @@ export function exclusaoObrigatoria(situacao) {
   }
   return null;
 }
-export function prazosDaEscolha(hoje, regimeAtual, ano = 2027, situacao = null) {
+// opcoes: { objetivo ('presumido_real' tira os prazos do Simples de quem está no regime geral), vedado (o Simples vedado
+// pelo cadastro: a entrada nele depende de tirar os impedimentos) }
+export function prazosDaEscolha(hoje, regimeAtual, ano = 2027, situacao = null, opcoes = {}) {
   const h = String(hoje || '').slice(0, 10);
   const antes = (d) => h <= d;
   const out = [];
+  const comSimples = opcoes.objetivo !== 'presumido_real';
+  const impedida = opcoes.vedado ? ' Antes, a empresa precisa tirar os impedimentos do cadastro.' : '';
   if (regimeAtual === 'simples') {
     const obrig = exclusaoObrigatoria(situacao);
     if (obrig) out.push({ titulo: obrig.titulo, texto: obrig.texto });
     out.push(antes((ano - 1) + '-12-31')
       ? { titulo: 'Sair do Simples em ' + ano, texto: 'Comunicar a exclusão por opção no Portal do Simples até 31/12/' + (ano - 1) + ', com efeito em 01/01/' + ano + '. Em janeiro de ' + ano + ' a comunicação já vale só pra ' + (ano + 1) + ' (Res. CGSN 140, art. 81, I, na redação da Res. CGSN 190/2026).' }
       : { titulo: 'Sair do Simples', texto: 'A exclusão por opção comunicada agora vale a partir de 01/01 do ano seguinte (Res. CGSN 140, art. 81, I, na redação da Res. CGSN 190/2026).' });
-    out.push({ titulo: 'IBS/CBS por fora, sem sair do Simples', texto: 'Janelas em março (efeito em julho) e setembro (efeito em janeiro), na ficha da Reforma Tributária.' });
-  } else if (regimeAtual === 'presumido' || regimeAtual === 'real') {
+    if (comSimples) out.push({ titulo: 'IBS/CBS por fora, sem sair do Simples', texto: 'Janelas em março (efeito em julho) e setembro (efeito em janeiro), na ficha da Reforma Tributária.' });
+  } else if ((regimeAtual === 'presumido' || regimeAtual === 'real') && comSimples) {
     out.push(antes((ano - 1) + '-09-30')
-      ? { titulo: 'Entrar no Simples em ' + ano, texto: 'A opção vai de 01 a 30/09/' + (ano - 1) + ', no Portal do Simples (LC 123, art. 16, na redação da LC 214).' }
-      : { titulo: 'Entrar no Simples', texto: 'A janela de ' + ano + ' fechou em 30/09/' + (ano - 1) + '. A próxima é de 01 a 30/09/' + ano + ', pra ' + (ano + 1) + '.' });
+      ? { titulo: 'Entrar no Simples em ' + ano, texto: 'A opção vai de 01 a 30/09/' + (ano - 1) + ', no Portal do Simples (LC 123, art. 16, na redação da LC 214).' + impedida }
+      : { titulo: 'Entrar no Simples', texto: 'A janela de ' + ano + ' fechou em 30/09/' + (ano - 1) + '. A próxima é de 01 a 30/09/' + ano + ', pra ' + (ano + 1) + '.' + impedida });
   }
-  if (regimeAtual !== 'mei') out.push({ titulo: 'Presumido ou Real em ' + ano, texto: 'A escolha se faz no primeiro pagamento do IRPJ de ' + ano + ': no Presumido e no Real trimestral, a quota do 1º trimestre, que vence no fim de abril (Lei 9.430, art. 26, §1º); no Real anual, a estimativa de janeiro, que vence no fim de fevereiro (Lei 9.430, art. 3º, parágrafo único).' });
+  if (regimeAtual !== 'mei') out.push({ titulo: 'Presumido ou Real em ' + ano, texto: 'A escolha se faz no primeiro pagamento do IRPJ de ' + ano + ': no Presumido e no Real trimestral, a quota do 1º trimestre, que vence no fim de abril (Lei 9.430, art. 26, §1º); no Real anual, a estimativa de janeiro, que vence no fim de fevereiro (Lei 9.430, art. 3º, parágrafo único).'
+    + (comSimples ? '' : ' A escolha vale pro ano inteiro: não dá pra trocar no meio de ' + ano + ' (Lei 9.718, art. 13, §1º; Lei 9.430, art. 3º).') });
   return out;
 }
