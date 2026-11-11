@@ -453,6 +453,7 @@
     // a empresa do número e a passagem pra outro setor ou pessoa
     function pintarFaixas(c) {
       const h = [];
+      if (c.resumo && c.situacao !== 'encerrada') h.push('<div class="at-faixa"><b>O que o assistente entendeu:</b> ' + esc(c.resumo) + '</div>');
       const outras = numeros.filter(n => n.cliente_id !== c.cliente_id);
       const doVinculo = numeros.find(n => n.cliente_id === c.cliente_id);
       if (c.cliente_id && doVinculo && !doVinculo.confirmado) {
@@ -828,7 +829,7 @@
     // ---------- o simulador ----------
     function montarSimulador() {
       $('simQuem').innerHTML = TESTES.map((t, i) => '<option value="' + i + '">' + esc(t.nome + ' · ' + formatarTelefone(t.tel)) + '</option>').join('') + '<option value="outro">Outro número…</option>';
-      $('simSetor').innerHTML = '<option value="">Sem setor (o assistente perguntaria o assunto)</option>' + SETORES.map(s => '<option value="' + esc(s.id) + '">' + esc(s.nome) + '</option>').join('');
+      $('simSetor').innerHTML = '<option value="robo">O assistente (a IA escolhe a fila)</option><option value="">Sem setor</option>' + SETORES.map(s => '<option value="' + esc(s.id) + '">' + esc(s.nome) + '</option>').join('');
       $('simQuem').addEventListener('change', () => { $('simOutro').hidden = $('simQuem').value !== 'outro'; $('simErro').textContent = ''; pintarSimulador(); });
       $('simTel').addEventListener('input', () => pintarSimulador());
     }
@@ -878,9 +879,13 @@
         if (s.erro) { $('simEnviar').disabled = false; $('simErro').textContent = s.erro; return; }
         anexos = s.anexos;
       }
+      const comRobo = (c0 => c0 ? c0.situacao === 'robo' : $('simSetor').value === 'robo')(simConversa());
+      if (comRobo) $('simErro').textContent = 'O assistente está escrevendo…';
       const r = await chamarWhatsapp({ acao: 'simular', telefone: tel, nome: simNome() || null, texto, setor: $('simSetor').value || null, id, anexos });
       $('simEnviar').disabled = false;
       if (r.erro) { $('simErro').textContent = r.erro; return; }
+      $('simErro').textContent = '';
+      if (r.data && r.data.robo && !r.data.robo.respondeu) $('simErro').textContent = 'O assistente não respondeu agora: a conversa foi pra fila sem setor.';
       $('simTexto').value = '';
       simEscolhidos = []; pintarEscolhidos(simEscolhidos, $('simEscolhidos'), $('simErro'));
       if (!conversa(r.data.conversa_id)) await recarregar(); else pintarSimulador();

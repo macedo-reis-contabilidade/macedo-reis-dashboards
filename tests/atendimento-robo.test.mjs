@@ -2,6 +2,11 @@
 // começo da etapa 4): o horário da equipe, quando ela volta, quem recebe, as frases da passagem, o aviso dos 30 minutos e
 // o balcão aprovado. Rodar com: node tests/atendimento-robo.test.mjs
 import * as R from '../assets/js/atendimento-robo.js';
+import * as IA from '../supabase/functions/whatsapp/robo.js';
+import { readFileSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
+import { posix } from 'node:path';
 
 let falhas = 0;
 const chk = (nome, cond, extra) => { if (!cond) falhas++; console.log((cond ? '  ✓ ' : '  ✗ ') + nome + (!cond && extra !== undefined ? ' → ' + JSON.stringify(extra) : '')); };
@@ -62,6 +67,84 @@ chk('trata por você, nunca por tu', !/\btu\b|\bte ajudo\b.*\btu\b/.test(Object.
 chk('o endereço fica fora até o Samuel confirmar', !('endereco' in R.BALCAO));
 chk('os formulários com o endereço do site', R.BALCAO.admissao.includes('/admissao.html') && R.BALCAO.rescisao.includes('/rescisao.html') && R.BALCAO.proposta.includes('/proposta.html'));
 chk('os prazos gerais do robo.md', R.BALCAO.prazos.includes('dia 20') && R.BALCAO.prazos.includes('5º dia útil'));
+
+console.log('O robô pela IA (supabase/functions/whatsapp/robo.js):');
+{
+  const H = [
+    { direcao: 'entrada', autor: 'cliente', texto: 'boa tarde', anexos: [] },
+    { direcao: 'interna', autor: 'fiscal@macedoereis.com.br', texto: 'nota da equipe', anexos: [] },
+    { direcao: 'saida', autor: 'robo', texto: 'Boa tarde! Em que posso ajudar?', anexos: [] },
+    { direcao: 'entrada', autor: 'cliente', texto: 'segue o extrato', anexos: [{ nome: 'extrato.pdf' }] },
+    { direcao: 'entrada', autor: 'cliente', texto: 'de outubro', anexos: [] },
+  ];
+  const m = IA.mensagensDaConversa(H);
+  chk('o histórico: a nota interna não vai, o mesmo lado junta, o arquivo vira linha', m.length === 3 && m[0].role === 'user' && m[1].role === 'assistant'
+    && m[2].content === 'segue o extrato\n[o cliente mandou o arquivo: extrato.pdf]\nde outubro' && !JSON.stringify(m).includes('nota da equipe'), m);
+  chk('começa sempre pelo cliente', IA.mensagensDaConversa([{ direcao: 'saida', autor: 'robo', texto: 'oi' }, { direcao: 'entrada', texto: 'x' }])[0].role === 'user');
+  chk('a resposta da equipe vai com o nome', IA.mensagensDaConversa([{ direcao: 'entrada', texto: 'a' }, { direcao: 'saida', autor: 'fiscal@macedoereis.com.br', texto: 'b' }])[1].content.startsWith('(Thalia, da equipe)'));
+  const corpo = IA.corpoDoRobo(H, { agora: T('2026-11-11T13:00:00Z'), contato: 'Carlos', empresa: 'Padaria Teste', confirmado: true });
+  chk('o contexto vai na primeira mensagem: a hora, quem e a empresa', /11\/11\/2026 às 10h00/.test(corpo.messages[0].content) && corpo.messages[0].content.includes('Carlos')
+    && corpo.messages[0].content.includes('Padaria Teste (número confirmado)') && corpo.messages[0].content.includes('a equipe está atendendo'));
+  chk('o sistema vai com o cache de 1 hora e a ferramenta "responder", sem forçar', corpo.system[0].cache_control.ttl === '1h' && corpo.tools[0].name === 'responder' && corpo.tool_choice.type === 'auto');
+  chk('o sistema leva o balcão aprovado e não leva o endereço', corpo.system[0].text.includes(R.BALCAO.irpf) && !/Volkart/.test(corpo.system[0].text));
+  chk('fora do horário, o contexto diz quando a equipe volta', IA.contextoDaMensagem({ agora: T('2026-11-14T13:00:00Z') }).includes('fora do horário (a equipe volta segunda, às 7h30)'));
+  chk('número não confirmado: não fala da empresa', IA.contextoDaMensagem({ empresa: 'X', confirmado: false }).includes('não fale de dado da empresa'));
+  chk('sem histórico, sem chamada', IA.corpoDoRobo([], {}) === null);
+
+  const tool = input => ({ content: [{ type: 'thinking', thinking: '…' }, { type: 'tool_use', name: 'responder', input }] });
+  const r1 = IA.lerResposta(tool({ texto: 'Boa tarde, Carlos!', passar: true, setor: 'fiscal', motivo: 'depende do enquadramento.', resumo: 'Quer saber do carro.' }));
+  chk('lê a ferramenta: passa pro fiscal, o motivo sem o ponto', r1.passar && r1.setor === 'fiscal' && r1.motivo === 'depende do enquadramento' && r1.resumo === 'Quer saber do carro.');
+  chk('setor desconhecido vira sem setor', IA.lerResposta(tool({ texto: '', passar: true, setor: 'xyz' })).setor === null);
+  chk('reclamação passa sempre', IA.lerResposta(tool({ texto: 'Desculpa', passar: false, reclamacao: true })).passar === true);
+  chk('sem passar, sem setor nem resumo', (x => !x.passar && x.setor === null && x.resumo === '')(IA.lerResposta(tool({ texto: 'Oi!', passar: false, setor: 'dp', resumo: 'z' }))));
+  chk('sem a ferramenta: o texto solto e a conversa passa', (x => x.passar && x.semFerramenta && x.texto === 'oi')(IA.lerResposta({ content: [{ type: 'text', text: 'oi' }] })));
+
+  const qua10 = T('2026-11-11T13:00:00Z'), sab = T('2026-11-14T13:00:00Z');
+  chk('a mensagem ao passar: o começo da IA e a frase da passagem', IA.mensagemFinal({ ...r1 }, qua10) === 'Boa tarde, Carlos! Já passei pra Thalia, do fiscal, com a sua pergunta; ela te responde por aqui.', IA.mensagemFinal({ ...r1 }, qua10));
+  chk('sem o texto da IA, o motivo entra na frase', IA.mensagemFinal({ ...r1, texto: '' }, qua10).startsWith('A Thalia, do fiscal, responde melhor — depende do enquadramento. Já passei pra ela'));
+  chk('fora do horário, sem o "Oi!" repetido', IA.mensagemFinal({ ...r1 }, sab) === 'Boa tarde, Carlos! A equipe volta segunda, às 7h30 — deixei o seu recado com a Thalia. Se for boleto, guia ou formulário, te ajudo agora mesmo.', IA.mensagemFinal({ ...r1 }, sab));
+  chk('a reclamação vai pro Samuel', IA.mensagemFinal({ texto: '', passar: true, reclamacao: true, setor: 'dp' }, qua10).includes('chamei o Samuel'));
+  chk('sem passar, o texto da IA como veio', IA.mensagemFinal({ texto: 'Oi! Em que posso ajudar?', passar: false }, qua10) === 'Oi! Em que posso ajudar?');
+
+  let pediu = null;
+  const chamar = async c => { pediu = c; return { ...tool({ texto: 'Oi, Carlos!', passar: false }), usage: { input_tokens: 10, output_tokens: 5 }, _modelo: 'claude-sonnet-5-5' }; };
+  const rr = await IA.responderComoRobo({ chamar, historico: H.slice(0, 1), agora: qua10, contato: 'Carlos' });
+  chk('responderComoRobo: chama a IA com o corpo e devolve a mensagem e o modelo', pediu && pediu.messages.length === 1 && rr.mensagem === 'Oi, Carlos!' && !rr.passar && rr.modelo === 'claude-sonnet-5-5');
+  const muitas = [...Array(IA.MAX_RESPOSTAS_SEM_PASSAR)].flatMap(() => [{ direcao: 'entrada', texto: 'e aí' }, { direcao: 'saida', autor: 'robo', texto: 'oi' }]).concat([{ direcao: 'entrada', texto: 'oi de novo' }]);
+  chk('depois de ' + IA.MAX_RESPOSTAS_SEM_PASSAR + ' respostas sem passar, passa', (await IA.responderComoRobo({ chamar, historico: muitas, agora: qua10 })).passar === true);
+  let erro = null;
+  try { await IA.responderComoRobo({ chamar: async () => ({ stop_reason: 'max_tokens', content: [] }), historico: H.slice(0, 1) }); } catch (e) { erro = e; }
+  chk('a resposta cortada é erro (a função passa pra fila sem setor)', erro && erro.tipo === 'formato');
+  chk('as filas da IA são os setores do banco', JSON.stringify(IA.FERRAMENTA_ROBO.input_schema.properties.setor.enum) === JSON.stringify(['fiscal', 'dp', 'contabil', 'societario', 'financeiro', 'comercial', 'sem_setor']));
+}
+
+console.log('A função whatsapp roda o robô do repositório num commit fixado:');
+{
+  const raiz = fileURLToPath(new URL('../', import.meta.url));
+  const idx = readFileSync(raiz + 'supabase/functions/whatsapp/index.ts', 'utf8');
+  const shas = [...idx.matchAll(/raw\.githubusercontent\.com\/macedo-reis-contabilidade\/macedo-reis-dashboards\/([0-9a-f]{40})\/(supabase\/functions\/[a-z-]+\/[a-z-]+\.js)/g)];
+  chk('as duas importações, no mesmo commit', shas.length === 2 && shas[0][1] === shas[1][1], shas.map(x => x[1]));
+  const vistos = new Set(), fila = shas.map(x => x[2]);
+  while (fila.length) {
+    const a = fila.shift();
+    if (vistos.has(a)) continue;
+    vistos.add(a);
+    for (const im of readFileSync(raiz + a, 'utf8').matchAll(/(?:import|export)\s[^'"]*?from\s*['"](\.{1,2}\/[^'"]+)['"]/g)) fila.push(posix.normalize(posix.join(posix.dirname(a), im[1])));
+  }
+  const ARQS = [...vistos];
+  chk('a trava segue os imports (o robô, as regras puras, o atendimento, a equipe)', ['supabase/functions/whatsapp/robo.js', 'assets/js/atendimento-robo.js', 'assets/js/atendimento.js', 'assets/js/equipe.js'].every(x => ARQS.includes(x)), ARQS);
+  if (shas.length) {
+    const sha = shas[0][1];
+    const atrasados = ARQS.filter(a => {
+      let noCommit = null;
+      try { noCommit = execFileSync('git', ['show', sha + ':' + a], { cwd: raiz, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], maxBuffer: 1 << 24 }); } catch { noCommit = null; }
+      return noCommit === null || noCommit.replace(/\r\n/g, '\n') !== readFileSync(raiz + a, 'utf8').replace(/\r\n/g, '\n');
+    });
+    chk('o código que a função roda é o daqui', atrasados.length === 0,
+      'mudaram depois do commit ' + sha.slice(0, 7) + ': ' + atrasados.join(', ') + ' — publique, fixe o commit novo em index.ts e reimplante a função whatsapp');
+  }
+  chk('o robô não lê credenciais', ARQS.every(a => !/credenciais/.test(readFileSync(raiz + a, 'utf8').replace(/^\s*\/\/.*$/gm, ''))) && !/credenciais/.test(idx.replace(/^\s*\/\/.*$/gm, '')));
+}
 
 console.log(falhas ? `\n${falhas} falha(s)` : '\nTudo certo.');
 process.exit(falhas ? 1 : 0);

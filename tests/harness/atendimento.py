@@ -77,7 +77,7 @@ SEMEAR = """
     if (b.acao === 'simular') {
       let c = db.atend_conversas.find(x => x.telefone === b.telefone && x.situacao !== 'encerrada'), nova = false;
       if (!c) {
-        c = { id: 'sim-' + db.atend_conversas.length, telefone: b.telefone, contato_nome: b.nome, cliente_id: null, situacao: 'fila', setor: b.setor, responsavel: null,
+        c = { id: 'sim-' + db.atend_conversas.length, telefone: b.telefone, contato_nome: b.nome, cliente_id: null, situacao: b.setor === 'robo' ? 'robo' : 'fila', setor: b.setor === 'robo' ? null : b.setor, responsavel: null,
           assumida_por: null, assumida_em: null, encerrada_por: null, encerrada_em: null, resumo: null, janela_ate: new Date(Date.now() + 864e5).toISOString(),
           ultima_em: agoraIso, ultima_do_cliente_em: agoraIso, teste: true, criado_em: agoraIso };
         db.atend_conversas.push(c); nova = true; window.__mockEmitir('atend_conversas', 'INSERT', c);
@@ -85,7 +85,16 @@ SEMEAR = """
       }
       const m = { id: b.id || ('msg-' + Math.random().toString(36).slice(2)), conversa_id: c.id, direcao: 'entrada', autor: 'cliente', tipo: (b.anexos || []).length ? 'imagem' : 'texto', texto: b.texto || null, transcricao: null, anexos: b.anexos || [], status: null, erro: null, criada_em: agoraIso };
       db.atend_mensagens.push(m); window.__mockEmitir('atend_mensagens', 'INSERT', m);
-      return { data: { ok: true, conversa_id: c.id, nova, mensagem_id: m.id }, error: null };
+      let robo = null;
+      if (c.situacao === 'robo') {   // o assistente (11/11/2026): a IA de mentira responde e passa pro DP, com o resumo
+        const r = { id: 'robo-' + Math.random().toString(36).slice(2), conversa_id: c.id, direcao: 'saida', autor: 'robo', tipo: 'texto',
+          texto: 'Oi! Já passei pra Vitória, do DP, com a sua pergunta; ela te responde por aqui.', transcricao: null, anexos: [], status: 'enviada', erro: null, criada_em: agoraIso };
+        db.atend_mensagens.push(r); window.__mockEmitir('atend_mensagens', 'INSERT', r);
+        Object.assign(c, { situacao: 'fila', setor: 'dp', resumo: 'Quer saber das <b>férias</b> de um funcionário.' }); window.__mockEmitir('atend_conversas', 'UPDATE', c);
+        db.atend_eventos.push({ id: Date.now() + 1, conversa_id: c.id, tipo: 'robo_passou', setor: 'dp', para: null, por: null, observacao: null, em: agoraIso });
+        robo = { respondeu: true, passou: true, setor: 'dp' };
+      }
+      return { data: { ok: true, conversa_id: c.id, nova, mensagem_id: m.id, robo }, error: null };
     }
     if (b.acao === 'salvar_drive') {
       const m = db.atend_mensagens.find(x => x.id === b.mensagem_id), c = m && db.atend_conversas.find(x => x.id === m.conversa_id);
@@ -277,6 +286,24 @@ def main():
         ab = p.evaluate('() => window.__abertos.map(j => [j.location.href, j.opener])')
         ok(len(ab) == 1 and 'arquivos.teste/atendimento/' in (ab[0][0] or '') and ab[0][1] is None, f'clicar abre o arquivo pelo link assinado, numa aba sem volta pra tela ({ab})')
         p.screenshot(path=str(FOTOS / 'atendimento-simulador.png'))
+
+        print('6c. O assistente (a IA escolhe a fila)')
+        ok(p.eval_on_selector('#simSetor', 'e => e.options[0].value') == 'robo', 'no simulador, o assistente é a primeira opção da fila')
+        p.select_option('#simQuem', '2'); p.select_option('#simSetor', 'robo')
+        p.fill('#simTexto', 'preciso ver as férias do meu funcionário'); p.click('#simEnviar')
+        p.wait_for_function("() => document.getElementById('simTela').innerText.includes('Macedo & Reis · Assistente')")
+        chamada = [x[1] for x in p.evaluate('() => window.__log') if x[0] == 'whatsapp' and x[1].get('acao') == 'simular'][-1]
+        rob = next(c for c in db(p, 'atend_conversas') if c['telefone'] == '5551900000003')
+        ok(chamada['setor'] == 'robo' and rob['situacao'] == 'fila' and rob['setor'] == 'dp', 'a conversa vai pro assistente e ele passa pro DP')
+        ok('Já passei pra Vitória, do DP' in p.inner_text('#simTela') and p.inner_text('#simErro') == '', 'o cliente vê a resposta do assistente, sem aviso de erro')
+        p.click('#aba-todas'); p.wait_for_timeout(150)
+        if p.locator('#setores button[data-f="todos"]').is_visible(): p.click('#setores button[data-f="todos"]'); p.wait_for_timeout(150)
+        p.click('.at-item[data-id="%s"]' % rob['id']); p.wait_for_timeout(200)
+        fx = p.inner_text('#cFaixas')
+        ok('O que o assistente entendeu: Quer saber das <b>férias</b> de um funcionário.' in fx and p.locator('#cFaixas b b').count() == 0, f'o resumo do assistente aparece na conversa, escapado ({fx[:120]!r})')
+        ok('Assistente' in p.inner_text('#cTempo'), 'na conversa, a resposta é do Assistente')
+        p.click('.at-item[data-id="%s"]' % sim['id']); p.wait_for_timeout(200)
+        if p.locator('#setores button[data-f="meus"]').is_visible(): p.click('#setores button[data-f="meus"]'); p.wait_for_timeout(150)
         p.click('#simFechar'); p.wait_for_selector('#simulador', state='hidden')
 
         print('7. Encerrar, reabrir e a mudança de outra pessoa')

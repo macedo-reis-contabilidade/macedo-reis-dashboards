@@ -4,8 +4,11 @@
 // A porta das mensagens do atendimento: a mensagem (atend_mensagens) só esta função grava — a tela não tem insert nela.
 // Por enquanto, só o simulador da tela de atendimento (atendimento.html), com o login do escritório:
 //   { acao: 'simular', telefone, nome?, texto, setor?, id?, anexos? }  o cliente de mentira escreve: a conversa de teste nasce (na fila
-//                                                        do setor que o simulador escolheu, no lugar do assistente, que é a
-//                                                        etapa 4) ou segue a que está aberta pro número
+//                                                        do setor que o simulador escolheu, ou, com setor 'robo', com o
+//                                                        assistente — a etapa 4, 11/11/2026) ou segue a que está aberta
+//                                                        pro número. Com o assistente, a mensagem passa pela IA (robo.js):
+//                                                        ele responde e, quando é com uma pessoa, passa pra fila, com o
+//                                                        resumo (atend_conversas.resumo) e o evento robo_passou
 //   { acao: 'responder', conversa_id, texto, id? }       quem está com a conversa responde; o id é o da tela (tentar de novo
 //                                                        não duplica). No simulador, a resposta só fica gravada
 //   { acao: 'nota', conversa_id, texto, id? }            a nota interna (09/11/2026): qualquer um do escritório, em
@@ -23,6 +26,11 @@
 
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.0";
+// o robô (11/11/2026, a etapa 4): o código do repositório (o arquivo cru do GitHub) no commit fixado, como a função
+// noticias. Mudou robo.js ou um assets/js que ele importa? Publique, troque o commit das duas linhas, publique de novo e
+// reimplante — tests/atendimento-robo.test.mjs avisa quando o commit fixado ficou pra trás.
+import { responderComoRobo, MODELOS_ROBO } from "https://raw.githubusercontent.com/macedo-reis-contabilidade/macedo-reis-dashboards/0000000000000000000000000000000000000000/supabase/functions/whatsapp/robo.js";
+import { criarChamador } from "https://raw.githubusercontent.com/macedo-reis-contabilidade/macedo-reis-dashboards/0000000000000000000000000000000000000000/supabase/functions/noticias/triagem.js";
 
 const SETORES = ["fiscal", "dp", "contabil", "societario", "financeiro", "comercial"];
 const MAX_TEXTO = 4096;
@@ -164,6 +172,61 @@ async function driveSubir(token: string, pai: string, nome: string, mime: string
 }
 const letras = (s: string) => [...s].length;
 
+// ---------- o robô (11/11/2026) ----------
+// A conversa com o assistente: a mensagem nova já está gravada; a IA lê o histórico e responde. Quando passa, a
+// conversa vai pra fila do setor com o resumo (só se ainda está com o assistente: alguém pode ter assumido no meio).
+// Sem a IA (a chave, a rede, a resposta cortada), a conversa vai pra fila sem setor, sem mensagem pro cliente, com o
+// porquê no resumo: ninguém fica sem resposta por causa do robô.
+// deno-lint-ignore no-explicit-any
+async function rodarRobo(sb: any, conversa: { id: string; cliente_id: string | null }, contato: string | null) {
+  const { data: hist, error: e1 } = await sb.from("atend_mensagens").select("direcao, autor, texto, anexos, criada_em")
+    .eq("conversa_id", conversa.id).order("criada_em", { ascending: true }).limit(60);
+  if (e1) throw e1;
+  let empresa: string | null = null, confirmado = false;
+  if (conversa.cliente_id) {
+    const { data: cli } = await sb.from("clientes").select("nome_fantasia, nome_principal").eq("id", conversa.cliente_id).maybeSingle();
+    empresa = cli ? String(cli.nome_fantasia || cli.nome_principal || "") || null : null;
+    const { data: c2 } = await sb.from("atend_conversas").select("telefone").eq("id", conversa.id).single();
+    const { data: nums } = await sb.from("atend_numeros").select("confirmado").eq("telefone", c2 && c2.telefone).eq("cliente_id", conversa.cliente_id).eq("ativo", true);
+    confirmado = (nums || []).some((n: { confirmado: boolean }) => n.confirmado);
+  }
+  const agora = new Date();
+  // deno-lint-ignore no-explicit-any
+  let r: any = null, falhou = "";
+  const chave = Deno.env.get("ANTHROPIC_API_KEY") || "";
+  if (!chave) falhou = "o assistente não está ligado (falta a chave da IA)";
+  else {
+    try {
+      const chamar = criarChamador({ fetch, chave, modelos: MODELOS_ROBO, limiteMs: 60000 });
+      r = await responderComoRobo({ chamar, historico: hist || [], agora, contato, empresa, confirmado });
+    } catch (e) {
+      console.error("whatsapp robo:", e && (e as Error).message ? (e as Error).message : e);
+      falhou = "o assistente não conseguiu responder agora";
+    }
+  }
+  if (!r) r = { passar: true, setor: null, mensagem: null, resumo: "Sem resposta do assistente (" + (falhou || "conversa vazia") + "): veja a conversa.", motivo: "", reclamacao: false };
+  if (r.mensagem) {
+    const { error: e2 } = await sb.from("atend_mensagens").insert({ conversa_id: conversa.id, direcao: "saida", autor: "robo", tipo: "texto", texto: String(r.mensagem).slice(0, MAX_TEXTO), status: "enviada" });
+    if (e2) throw e2;
+  }
+  const quando = new Date().toISOString();
+  if (r.passar) {
+    const setor = r.reclamacao ? "financeiro" : r.setor;
+    const { data: mudou, error: e3 } = await sb.from("atend_conversas").update({ situacao: "fila", setor, resumo: String(r.resumo || "").slice(0, 2000) || null, ultima_em: quando })
+      .eq("id", conversa.id).eq("situacao", "robo").select("id");
+    if (e3) throw e3;
+    if ((mudou || []).length) {
+      const obs = r.reclamacao ? "reclamação" : r.motivo ? String(r.motivo).slice(0, 1000) : falhou || null;
+      const { error: e4 } = await sb.from("atend_eventos").insert({ conversa_id: conversa.id, tipo: "robo_passou", setor, observacao: obs });
+      if (e4) throw e4;
+    }
+    return { respondeu: !!r.mensagem, passou: true, setor, modelo: r.modelo || null };
+  }
+  const { error: e5 } = await sb.from("atend_conversas").update({ ultima_em: quando }).eq("id", conversa.id);
+  if (e5) throw e5;
+  return { respondeu: true, passou: false, setor: null, modelo: r.modelo || null };
+}
+
 Deno.serve(async (req) => {
   const origin = req.headers.get("origin");
   const responder = (corpo: unknown, status = 200) => new Response(JSON.stringify(corpo), { status, headers: cors(origin) });
@@ -202,12 +265,14 @@ Deno.serve(async (req) => {
       if (letras(texto) > MAX_TEXTO) return responder({ error: "A mensagem passou de 4.096 letras, o limite do WhatsApp." }, 400);
       if (!(await arquivosNaPasta())) return responder({ error: "Algum arquivo não chegou na pasta: mande de novo." }, 409);
       const nome = String(body.nome == null ? "" : body.nome).trim().slice(0, 120) || null;
-      const setor = body.setor == null || body.setor === "" ? null : String(body.setor);
+      const comRobo = body.setor === "robo";
+      const setor = comRobo || body.setor == null || body.setor === "" ? null : String(body.setor);
       if (setor && !SETORES.includes(setor)) return responder({ error: "Setor desconhecido." }, 400);
-      const { data: abertas, error: e1 } = await sb.from("atend_conversas").select("id, teste")
+      const { data: abertas, error: e1 } = await sb.from("atend_conversas").select("id, teste, situacao, cliente_id")
         .eq("telefone", tel).neq("situacao", "encerrada").order("criado_em", { ascending: false }).limit(1);
       if (e1) throw e1;
-      let conversa = (abertas || [])[0] as { id: string; teste: boolean } | undefined;
+      type Conv = { id: string; teste: boolean; situacao: string; cliente_id: string | null };
+      let conversa = (abertas || [])[0] as Conv | undefined;
       if (conversa && !conversa.teste) return responder({ error: "Este número tem uma conversa de verdade aberta: use outro no simulador." }, 409);
       let nova = false;
       if (!conversa) {
@@ -216,13 +281,13 @@ Deno.serve(async (req) => {
         if (e2) throw e2;
         const empresas = [...new Set((nums || []).map((n: { cliente_id: string }) => n.cliente_id))];
         const { data: criada, error: e3 } = await sb.from("atend_conversas").insert({
-          telefone: tel, contato_nome: nome, situacao: "fila", setor, teste: true, cliente_id: empresas.length === 1 ? empresas[0] : null,
+          telefone: tel, contato_nome: nome, situacao: comRobo ? "robo" : "fila", setor, teste: true, cliente_id: empresas.length === 1 ? empresas[0] : null,
           ultima_em: agora.toISOString(), ultima_do_cliente_em: agora.toISOString(), janela_ate: janela,
-        }).select("id, teste").single();
+        }).select("id, teste, situacao, cliente_id").single();
         if (e3) throw e3;
-        conversa = criada as { id: string; teste: boolean };
+        conversa = criada as Conv;
         nova = true;
-        const { error: e4 } = await sb.from("atend_eventos").insert({ conversa_id: conversa.id, tipo: "abriu", setor, observacao: "simulador" });
+        const { error: e4 } = await sb.from("atend_eventos").insert({ conversa_id: conversa.id, tipo: "abriu", setor, observacao: comRobo ? "simulador, com o assistente" : "simulador" });
         if (e4) throw e4;
       }
       const { data: msg, error: e5 } = await sb.from("atend_mensagens")
@@ -235,7 +300,8 @@ Deno.serve(async (req) => {
         const { error: e6 } = await sb.from("atend_conversas").update(mudar).eq("id", conversa.id);
         if (e6) throw e6;
       }
-      return responder({ ok: true, conversa_id: conversa.id, nova, mensagem_id: msg.id });
+      const robo = conversa.situacao === "robo" ? await rodarRobo(sb, conversa, nome) : null;
+      return responder({ ok: true, conversa_id: conversa.id, nova, mensagem_id: msg.id, robo });
     }
 
     if (body.acao === "responder") {

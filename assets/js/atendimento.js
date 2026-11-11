@@ -29,7 +29,8 @@ export const MAX_TEXTO = 4096;   // o limite do WhatsApp pra uma mensagem de tex
 
 const minusculo = e => String(e || '').trim().toLowerCase();
 export const ehSocio = e => SOCIOS.includes(minusculo(e));
-export const nomeDe = e => NOME_POR_EMAIL[minusculo(e)] || (e ? String(e).split('@')[0] : '');
+// o autor 'robo' é o assistente (a etapa 4, 11/11/2026)
+export const nomeDe = e => minusculo(e) === 'robo' ? 'Assistente' : NOME_POR_EMAIL[minusculo(e)] || (e ? String(e).split('@')[0] : '');
 export const setorDe = id => SETORES.find(s => s.id === id) || SEM_SETOR;
 export const nomeDoSetor = id => setorDe(id).nome;
 export const donoDoSetor = id => setorDe(id).dono;
