@@ -176,6 +176,9 @@ function mundo({ tokenFaltam = 50 * 60 * 1000 } = {}) {
       const u = new URL(url); const caminho = u.pathname; const sp = u.searchParams;
       if (String((op.headers || {}).Authorization) !== 'Bearer tok-ca') return resposta(401, { error: 'token' });
       if (caminho === '/v1/financeiro/eventos-financeiros/contas-a-receber/buscar') {
+        // desde 12/11/2026 o Conta Azul recusa a busca com mais de 365 dias entre as duas datas de vencimento
+        const dias = (Date.parse(sp.get('data_vencimento_ate') + 'T00:00:00Z') - Date.parse(sp.get('data_vencimento_de') + 'T00:00:00Z')) / 86400000;
+        if (!(dias >= 0 && dias <= 365)) { contaAzul.largos = (contaAzul.largos || 0) + 1; return resposta(400, { error: 'O intervalo de data de vencimento excede o limite máximo permitido de 365 dias. Reduza o período e tente novamente.' }); }
         const ids = (sp.get('ids_categorias') || '').split(',');
         const lista = contaAzul.parcelas.filter(p => p.categorias.some(c => ids.includes(c.id)) && p.data_vencimento >= sp.get('data_vencimento_de') && p.data_vencimento <= sp.get('data_vencimento_ate'));
         const tam = Number(sp.get('tamanho_pagina')), pag = Number(sp.get('pagina'));
@@ -298,6 +301,11 @@ console.log('A lista (prever):');
   chk('a data da venda e o resumo', r.corpo.data_venda === '2026-10-31' && r.corpo.resumo.marcadas === 5 && r.corpo.boletos === 2, J(r.corpo.resumo));
   chk('sem aviso de boleto (a competência já está na grade)', !r.corpo.avisos.some(a => /ainda não foi gerada/.test(a)));
   chk('nenhuma venda criada na consulta', w.contaAzul.criadas.length === 0 && !w.contaAzul.chamadas.some(c => c.startsWith('POST')));
+  // 12/11/2026: o Conta Azul passou a recusar a busca com mais de 365 dias de vencimento — o histórico de 6 anos vai ano a ano
+  const anosPedidos = w.chamadas.filter(c => c.url.includes('/contas-a-receber/buscar?') && new URL(c.url).searchParams.get('ids_categorias') === CAT.adicional)
+    .map(c => new URL(c.url).searchParams.get('data_vencimento_de') + ':' + new URL(c.url).searchParams.get('data_vencimento_ate'));
+  chk('o histórico do adicional é pedido um ano de vencimento por vez (2023 a 2028), nunca num intervalo de mais de 365 dias',
+    !w.contaAzul.largos && J(anosPedidos) === J(['2023-01-01:2023-12-31', '2024-01-01:2024-12-31', '2025-01-01:2025-12-31', '2026-01-01:2026-12-31', '2027-01-01:2027-12-31', '2028-01-01:2028-12-31']), J(anosPedidos) + ' · recusados: ' + (w.contaAzul.largos || 0));
   w.db.cobrancas_mensais.length = 0;
   const sem = await w.pedir({ modo: 'prever', competencia: '2026-10' });
   chk('sem a competência na grade de Boletos: o aviso pra gerar antes', sem.corpo.avisos.some(a => /10\/2026 ainda não foi gerada em Boletos/.test(a)));

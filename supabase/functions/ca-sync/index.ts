@@ -37,6 +37,19 @@
 //   baixa no mês e no dia dela; a parcela sem baixas segue com o pago no mês do pagamento.
 //   Detalhes em sincronizarBaixas(). Desde a tarde de 29/10, o incremental também relê a parcial que ficou sem os
 //   pagamentos lidos (a rodada que parou no prazo), e o vigia avisa a que continua sem (vigia_regras_relatorios).
+//
+// v8 — 12/11/2026 (Claude, a pedido do Samuel): um ano de vencimento por pedido.
+//   Em 12/11/2026, às 10h20, o Conta Azul passou a recusar (400, "O intervalo de data de vencimento excede o limite
+//   máximo permitido de 365 dias") a busca de contas a receber e a pagar com mais de 365 dias entre as duas datas — e
+//   o mesmo no intervalo de pagamento e no de alteração (conferido na API no mesmo dia: 365 dias de diferença passa,
+//   366 não; a documentação deles não diz). A rodada pedia os vencimentos de 2024 a 2036 de uma vez, e o espelho parou.
+//   Agora todo pedido vai com um ano do calendário de vencimento (janelasPorAno), PARALELO de cada vez (emParalelo), e
+//   as passadas de pagamento perguntam antes, com a página mínima, em quais janelas de vencimento há pagamento no
+//   período (janelasComPagamento): só essas são lidas mês a mês e dia a dia. O que a rodada grava não mudou.
+//   Junto: o pedido que volta 5xx ou cai na rede é tentado de novo (com mais pedidos por rodada, o erro avulso do
+//   Conta Azul derrubaria uma rodada por dia), o 429 tem limite de tentativas, o pedido sem resposta tem prazo e
+//   todos saem com INTERVALO_MS entre um e outro (o limite deles é de 10 por segundo).
+//   Teste: tests/ca-sync.test.mjs (este arquivo, com um Conta Azul de mentira que recusa o intervalo largo).
 // ============================================================
 import { createClient } from 'npm:@supabase/supabase-js@2';
 
@@ -46,8 +59,16 @@ const PAGE = 500;
 const VENC_LARGA_DE = '2024-01-01';
 const VENC_LARGA_ATE = '2036-12-31';
 const DIAS_REALIZADO = 10; // janela diária do incremental (dias pra trás, inclusive hoje)
+const PARALELO = 4; // pedidos ao Conta Azul ao mesmo tempo
+const INTERVALO_MS = 125; // entre a saída de um pedido e a do seguinte: 8 por segundo (o limite deles: 10 por segundo e 600 por minuto por conta)
+const CA_PRAZO_MS = 45_000; // um pedido sem resposta não segura a rodada (a função tem 150 s)
+const CA_DE_NOVO = 2; // quantas vezes o pedido que voltou 5xx (ou caiu na rede) é tentado de novo
+const MAX_JANELAS = 40; // anos de vencimento num pedido de backfill: acima disso, é engano no corpo do pedido
 
 const sb = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!);
+
+// só pro relato da rodada: quantos pedidos ela fez ao Conta Azul
+let pedidosCA = 0;
 
 function json(status: number, body: unknown): Response {
   return new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
@@ -91,12 +112,79 @@ async function tokenValido(): Promise<string> {
   return tok.access_token;
 }
 
+const espera = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+// A vez de cada pedido ao Conta Azul (v8): todos passam por aqui, e saem com INTERVALO_MS entre um e outro — com vários
+// ao mesmo tempo e o Conta Azul respondendo rápido, a rodada passaria dos 10 por segundo.
+let proximaVez = 0;
+async function vez(): Promise<void> {
+  const agora = Date.now();
+  const quando = Math.max(agora, proximaVez);
+  proximaVez = quando + INTERVALO_MS;
+  pedidosCA++;
+  if (quando > agora) await espera(quando - agora);
+}
+
+// Um pedido de leitura ao Conta Azul. O 429 espera e tenta de novo (até 5 vezes); o 5xx e a queda da rede, mais
+// CA_DE_NOVO vezes; o que não responde em CA_PRAZO_MS falha na hora (não dá tempo de esperar outro).
 async function caGet(token: string, path: string, params: Record<string, string>): Promise<any> {
   const qs = new URLSearchParams(params);
-  const resp = await fetch(`${API}${path}?${qs}`, { headers: { 'Authorization': `Bearer ${token}` } });
-  if (resp.status === 429) { await new Promise(r => setTimeout(r, 1500)); return caGet(token, path, params); }
-  if (!resp.ok) throw new Error(`${path} respondeu ${resp.status}: ${(await resp.text()).slice(0, 300)}`);
-  return resp.json();
+  let limite = 0, instavel = 0;
+  while (true) {
+    await vez();
+    let resp: Response;
+    try {
+      resp = await fetch(`${API}${path}?${qs}`, { headers: { 'Authorization': `Bearer ${token}` }, signal: AbortSignal.timeout(CA_PRAZO_MS) });
+    } catch (e) {
+      const semResposta = (e as { name?: string } | null)?.name === 'TimeoutError';
+      if (!semResposta && instavel++ < CA_DE_NOVO) { await espera(1000 * instavel); continue; }
+      throw new Error(`${path}: ${semResposta ? 'o Conta Azul não respondeu em ' + CA_PRAZO_MS / 1000 + ' s' : 'sem conexão com o Conta Azul (' + (e instanceof Error ? e.message : String(e)) + ')'}`);
+    }
+    if (resp.status === 429) {
+      await resp.body?.cancel();
+      if (limite++ >= 5) throw new Error(`${path}: limite de requisições do Conta Azul`);
+      await espera(1500 * limite);
+      continue;
+    }
+    if (resp.status >= 500 && instavel++ < CA_DE_NOVO) { await resp.body?.cancel(); await espera(1000 * instavel); continue; }
+    if (!resp.ok) throw new Error(`${path} respondeu ${resp.status}: ${(await resp.text()).slice(0, 300)}`);
+    return resp.json();
+  }
+}
+
+// As janelas de vencimento (v8): um ano do calendário em cada uma — 364 ou 365 dias entre as duas datas, dentro do
+// limite de 365 do Conta Azul. A primeira e a última ficam do tamanho que o intervalo pedir.
+type Janela = { de: string; ate: string };
+const DIA_ISO = /^\d{4}-\d{2}-\d{2}$/;
+
+function janelasPorAno(deIso: string, ateIso: string): Janela[] {
+  if (!DIA_ISO.test(deIso) || !DIA_ISO.test(ateIso) || deIso > ateIso) {
+    throw new Error(`intervalo de datas inválido: ${deIso} a ${ateIso} (YYYY-MM-DD, de <= ate)`);
+  }
+  const anoDe = Number(deIso.slice(0, 4)), anoAte = Number(ateIso.slice(0, 4));
+  if (anoAte - anoDe + 1 > MAX_JANELAS) throw new Error(`intervalo de datas largo demais: ${deIso} a ${ateIso}`);
+  const out: Janela[] = [];
+  for (let a = anoDe; a <= anoAte; a++) {
+    out.push({ de: a === anoDe ? deIso : `${a}-01-01`, ate: a === anoAte ? ateIso : `${a}-12-31` });
+  }
+  return out;
+}
+
+const JANELAS_LARGAS = janelasPorAno(VENC_LARGA_DE, VENC_LARGA_ATE);
+
+// Os pedidos de uma lista, PARALELO de cada vez, com as respostas na ordem da lista. Falhou um, os que ainda não
+// saíram não saem e a passada inteira falha — como antes, quando era um pedido só.
+async function emParalelo<T, R>(itens: T[], fn: (item: T, i: number) => Promise<R>): Promise<R[]> {
+  const out: R[] = new Array(itens.length);
+  let prox = 0, falhou = false;
+  const um = async () => {
+    while (!falhou && prox < itens.length) {
+      const i = prox++;
+      try { out[i] = await fn(itens[i], i); } catch (e) { falhou = true; throw e; }
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(PARALELO, itens.length) }, um));
+  return out;
 }
 
 function mapParcela(it: any, natureza: 'receita' | 'despesa') {
@@ -127,7 +215,15 @@ const PATHS = {
   despesa: '/v1/financeiro/eventos-financeiros/contas-a-pagar/buscar'
 };
 
+// A varredura (v8): uma janela de vencimento por pedido, PARALELO de cada vez, cada janela com as suas páginas.
 async function varrer(token: string, natureza: 'receita' | 'despesa', extra: Record<string, string>, vistas: string[] = []): Promise<number> {
+  const { data_vencimento_de, data_vencimento_ate, ...resto } = extra;
+  const gravadas = await emParalelo(janelasPorAno(data_vencimento_de, data_vencimento_ate), (j) =>
+    varrerJanela(token, natureza, { ...resto, data_vencimento_de: j.de, data_vencimento_ate: j.ate }, vistas));
+  return gravadas.reduce((soma, n) => soma + n, 0);
+}
+
+async function varrerJanela(token: string, natureza: 'receita' | 'despesa', extra: Record<string, string>, vistas: string[]): Promise<number> {
   let pagina = 1, gravadas = 0;
   while (true) {
     const res = await caGet(token, PATHS[natureza], { pagina: String(pagina), tamanho_pagina: String(PAGE), ...extra });
@@ -162,6 +258,7 @@ const PARCELA_POR_ID = '/v1/financeiro/eventos-financeiros/parcelas/';
 
 async function caStatus(token: string, path: string): Promise<number> {
   for (let tentativa = 0; tentativa < 5; tentativa++) {
+    await vez();
     const resp = await fetch(`${API}${path}`, { headers: { 'Authorization': `Bearer ${token}` } });
     await resp.body?.cancel();
     if (resp.status === 429) { await new Promise(r => setTimeout(r, 1500 * (tentativa + 1))); continue; }
@@ -211,12 +308,15 @@ async function limparSumidas(token: string, deIso: string, ateIso: string, inici
 //  • para no prazo (PRAZO_BAIXAS_*, contado do começo da rodada): a função tem 150 s pra responder, e as passadas
 //    do domingo já levam uns 45 s. O que não coube fica pra próxima rodada.
 const BAIXAS_MAX = 400; // parcelas por rodada; o resto fica pra próxima
-const PRAZO_BAIXAS_INCREMENTAL = 45_000; // ms desde o começo da rodada
-const PRAZO_BAIXAS_COM_DIARIA = 25_000; // a rodada de hora em hora, em que a passada diária ainda vem depois
+// v8: a varredura e a passada mensal, com um pedido por janela de vencimento, levam uns 10 s a mais antes das baixas —
+// os dois prazos do incremental andaram junto, pra as baixas seguirem com o tempo que tinham
+const PRAZO_BAIXAS_INCREMENTAL = 55_000; // ms desde o começo da rodada
+const PRAZO_BAIXAS_COM_DIARIA = 35_000; // a rodada de hora em hora, em que a passada diária ainda vem depois
 const PRAZO_BAIXAS_BACKFILL = 90_000;
 
 async function caGetParcela(token: string, id: string): Promise<any | null> {
   for (let tentativa = 0; tentativa < 5; tentativa++) {
+    await vez();
     const resp = await fetch(`${API}${PARCELA_POR_ID}${id}`, {
       headers: { 'Authorization': `Bearer ${token}` },
       signal: AbortSignal.timeout(20_000)
@@ -353,27 +453,63 @@ async function sincronizarBaixas(token: string, candidatas: string[], prazo: num
   };
 }
 
+// As janelas de vencimento em que alguma parcela foi paga no período (v8). A passada de pagamentos precisaria de um
+// pedido por janela larga (13) pra cada mês e cada dia; esta sonda faz um pedido por janela, com a página mínima, e a
+// passada lê mês a mês e dia a dia só as janelas que têm pagamento (quase sempre, o ano passado, este e o que vem).
+// O período de pagamento também não passa de 365 dias por pedido: vai um ano do calendário de cada vez.
+type JanelasPagas = Record<'receita' | 'despesa', Janela[]>;
+
+async function janelasComPagamento(token: string, pagDe: string, pagAte: string): Promise<JanelasPagas> {
+  const pedidos: { natureza: 'receita' | 'despesa'; janela: Janela; pag: Janela }[] = [];
+  for (const natureza of ['receita', 'despesa'] as const) {
+    for (const janela of JANELAS_LARGAS) for (const pag of janelasPorAno(pagDe, pagAte)) pedidos.push({ natureza, janela, pag });
+  }
+  const tem = await emParalelo(pedidos, async ({ natureza, janela, pag }) => {
+    const res = await caGet(token, PATHS[natureza], {
+      pagina: '1', tamanho_pagina: '10',
+      data_vencimento_de: janela.de, data_vencimento_ate: janela.ate,
+      data_pagamento_de: pag.de, data_pagamento_ate: pag.ate
+    });
+    return (res.itens ?? []).length > 0 || Number(res.itens_totais ?? 0) > 0;
+  });
+  const com: JanelasPagas = { receita: [], despesa: [] };
+  pedidos.forEach((p, i) => { if (tem[i] && !com[p.natureza].includes(p.janela)) com[p.natureza].push(p.janela); });
+  return com;
+}
+
+// Os ids das parcelas pagas no período, nas janelas de vencimento dadas (uma janela por pedido, com as suas páginas).
+async function idsPagosNoPeriodo(
+  token: string, natureza: 'receita' | 'despesa', janelas: Janela[], pagDe: string, pagAte: string, rotulo: string
+): Promise<string[]> {
+  const porJanela = await emParalelo(janelas, async (j) => {
+    const ids: string[] = [];
+    let pagina = 1;
+    while (true) {
+      const res = await caGet(token, PATHS[natureza], {
+        pagina: String(pagina), tamanho_pagina: String(PAGE),
+        data_vencimento_de: j.de, data_vencimento_ate: j.ate,
+        data_pagamento_de: pagDe, data_pagamento_ate: pagAte
+      });
+      const itens = res.itens ?? [];
+      itens.forEach((it: any) => ids.push(it.id));
+      if (itens.length < PAGE) break;
+      pagina++;
+      if (pagina > 100) throw new Error(`${rotulo} estourou 100 páginas`);
+    }
+    return ids;
+  });
+  return [...new Set(porJanela.flat())];
+}
+
 // Passada mensal de pagamentos: zera a marca do mês e remarca com quem a API diz que foi pago nele.
 // Devolve os ids pagos no mês (v7: quem aparece em mais de um mês teve mais de um pagamento → baixas) e, com os
 // meses da rodada, os que já estavam marcados num mês de fora dela (pagos também naquele mês → baixas).
+// v8: lê só as janelas de vencimento que a sonda da rodada achou com pagamento (janelasComPagamento).
 async function marcarPagamentosDoMes(
-  token: string, natureza: 'receita' | 'despesa', mes: Date, mesesDaRodada?: Set<string>
+  token: string, natureza: 'receita' | 'despesa', mes: Date, janelas: Janela[], mesesDaRodada?: Set<string>
 ): Promise<{ ids: string[]; deOutroMes: string[] }> {
   const { ini, fim, ancora } = mesStr(mes);
-  const ids: string[] = [];
-  let pagina = 1;
-  while (true) {
-    const res = await caGet(token, PATHS[natureza], {
-      pagina: String(pagina), tamanho_pagina: String(PAGE),
-      data_vencimento_de: VENC_LARGA_DE, data_vencimento_ate: VENC_LARGA_ATE,
-      data_pagamento_de: ini, data_pagamento_ate: fim
-    });
-    const itens = res.itens ?? [];
-    itens.forEach((it: any) => ids.push(it.id));
-    if (itens.length < PAGE) break;
-    pagina++;
-    if (pagina > 100) throw new Error('Passada de pagamentos estourou 100 páginas');
-  }
+  const ids = await idsPagosNoPeriodo(token, natureza, janelas, ini, fim, 'Passada de pagamentos');
   // só uma pista pras baixas: se a leitura falhar, a marcação do mês segue igual
   const deOutroMes: string[] = [];
   if (mesesDaRodada) {
@@ -395,39 +531,30 @@ async function marcarPagamentosDoMes(
 }
 
 // Passada DIÁRIA de pagamentos — a API filtra por data_pagamento mas não devolve
-// o campo, então perguntamos dia a dia. Coleta os ids pagos num dia:
-async function coletarIdsPagosNoDia(token: string, natureza: 'receita' | 'despesa', diaIso: string): Promise<string[]> {
-  const ids: string[] = [];
-  let pagina = 1;
-  while (true) {
-    const res = await caGet(token, PATHS[natureza], {
-      pagina: String(pagina), tamanho_pagina: String(PAGE),
-      data_vencimento_de: VENC_LARGA_DE, data_vencimento_ate: VENC_LARGA_ATE,
-      data_pagamento_de: diaIso, data_pagamento_ate: diaIso
-    });
-    const itens = res.itens ?? [];
-    itens.forEach((it: any) => ids.push(it.id));
-    if (itens.length < PAGE) break;
-    pagina++;
-    if (pagina > 100) throw new Error('Passada diária de pagamentos estourou 100 páginas');
-  }
-  return ids;
-}
-
+// o campo, então perguntamos dia a dia (v8: e janela a janela de vencimento, só nas que têm pagamento no período).
 // Janela [deIso, ateIso] (inclusive): COLETA tudo primeiro (nenhuma escrita antes
 // de a API responder por inteiro — a mesma ordem segura da passada mensal), e só
 // então zera a janela e remarca; falha de API no meio não deixa a janela vazia.
 async function marcarDiasDePagamento(token: string, deIso: string, ateIso: string): Promise<number> {
-  const lotes: { dia: string; ids: string[] }[] = [];
+  const janelas = await janelasComPagamento(token, deIso, ateIso);
+  const pedidos: { dia: string; natureza: 'receita' | 'despesa'; janela: Janela }[] = [];
+  const dias: string[] = [];
   const d = new Date(deIso + 'T00:00:00Z');
   const ate = new Date(ateIso + 'T00:00:00Z');
   while (d <= ate) {
     const dia = d.toISOString().slice(0, 10);
+    dias.push(dia);
     for (const natureza of ['receita', 'despesa'] as const) {
-      lotes.push({ dia, ids: await coletarIdsPagosNoDia(token, natureza, dia) });
+      for (const janela of janelas[natureza]) pedidos.push({ dia, natureza, janela });
     }
     d.setUTCDate(d.getUTCDate() + 1);
   }
+  const lidos = await emParalelo(pedidos, (p) =>
+    idsPagosNoPeriodo(token, p.natureza, [p.janela], p.dia, p.dia, 'Passada diária de pagamentos'));
+  // um lote por dia, na ordem dos dias: a parcela paga em dois dias do período fica com o último, como antes
+  const porDia = new Map<string, Set<string>>(dias.map((dia) => [dia, new Set<string>()]));
+  pedidos.forEach((p, i) => lidos[i].forEach((id) => porDia.get(p.dia)!.add(id)));
+  const lotes = dias.map((dia) => ({ dia, ids: [...porDia.get(dia)!] }));
   for (const natureza of ['receita', 'despesa'] as const) {
     const { error } = await sb.from('ca_parcelas').update({ data_pagamento: null })
       .eq('natureza', natureza).gte('data_pagamento', deIso).lte('data_pagamento', ateIso);
@@ -509,6 +636,7 @@ Deno.serve(async (req: Request) => {
   if (logErr) return json(500, { ok: false, erro: 'log: ' + logErr.message });
   const logId = log.id;
   const t0 = Date.now();
+  pedidosCA = 0;
 
   try {
     const token = await tokenValido();
@@ -534,7 +662,7 @@ Deno.serve(async (req: Request) => {
         categorias_upsert: 0,
         sucesso: true
       }).eq('id', logId);
-      return json(200, { ok: true, modo, dias: nDias, pagamentosDia, ms: Date.now() - t0 });
+      return json(200, { ok: true, modo, dias: nDias, pagamentosDia, pedidos_ca: pedidosCA, ms: Date.now() - t0 });
     }
 
     const extra: Record<string, string> = {};
@@ -542,8 +670,9 @@ Deno.serve(async (req: Request) => {
     let mesesPagamento: Date[] = [];
 
     if (modo === 'backfill') {
-      extra.data_vencimento_de = body.venc_de ?? '2025-01-01';
-      extra.data_vencimento_ate = body.venc_ate ?? '2036-12-31';
+      extra.data_vencimento_de = String(body.venc_de ?? '2025-01-01');
+      extra.data_vencimento_ate = String(body.venc_ate ?? '2036-12-31');
+      janelasPorAno(extra.data_vencimento_de, extra.data_vencimento_ate); // as datas do pedido são conferidas antes de qualquer leitura
       janelaDe = extra.data_vencimento_de; janelaAte = extra.data_vencimento_ate;
       mesesPagamento = mesesEntre(extra.data_vencimento_de, extra.data_vencimento_ate);
     } else {
@@ -569,9 +698,13 @@ Deno.serve(async (req: Request) => {
     const mesesPorParcela = new Map<string, Set<string>>();
     const mesesDaRodada = new Set(mesesPagamento.map((m) => mesStr(m).ancora));
     const deOutroMes = new Set<string>();
+    // v8: em quais janelas de vencimento há pagamento nos meses da rodada (do primeiro dia do primeiro mês ao último do último)
+    const janelasPagas: JanelasPagas = mesesPagamento.length
+      ? await janelasComPagamento(token, mesStr(mesesPagamento[0]).ini, mesStr(mesesPagamento[mesesPagamento.length - 1]).fim)
+      : { receita: [], despesa: [] };
     for (const mes of mesesPagamento) {
       for (const natureza of ['receita', 'despesa'] as const) {
-        const marcados = await marcarPagamentosDoMes(token, natureza, mes, mesesDaRodada);
+        const marcados = await marcarPagamentosDoMes(token, natureza, mes, janelasPagas[natureza], mesesDaRodada);
         pagamentosMarcados += marcados.ids.length;
         marcados.deOutroMes.forEach((id) => deOutroMes.add(id));
         const ancora = mesStr(mes).ancora;
@@ -679,10 +812,15 @@ Deno.serve(async (req: Request) => {
         : {})
     }).eq('id', logId);
 
-    return json(200, { ok: true, modo, receitas, despesas, pagamentosMarcados, pagamentosDia, baixas, categorias, limpeza, ms: Date.now() - t0 });
+    const anos = (js: Janela[]) => js.map((j) => j.de.slice(0, 4));
+    return json(200, {
+      ok: true, modo, receitas, despesas, pagamentosMarcados, pagamentosDia, baixas, categorias, limpeza,
+      janelas_pagas: { receita: anos(janelasPagas.receita), despesa: anos(janelasPagas.despesa) },
+      pedidos_ca: pedidosCA, ms: Date.now() - t0
+    });
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     await sb.from('ca_sync_log').update({ concluido_em: new Date().toISOString(), sucesso: false, erro: msg }).eq('id', logId);
-    return json(500, { ok: false, modo, erro: msg, ms: Date.now() - t0 });
+    return json(500, { ok: false, modo, erro: msg, pedidos_ca: pedidosCA, ms: Date.now() - t0 });
   }
 });

@@ -262,8 +262,12 @@ export function criarServidor({ env, fetch: f = globalThis.fetch, agora = () => 
     const ano = Number(comp.slice(0, 4));
     const token = await tokenCA();
     const cats = await categorias();
-    // o adicional: o histórico e o que já existe na competência (a API, ao vivo: o espelho tem só desde 2025)
-    const adicionais = (await todas(token, RECEBER, { ids_categorias: cats.adicional, data_vencimento_de: (ano - ANOS_HISTORICO) + '-01-01', data_vencimento_ate: (ano + 2) + '-12-31' })).map(parcelaNormal);
+    // o adicional: o histórico e o que já existe na competência (a API, ao vivo: o espelho tem só desde 2025) — um ano de
+    // vencimento por pedido: desde 12/11/2026 o Conta Azul recusa (400) a busca com mais de 365 dias entre as duas datas
+    const adicionais = [];
+    for (let y = ano - ANOS_HISTORICO; y <= ano + 2; y++) {
+      adicionais.push(...(await todas(token, RECEBER, { ids_categorias: cats.adicional, data_vencimento_de: y + '-01-01', data_vencimento_ate: y + '-12-31' })).map(parcelaNormal));
+    }
     // a mensalidade de outubro de cada ano do histórico (a API)
     const idsMensal = [cats.mensal, cats.mei].filter(Boolean).join(',');
     const mensais = [];
