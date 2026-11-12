@@ -6,7 +6,8 @@
 import { entradaDoSistema, aplicarRelatorios, premissasParaTestar, prazosDaEscolha, exclusaoObrigatoria, ultimoDiaUtil, serieDosMeses, tipoPeloCnae, tipoPeloAnexo, regimeDoCadastro,
   ehRefeicaoRS, ehRdaRS, empresasDosSocios, receitaDaEmpresa, situacaoDoGrupo, serieDaEmpresa, foraDaSoma, avisoDaSoma, mesclarSerie,
   pareceFolha, cnpjsDoCabecalho, juntarFolha, folhaDoAno, aplicarFolha, mesesDaPonte, seriePonte, somaDaPonte, objetivoSugerido, porQueDoObjetivo, objetivoValido, doRegimeGeral, simplesNoEstudo,
-  presuncaoPeloCnae, periodoCurto, mesesDeAte, janelaDaReceita, periodoDaDre, dreSugerida } from '../assets/js/comparativo-dados.js';
+  presuncaoPeloCnae, periodoCurto, mesesDeAte, janelaDaReceita, periodoDaDre, dreSugerida,
+  CAMPOS_PONTE, CAMPOS_PISCOFINS, CAMPOS_RESULTADO, pisCofinsDaPonte, cstVale, resultadoDaPonte, listaDoResultado, lucroDaPonte, aplicarLucroDaPonte, origemDoLucroDaPonte } from '../assets/js/comparativo-dados.js';
 import { comparar, testarPremissas } from '../assets/js/comparativo-motor.js';
 
 let falhas = 0, total = 0;
@@ -511,6 +512,124 @@ console.log('=== o lucro da contabilidade até onde ela está feita (11/11/2026,
   // os meses sem receita no período: o fator vai pelo tempo
   ok('a DRE de um mês sem receita no sistema: sem a margem, vai pelo tempo (12 ÷ 1)', (() => { const x = periodoDaDre([{ competencia: '2025-12', total: 100 }, { competencia: '2026-02', total: 100 }], { lucroDe: '2026-01', lucroAte: '2026-01' });
     return x.fator === 12 && x.meses === 1 && x.receita === null && x.guardada === false; })());
+}
+
+console.log('=== o resultado da contabilidade pela ponte do Domínio (11/11/2026, a versão 5): o lucro até onde ela está feita ===');
+{
+  // a receita de out/25 a set/26 (R$ 600.000); o resultado do Domínio mês a mês — novembro com prejuízo, e o IRPJ e a CSLL
+  // lançados à parte; a contabilidade feita até jul/26
+  const comps = ['2025-10', '2025-11', '2025-12', '2026-01', '2026-02', '2026-03', '2026-04', '2026-05', '2026-06', '2026-07', '2026-08', '2026-09'];
+  const valores = [10000, 40000, 50000, 20000, 30000, 60000, 70000, 40000, 110000, 50000, 70000, 50000];
+  const serie = comps.map((c, i) => ({ competencia: c, total: valores[i] }));
+  const res = [1500.10, -2300.55, 4200, 900.45, 2100, 6100, 7300, 3800, 9900, 4500, 2500, 1200];
+  const linhas = comps.map((c, i) => ({ codigo: 7, competencia: c, resultado_antes_ir: res[i], irpj_csll_lancados: 100, receitas_financeiras: 10, lanc_resultado: 20 + i }));
+  const ctb = { faz: true, feitaAte: '2026-07' };
+  ok('os campos do resultado e os do PIS/Cofins (os nove do CST entram nos da ponte)', CAMPOS_RESULTADO.join() === 'resultado_antes_ir,irpj_csll_lancados,receitas_financeiras,lanc_resultado'
+    && CAMPOS_PISCOFINS.length === 9 && CAMPOS_PISCOFINS.every(c => CAMPOS_PONTE.includes(c)) && !CAMPOS_RESULTADO.some(c => CAMPOS_PONTE.includes(c)));
+  const m = resultadoDaPonte(linhas);
+  ok('o resultado mês a mês: os 12 meses, com o prejuízo de novembro', m.size === 12 && m.get('2025-11').resultado === -2300.55 && m.get('2025-11').lancamentos === 21 && m.get('2025-10').ircs === 100 && m.get('2025-10').financeiras === 10);
+  ok('o mês que a ponte não leu (lanc_resultado nulo) fica de fora; o sem lançamento entra com o resultado nulo, nunca zero', (() => {
+    const x = resultadoDaPonte([{ competencia: '2026-01', lanc_resultado: null, resultado_antes_ir: 5 }, { competencia: '2026-02', lanc_resultado: 0, resultado_antes_ir: null }, { competencia: 'x', lanc_resultado: 3 }, null]);
+    return x.size === 1 && x.get('2026-02').lancamentos === 0 && x.get('2026-02').resultado === null; })());
+  ok('dois códigos do Domínio na mesma empresa: fica o que tem mais lançamentos em conta de resultado (o resultado tem sinal)', (() => {
+    const x = resultadoDaPonte([{ codigo: 1, competencia: '2026-03', lanc_resultado: 2, resultado_antes_ir: 9000 }, { codigo: 2, competencia: '2026-03', lanc_resultado: 40, resultado_antes_ir: -500 }, { codigo: 3, competencia: '2026-03', lanc_resultado: 0, resultado_antes_ir: null }]);
+    return x.size === 1 && x.get('2026-03').resultado === -500 && x.get('2026-03').lancamentos === 40; })());
+  const lista = listaDoResultado([...linhas].reverse());
+  ok('a lista que o estudo guarda: os meses em ordem, só o resultado (sem o código do Domínio)', lista.length === 12 && lista[0].competencia === '2025-10' && lista[11].competencia === '2026-09' && Object.keys(lista[0]).join() === 'competencia,lancamentos,resultado,ircs,financeiras');
+
+  // de outubro a julho: 1500,10 − 2300,55 + 4200 + 900,45 + 2100 + 6100 + 7300 + 3800 + 9900 + 4500 = 38.000,00
+  const lp = lucroDaPonte(serie, ctb, linhas);
+  ok('o lucro até onde o Controle dá a contabilidade como feita: de outubro a julho, R$ 38.000,00 em 10 meses, com a receita deles (R$ 480.000)', lp.de === '2025-10' && lp.ate === '2026-07' && lp.meses === 10 && lp.lucro === 38000 && lp.receita === 480000
+    && lp.ircs === 1000 && lp.financeiras === 100 && lp.lancamentos === 245 && lp.falta === undefined, lp);
+  ok('aceita as linhas, o mapa e a lista do estudo: o mesmo número', lucroDaPonte(serie, ctb, m).lucro === 38000 && lucroDaPonte(serie, ctb, lista).lucro === 38000);
+  ok('com o mês escolhido: até setembro (os 12 meses, R$ 41.700,00) ou até dezembro (R$ 3.399,55), sem depender do Controle', lucroDaPonte(serie, ctb, lista, '2026-09').lucro === 41700 && lucroDaPonte(serie, null, lista, '2025-12').lucro === 3399.55
+    && lucroDaPonte(serie, null, lista, '2025-12').meses === 3 && lucroDaPonte(serie, null, lista, '2025-12').receita === 100000);
+  ok('o mês escolhido fora dos meses da receita: nada (não cai no mês do Controle)', lucroDaPonte(serie, ctb, lista, '2026-10') === null && lucroDaPonte(serie, ctb, lista, '2025-09') === null && lucroDaPonte(serie, ctb, lista, 'x') === null);
+  ok('sem o Controle, com a contabilidade fora do escritório, parada antes da receita ou sem mês feito: o sistema não sabe até onde ir', lucroDaPonte(serie, null, lista) === null && lucroDaPonte(serie, { faz: false, feitaAte: null }, lista) === null
+    && lucroDaPonte(serie, { faz: true, feitaAte: '2025-09' }, lista) === null && lucroDaPonte(serie, { faz: true, feitaAte: null }, lista) === null);
+  ok('sem a série, ou sem nenhum mês lido pela ponte: nada', lucroDaPonte(null, ctb, lista) === null && lucroDaPonte(serie, ctb, []) === null && lucroDaPonte(serie, ctb, null) === null
+    && lucroDaPonte(serie, ctb, linhas.map(l => ({ ...l, lanc_resultado: null }))) === null);
+  ok('a contabilidade adiantada no Controle: a DRE vai só até o fim da receita', lucroDaPonte(serie, { faz: true, feitaAte: '2026-12' }, lista).ate === '2026-09');
+  // a ponte sem o resultado de um mês do período
+  const semMarco = lucroDaPonte(serie, ctb, linhas.filter(l => l.competencia !== '2026-03'));
+  ok('um mês do período que a ponte não leu: sem o número, e diz qual', semMarco.lucro === undefined && semMarco.falta === 'nao_lido' && semMarco.quais.join() === '2026-03' && semMarco.ate === '2026-07', semMarco);
+  ok('o mês com lançamento e sem o número também é "não lido"', lucroDaPonte(serie, ctb, linhas.map(l => (l.competencia === '2026-01' ? { ...l, resultado_antes_ir: null } : l))).falta === 'nao_lido');
+  // o Controle dá o mês como feito, a empresa faturou e o Domínio não tem lançamento em conta de resultado: nunca lucro zero
+  const semLanc = lucroDaPonte(serie, ctb, linhas.map(l => (['2026-06', '2026-07'].includes(l.competencia) ? { ...l, lanc_resultado: 0, resultado_antes_ir: null } : l)));
+  ok('o mês com receita e sem lançamento em conta de resultado: a contabilidade dele não está no Domínio (nunca lucro zero)', semLanc.lucro === undefined && semLanc.falta === 'sem_lancamento' && semLanc.quais.join() === '2026-06,2026-07', semLanc);
+  ok('o mês sem lançamento depois do mês do Controle não atrapalha', lucroDaPonte(serie, ctb, linhas.map(l => (l.competencia === '2026-09' ? { ...l, lanc_resultado: 0, resultado_antes_ir: null } : l))).lucro === 38000);
+  // o mês sem receita e sem lançamento conta como zero (a empresa parada no mês)
+  const serieFuro = serie.filter(x => x.competencia !== '2026-02');
+  const furo = lucroDaPonte(serieFuro, ctb, linhas.map(l => (l.competencia === '2026-02' ? { ...l, lanc_resultado: 0, resultado_antes_ir: null } : l)));
+  ok('o mês sem receita e sem lançamento: zero no resultado, e o lucro sai dos outros (R$ 35.900,00)', furo.lucro === 35900 && furo.meses === 10 && furo.receita === 450000, furo);
+
+  // o lucro da ponte no estudo: o número, o período, a receita dos meses e a origem
+  const e = { lucroAnual: true, atividades: [] }, o = {};
+  ok('pôr no estudo: o lucro, de quando a quando, a receita desses meses e a origem da ponte (o "anual" sai)', aplicarLucroDaPonte(e, o, lp) === true && e.lucroContabil === 38000 && e.lucroDe === '2025-10' && e.lucroAte === '2026-07' && e.lucroReceita === 480000
+    && !('lucroAnual' in e) && o.lucroContabil.fonte === 'ponte' && o.lucroContabil.texto === 'Domínio, pela ponte: o resultado da contabilidade de out/25 a jul/26' && o.lucroContabil.de === '2025-10' && o.lucroContabil.ate === '2026-07'
+    && /antes do IRPJ e da CSLL e sem o zeramento do exercício \(245 lançamentos\)$/.test(o.lucroContabil.dica), [e, o]);
+  ok('o período com a margem: o lucro da ponte vai aos 12 meses pela receita (fator 1,25)', (() => { const p = periodoDaDre(serie, e); return p.de === '2025-10' && p.ate === '2026-07' && perto(p.fator, 1.25, 1e-9) && p.guardada === false; })());
+  ok('sem o número (falta o mês, sem lançamento, nada): não põe e não mexe no estudo', (() => { const e2 = { lucroContabil: 5 }, o2 = {};
+    return aplicarLucroDaPonte(e2, o2, semLanc) === false && aplicarLucroDaPonte(e2, o2, semMarco) === false && aplicarLucroDaPonte(e2, o2, null) === false && e2.lucroContabil === 5 && !o2.lucroContabil; })());
+  ok('o prejuízo entra com o sinal', (() => { const e2 = {}, o2 = {}; return aplicarLucroDaPonte(e2, o2, lucroDaPonte(serie, null, lista, '2025-11')) && e2.lucroContabil === -800.45 && e2.lucroReceita === 50000; })());
+  ok('a origem sem a contagem dos lançamentos não inventa o número', !/lançamentos/.test(origemDoLucroDaPonte({ de: '2025-10', ate: '2026-07' }).dica));
+}
+
+console.log('=== o PIS/Cofins das vendas pelo CST das notas (a versão 5 da ponte) ===');
+{
+  // 12 meses de uma indústria do Presumido: R$ 100.000 por mês, tudo com CST — 70% com alíquota zero, 5% isenta, 25% tributada
+  const mes = (i, extra = {}) => { const d = new Date(Date.UTC(2025, 9 + i, 1)); return { codigo: 1, competencia: d.toISOString().slice(0, 7), receita_bruta: 100000, receita_mercadorias: 100000, receita_servicos: 0,
+    pc_tributada: 25000, pc_monofasica: 0, pc_st: 0, pc_aliquota_zero: 70000, pc_isenta: 5000, pc_sem_incidencia: 0, pc_suspensa: 0, pc_outras: 0, pc_sem_cst: 0, ...extra }; };
+  const doze = extra => Array.from({ length: 12 }, (_, i) => mes(i, extra));
+  const pc = pisCofinsDaPonte(doze());
+  ok('a medida: 12 meses, toda a venda classificada, R$ 900.000 com alíquota zero ou isenta', pc.n === 12 && pc.de === '2025-10' && pc.ate === '2026-09' && pc.total === 1200000 && pc.classificada === 1200000 && pc.zero === 900000 && pc.isenta === 60000
+    && pc.mono === 0 && pc.fora === 0 && pc.mercadorias === 1200000 && cstVale(pc), pc);
+  ok('sem o bloco (a ponte antiga), ou sem venda: nada', pisCofinsDaPonte([{ competencia: '2026-01', receita_bruta: 5 }]) === null && pisCofinsDaPonte(doze({ pc_tributada: 0, pc_aliquota_zero: 0, pc_isenta: 0 })) === null && pisCofinsDaPonte(null) === null && !cstVale(null));
+  const ind = { regime_tributario: 'Lucro Presumido', cnae_principal: '1041-4/00', uf: 'RS' };
+  const g = entradaDoSistema({ cliente: ind, dominio: doze() });
+  const a0 = g.entrada.atividades[0], oz = g.origens['atividades.0.pctAliqZero'];
+  ok('a indústria do Presumido: 75% das vendas com alíquota zero ou isentas, pelas notas (a origem da ponte, com a marca do CST)', a0.tipo === 'industria' && a0.pctAliqZero === 75 && oz.fonte === 'ponte' && oz.cst === true
+    && oz.texto === 'Domínio, pela ponte: 75% das vendas de mercadoria com alíquota zero ou isentas de PIS/Cofins nas notas de out/25 a set/26' && /Cesta Básica Nacional/.test(oz.dica) && /LC 224\/2025/.test(oz.dica), [a0, oz]);
+  ok('a marca da Cesta Básica segue com a equipe (a nota não diz) e a indústria não ganha monofásico', a0.aliqZeroCesta === undefined && a0.pctMonofasico === undefined && !g.origens['atividades.0.pctMonofasico']);
+  // sem alíquota zero nas notas: o zero medido (não é mais "padrão a conferir")
+  const semZero = entradaDoSistema({ cliente: ind, dominio: doze({ pc_tributada: 100000, pc_aliquota_zero: 0, pc_isenta: 0 }) });
+  ok('toda a venda tributada: zero medido, e a origem diz que as notas não têm', semZero.entrada.atividades[0].pctAliqZero === 0 && semZero.origens['atividades.0.pctAliqZero'].fonte === 'ponte'
+    && semZero.origens['atividades.0.pctAliqZero'].texto === 'Domínio, pela ponte: nenhuma venda com alíquota zero de PIS/Cofins nas notas de out/25 a set/26');
+  // medido pelas notas, o zero não é mais premissa a testar; no padrão (a ponte antiga), é
+  const testada = or => premissasParaTestar(semZero.entrada, or, ['presumido', 'real']).some(t => /pctAliqZero$/.test(t.campo));
+  ok('medida pelas notas, a alíquota zero sai do teste das premissas (no padrão, entra)', !testada(semZero.origens) && testada({ ...semZero.origens, 'atividades.0.pctAliqZero': { fonte: 'padrao' } }));
+  // o comércio do Real com a revenda monofásica (CST 04) e a com substituição tributária (CST 05)
+  const com = entradaDoSistema({ cliente: { regime_tributario: 'Lucro Real', cnae_principal: '4711-3/02', uf: 'RS' }, dominio: doze({ pc_tributada: 60000, pc_monofasica: 30000, pc_st: 2500, pc_aliquota_zero: 7500, pc_isenta: 0 }) });
+  const ac = com.entrada.atividades[0];
+  ok('o comércio do Real: 32,5% de revenda monofásica ou com substituição tributária e 7,5% com alíquota zero, pelas notas', ac.tipo === 'comercio' && ac.pctMonofasico === 32.5 && ac.pctAliqZero === 7.5 && com.origens['atividades.0.pctMonofasico'].cst === true
+    && com.origens['atividades.0.pctMonofasico'].texto === 'Domínio, pela ponte: 32,5% das vendas de mercadoria de revenda monofásica ou com substituição tributária de PIS/Cofins nas notas de out/25 a set/26'
+    && com.origens['atividades.0.pctAliqZero'].texto === 'Domínio, pela ponte: 7,5% das vendas de mercadoria com alíquota zero de PIS/Cofins nas notas de out/25 a set/26', [ac, com.origens['atividades.0.pctMonofasico']]);
+  ok('o comércio sem monofásico nas notas: zero medido', (() => { const x = entradaDoSistema({ cliente: { regime_tributario: 'Lucro Real', cnae_principal: '4711-3/02' }, dominio: doze({ pc_tributada: 100000, pc_aliquota_zero: 0, pc_isenta: 0 }) });
+    return x.entrada.atividades[0].pctMonofasico === 0 && x.origens['atividades.0.pctMonofasico'].texto === 'Domínio, pela ponte: nenhuma revenda monofásica de PIS/Cofins nas notas de out/25 a set/26'; })());
+  // a indústria com revenda monofásica: a conta não separa, e a nota avisa
+  const indMono = entradaDoSistema({ cliente: ind, dominio: doze({ pc_tributada: 80000, pc_monofasica: 20000, pc_aliquota_zero: 0, pc_isenta: 0 }) });
+  ok('a indústria com CST 04: o monofásico não entra na atividade, e a nota manda conferir', indMono.entrada.atividades[0].pctMonofasico === undefined
+    && indMono.notas.some(n => /^As notas têm 20% das vendas de mercadoria como revenda monofásica ou com substituição tributária de PIS\/Cofins \(CST 04 e 05\), e a atividade está como indústria/.test(n)));
+  // a exportação e a suspensão (CST 08 e 09): o comparativo não separa
+  const exp = entradaDoSistema({ cliente: ind, dominio: doze({ pc_tributada: 60000, pc_aliquota_zero: 0, pc_isenta: 0, pc_sem_incidencia: 30000, pc_suspensa: 10000 }) });
+  ok('a venda sem incidência ou com suspensão (a exportação): a nota diz os 40% e que a conta põe o PIS/Cofins nelas', exp.notas.some(n => /^As notas têm 40% das vendas sem incidência ou com suspensão de PIS\/Cofins \(CST 08 e 09/.test(n)) && exp.entrada.atividades[0].pctAliqZero === 0
+    && !g.notas.some(n => /CST 08 e 09/.test(n)));
+  // o Simples: o item não tem o CST (a venda cai toda em pc_sem_cst) — a medida não vale, e nada muda
+  const simples = entradaDoSistema({ cliente: { regime_tributario: 'Simples Nacional', cnae_principal: '4711-3/02', uf: 'RS' }, dominio: doze({ receita_simples: 100000, pc_tributada: 0, pc_aliquota_zero: 0, pc_isenta: 0, pc_sem_cst: 100000 }) });
+  ok('no Simples (a venda sem CST): a alíquota zero segue no padrão a conferir, sem falar do CST', simples.origens['atividades.0.pctAliqZero'].fonte === 'padrao' && simples.origens['atividades.0.pctAliqZero'].texto === 'padrão: nenhuma — confira'
+    && simples.entrada.atividades[0].pctAliqZero === undefined && !cstVale(pisCofinsDaPonte(doze({ pc_tributada: 0, pc_aliquota_zero: 0, pc_isenta: 0, pc_sem_cst: 100000 }))));
+  // o Presumido com a nota sem CST ou com CST 49/99 em boa parte da venda: segue a conferir, e a origem diz quanto tem CST
+  const pouco = entradaDoSistema({ cliente: ind, dominio: doze({ pc_tributada: 40000, pc_aliquota_zero: 20000, pc_isenta: 0, pc_outras: 30000, pc_sem_cst: 10000 }) });
+  ok('o Presumido com só 60% da venda com o CST: padrão a conferir, dizendo os 60%', pouco.origens['atividades.0.pctAliqZero'].fonte === 'padrao' && pouco.entrada.atividades[0].pctAliqZero === undefined
+    && pouco.origens['atividades.0.pctAliqZero'].texto === 'padrão: nenhuma — confira (só 60% das vendas têm o CST do PIS/Cofins nas notas do Domínio)' && /Lei 10\.925/.test(pouco.origens['atividades.0.pctAliqZero'].dica));
+  ok('com 95% ou mais da venda com o CST, a medida vale; com 94%, não', cstVale(pisCofinsDaPonte(doze({ pc_tributada: 25000, pc_aliquota_zero: 65000, pc_isenta: 5000, pc_sem_cst: 5000 })))
+    && !cstVale(pisCofinsDaPonte(doze({ pc_tributada: 25000, pc_aliquota_zero: 64000, pc_isenta: 5000, pc_sem_cst: 6000 }))));
+  // a empresa com mercadoria e serviço: a parte com alíquota zero é sobre a venda de mercadoria
+  const misto = entradaDoSistema({ cliente: ind, dominio: doze({ receita_bruta: 100000, receita_mercadorias: 80000, receita_servicos: 20000, pc_tributada: 40000, pc_aliquota_zero: 60000, pc_isenta: 0 }) });
+  ok('com serviço junto: os 60 mil com alíquota zero são 75% da venda de mercadoria (80 mil)', misto.entrada.atividades.find(a => a.tipo === 'industria').pctAliqZero === 75);
+  // a ponte antiga (sem os campos do CST): tudo como antes
+  const antiga = entradaDoSistema({ cliente: ind, dominio: doze().map(({ competencia, receita_bruta, receita_mercadorias, receita_servicos }) => ({ codigo: 1, competencia, receita_bruta, receita_mercadorias, receita_servicos })) });
+  ok('sem a versão 5 da ponte: o padrão a conferir de antes', antiga.origens['atividades.0.pctAliqZero'].fonte === 'padrao' && antiga.origens['atividades.0.pctAliqZero'].texto === 'padrão: nenhuma — confira' && antiga.entrada.atividades[0].pctAliqZero === undefined);
 }
 
 console.log('\n' + (total - falhas) + ' de ' + total + ' conferências ok' + (falhas ? ' — ' + falhas + ' FALHA(S)' : ''));

@@ -10,12 +10,14 @@
 // das contabilidades) e a precisão do estudo. Também de 11/11/2026: o lucro da contabilidade até onde ela está feita (o
 // período da DRE e o fator que o leva aos 12 meses: periodoDaDre) e o que o Domínio mostra desses meses (contabil.meses:
 // a folha ou a escrita fiscal que não entraram, a conta transitória com saldo, o caixa negativo), pra confirmação de quem
-// cuida da contabilidade. Testado por tests/comparativo-estudo.test.mjs.
+// cuida da contabilidade. E, com a versão 5 da ponte do Domínio (11/11/2026), o resultado da contabilidade mês a mês
+// (resultadoPonte): o lucro do Real entra sozinho até onde o Controle das contabilidades dá a contabilidade como feita, e a
+// venda com alíquota zero de PIS/Cofins sai do CST das notas. Testado por tests/comparativo-estudo.test.mjs.
 // ============================================================
 
 import { comparar, testarPremissas, REGIMES, ROTULO_REGIME, TIPOS, OBJETIVOS, regimesDoObjetivo } from './comparativo-motor.js';
 import { entradaDoSistema, empresasDosSocios, receitaDaEmpresa, situacaoDoGrupo, premissasParaTestar, prazosDaEscolha, foraDaSoma, avisoDaSoma, mesclarSerie, CAMPOS_PONTE,
-  objetivoSugerido, objetivoValido, porQueDoObjetivo, rotuloComp, periodoDaDre } from './comparativo-dados.js';
+  objetivoSugerido, objetivoValido, porQueDoObjetivo, rotuloComp, periodoDaDre, CAMPOS_RESULTADO, listaDoResultado, lucroDaPonte, aplicarLucroDaPonte } from './comparativo-dados.js';
 import { roteiroDoEstudo, ultimoMesFechado, precisaoDoEstudo } from './comparativo-roteiro.js';
 import { vedacoesDoSimples, resumoDasVedacoes, linhaDasVedacoes } from './simples-vedacoes.js';
 import { resumoDaEmpresa as resumoDoControle, mapaDosMeses, estadoDoMes, dominioPorMes, andamentoDaEmpresa, problemasDoMes, folhaCalculada, CAMPOS_DOMINIO, ultimoFechavel } from './contabil-controle.js';
@@ -156,8 +158,9 @@ export async function pedirConfirmacao(chamar, { clienteId, ate, sinais = null }
 export async function carregarEstudo({ ler, cliente, cadastroDe = null, hoje = null, chamar = null }) {
   const c = cliente;
   const fechado = ultimoMesFechado(hoje || hojeEmBrasilia());
-  // o Domínio do mês: os números do estudo (CAMPOS_PONTE) e o andamento da contabilidade (CAMPOS_DOMINIO, a versão 3)
-  const colsDominio = [...new Set([...CAMPOS_PONTE, ...CAMPOS_DOMINIO, 'ultimo_lancamento', 'incluido_ate'])].join(', ');
+  // o Domínio do mês: os números do estudo (CAMPOS_PONTE, com a venda pelo CST do PIS/Cofins), o andamento da contabilidade
+  // (CAMPOS_DOMINIO, a versão 3) e o resultado dela (CAMPOS_RESULTADO, a versão 5)
+  const colsDominio = [...new Set([...CAMPOS_PONTE, ...CAMPOS_DOMINIO, ...CAMPOS_RESULTADO, 'ultimo_lancamento', 'incluido_ate'])].join(', ');
   const [rCaso, rFr, rPg, rEst, rDom, rRec, rCtb, rCtbM, rFoto, pergunta] = await Promise.all([
     ler('rt_casos', { cols: 'id, anexo, rbt12, receita_mensal, sim_obs, atualizado_em', eq: { cliente_id: c.id }, ordem: { coluna: 'atualizado_em', desc: true }, limite: 1 }),
     ler('fr_empresas', { cols: 'id', eq: { cliente_id: c.id }, limite: 1 }),
@@ -237,6 +240,10 @@ export async function carregarEstudo({ ler, cliente, cadastroDe = null, hoje = n
   const contabil = contabilDoEstudo(ctbEmp, (rCtbM && !rCtbM.error && rCtbM.data) || [], rDom && !rDom.error ? rDom.data : [], (rFoto && !rFoto.error && rFoto.data) || [], hoje);
   // a pergunta do vigia vai junto do Controle (contabil.pergunta): a missão da confirmação lê dali
   if (contabil && contabil.faz !== false) contabil.pergunta = pergunta || null;
+  // o resultado da contabilidade mês a mês (a versão 5 da ponte, os meses fechados): o lucro do Real entra nos números do
+  // sistema até onde o Controle dá a contabilidade como feita (o pedido do Samuel das 20h11 de 11/11/2026)
+  const resultado = listaDoResultado(dominio);
+  aplicarLucroDaPonte(sis.entrada, sis.origens, lucroDaPonte(sis.serie, contabil, resultado));
   // a campanha da Reforma, o Fator R e o PGDAS são do Simples: na empresa do Presumido ou do Real, a falta deles não é notícia
   const geral = sis.entrada.regimeAtual === 'presumido' || sis.entrada.regimeAtual === 'real';
   const fontes = [
@@ -252,7 +259,7 @@ export async function carregarEstudo({ ler, cliente, cadastroDe = null, hoje = n
   // medida nas notas do Domínio e a presunção própria do CNAE principal — é o que cumpre a missão da presunção
   const atividade = { divisao: sis.divisao || null, especial: sis.especial || null, lida: !!sis.lida };
   const est = { cliente: c, nome: c.nome_principal, notas: sis.notas, notasSimples: sis.notasSimples, serie: sis.serie, serieRel: null, folhaRel: null, grupoSeries, grupoFora, socios: nSocios, sistema: sis, fontes, semTabela,
-    vedacoes, contabil, atividade, estudoId: null, gravadoEm: null, gravadoPor: null };
+    vedacoes, contabil, atividade, resultadoPonte: resultado.length ? resultado : null, pelaPonte: [], estudoId: null, gravadoEm: null, gravadoPor: null };
   if (salvo && salvo.entrada && salvo.entrada.entrada) {
     Object.assign(est, { estudoId: salvo.id, gravadoEm: salvo.atualizado_em, gravadoPor: salvo.atualizado_por });
     // os meses do faturamento que a equipe soltou na tela (serieRel) entram na série do sistema
@@ -267,6 +274,25 @@ export async function carregarEstudo({ ler, cliente, cadastroDe = null, hoje = n
     est.entrada.atividades.forEach((a, i) => {
       const k = 'atividades.' + i + '.tipo', antes = est.origens[k], hoje = sis.origens[k], aSis = sis.entrada.atividades[i];
       if ((!antes || ['cadastro', 'padrao'].includes(antes.fonte)) && hoje && sis.divisao && ['ponte', 'reforma'].includes(hoje.fonte) && aSis && aSis.tipo === a.tipo) est.origens[k] = hoje;
+    });
+    // O que a versão 5 da ponte traz e o estudo gravado ainda não tem (pelaPonte diz o que entrou: a tela grava de novo).
+    // O lucro da contabilidade: entra no estudo sem lucro — salvo no que escolheu "Seguir com a estimativa" (a origem
+    // conferida); o digitado, o do relatório e o que já veio da ponte ficam (a missão do lucro oferece o de hoje).
+    const oLucro = est.origens.lucroContabil;
+    if (num(est.entrada.lucroContabil) == null && !(oLucro && oLucro.fonte === 'confirmado')
+      && aplicarLucroDaPonte(est.entrada, est.origens, lucroDaPonte(est.serie, contabil, resultado))) est.pelaPonte.push('lucro');
+    // A venda com alíquota zero de PIS/Cofins e a revenda monofásica medidas no CST das notas: entram onde o estudo ainda
+    // está no padrão (ninguém digitou nem conferiu) e a atividade segue a mesma
+    est.entrada.atividades.forEach((a, i) => {
+      const aSis = sis.entrada.atividades[i];
+      if (!aSis || aSis.tipo !== a.tipo) return;
+      ['pctAliqZero', 'pctMonofasico'].forEach(campo => {
+        const k = 'atividades.' + i + '.' + campo, antes = est.origens[k], hoje = sis.origens[k];
+        if (!hoje || !hoje.cst || (antes && antes.fonte !== 'padrao')) return;
+        if (campo === 'pctMonofasico' && !antes && (Number(a[campo]) || 0) > 0) return;   // o que o estudo já tinha, sem origem, fica
+        a[campo] = aSis[campo]; est.origens[k] = hoje;
+        if (!est.pelaPonte.includes('piscofins')) est.pelaPonte.push('piscofins');
+      });
     });
   } else {
     est.entrada = comPadroes(sis.entrada); est.origens = { ...ORIGENS_PADRAO, ...sis.origens }; est.conferencia = sis.conferencia;
@@ -309,7 +335,7 @@ export function estudoGravado(linha) {
   const folhaRel = Array.isArray(g.folhaRel) && g.folhaRel.length ? g.folhaRel : null;
   return { cliente: null, nome: (linha && linha.nome) || 'empresa sem cadastro', entrada: comPadroes(g.entrada || {}), origens: g.origens || {}, conferencia: g.conferencia || null,
     notas: [], notasSimples: [], serie: serieRel ? mesclarSerie(null, serieRel) : null, serieRel, folhaRel, grupoSeries: [], grupoFora: [], socios: null, sistema: null, fontes: [], semTabela: false,
-    vedacoes: null, contabil: null, atividade: null,
+    vedacoes: null, contabil: null, atividade: null, resultadoPonte: null, pelaPonte: [],
     estudoId: (linha && linha.id) || null, gravadoEm: (linha && linha.atualizado_em) || null, gravadoPor: (linha && linha.atualizado_por) || null };
 }
 
@@ -394,9 +420,11 @@ export function alertaDasVedacoes(c, vedacoes, regimes = null) {
 // sistema apurou da atividade ({ divisao, especial }: as notas do Domínio e o CNAE — carregarEstudo). A volta diz o objetivo e
 // os regimes da conta, as vedações (e `vedado`: o aviso de que a linha do Simples é simulação), a precisão (o que já está
 // na conta e o que falta, com o efeito de cada item) e `dre`: o período da DRE do lucro informado e o fator que o levou aos
-// 12 meses (periodoDaDre; null sem o lucro).
+// 12 meses (periodoDaDre; null sem o lucro). resultadoPonte: o resultado da contabilidade mês a mês pela ponte do Domínio
+// (carregarEstudo) — a volta traz `lucroPonte`, o lucro que a ponte tem hoje até onde o Controle dá a contabilidade como
+// feita (lucroDaPonte), e a missão do lucro o oferece.
 export function contaDoEstudo({ entrada, origens = {}, conferencia = null, notas = [], notasSimples = [], serie = null, grupoSeries = [], grupoFora = [], socios = null, aliq2027 = null, hoje = null,
-  objetivo = null, vedacoes = null, contabil = null, atividade = null } = {}) {
+  objetivo = null, vedacoes = null, contabil = null, atividade = null, resultadoPonte = null } = {}) {
   const achadas = (grupoSeries || []).length;
   const obj = objetivoDoEstudo(entrada, vedacoes, objetivo);
   const regimes = regimesDoObjetivo(obj);
@@ -404,19 +432,20 @@ export function contaDoEstudo({ entrada, origens = {}, conferencia = null, notas
   let comparacao = null, testes = [], erro = null;
   // o lucro da contabilidade até onde ela está feita: o período da DRE e o fator que o leva aos 12 meses da receita
   const dre = num(entrada && entrada.lucroContabil) != null ? periodoDaDre(serie, entrada) : null;
+  const lucroPonte = resultadoPonte ? lucroDaPonte(serie, contabil, resultadoPonte) : null;
   const doMotor = () => ({ ...entradaDoMotor(entrada, aliq2027, obj), lucroFator: dre ? dre.fator : 1 });
   try {
     comparacao = comparar(doMotor());
     testes = testarPremissas(doMotor(), premissasParaTestar(entrada, origens, regimes));
   } catch (e) { comparacao = null; testes = []; erro = (e && e.message) || 'A conta não rodou.'; }
   if (!comparacao) {
-    const roteiro = roteiroDoEstudo({ entrada, origens, serie, socios, achadas, grupoFora, conferencia, hoje, objetivo: obj, vedacoes, contabil, atividade });
-    return { comparacao: null, testes: [], situacao: null, erro, prazos: [], muda: [], avisos: [], limite: null, vedado: null, objetivo: obj, regimes, vedacoes, dre, roteiro, precisao: precisaoDoEstudo(roteiro) };
+    const roteiro = roteiroDoEstudo({ entrada, origens, serie, socios, achadas, grupoFora, conferencia, hoje, objetivo: obj, vedacoes, contabil, atividade, resultadoPonte });
+    return { comparacao: null, testes: [], situacao: null, erro, prazos: [], muda: [], avisos: [], limite: null, vedado: null, objetivo: obj, regimes, vedacoes, dre, lucroPonte, roteiro, precisao: precisaoDoEstudo(roteiro) };
   }
   const situacao = comSimples ? situacaoComGrupo(serie, entrada.grupo, grupoSeries) : null;
-  const roteiro = roteiroDoEstudo({ entrada, origens, comparacao, testes, situacao, serie, socios, achadas, grupoFora, conferencia, hoje, objetivo: obj, vedacoes, contabil, atividade });
+  const roteiro = roteiroDoEstudo({ entrada, origens, comparacao, testes, situacao, serie, socios, achadas, grupoFora, conferencia, hoje, objetivo: obj, vedacoes, contabil, atividade, resultadoPonte });
   return {
-    comparacao, testes, situacao, erro: null, objetivo: obj, regimes, vedacoes, dre,
+    comparacao, testes, situacao, erro: null, objetivo: obj, regimes, vedacoes, dre, lucroPonte,
     limite: comSimples ? alertaDoLimite(comparacao, situacao, entrada.grupo) : null,
     vedado: alertaDasVedacoes(comparacao, vedacoes, regimes),
     roteiro, precisao: precisaoDoEstudo(roteiro),
@@ -503,6 +532,7 @@ export function aplicarESe(entrada, origens, eSe, { aliq2027 = null, serie = nul
       if (num(e.lucroContabil) != null) {
         const v = Number(e.lucroContabil);
         e.lucroContabil = v * f; if (num(e.ajustesLalur)) e.ajustesLalur = Number(e.ajustesLalur) * f;
+        marca('lucroContabil');   // já não é o número que veio da ponte ou da DRE: é o do "e se"
         mudancas.push({ rotulo: CAMPOS.lucroContabil.rotulo + ' (acompanha a receita)', antes: v, depois: e.lucroContabil, un: 'R$' });
       }
     } else e.atividades[0].receita = rec;

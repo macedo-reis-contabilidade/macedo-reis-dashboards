@@ -55,6 +55,14 @@ Confere:
      abre a missão com as duas divisões e o "Está certa"; a construtora (a nota não diz se a obra é com todos os
      materiais) tem a missão aberta, que decide, com a regra e o "Ver a presunção", e a presunção digitada a fecha; a
      empresa sem nota no sistema lê por que a tela pergunta e o que fazer;
+ 15. o lucro da contabilidade pela ponte do Domínio (11/11/2026, a versão 5 da ponte; o pedido do Samuel: "a ponte da
+     domínio deveria puxar essa informação até a data que supostamente a contabilidade está feita"): a indústria do
+     Presumido abre com o lucro preenchido até o mês do Controle das contabilidades, com a origem, a missão cumprida pela
+     ponte e a confirmação de quem cuida ainda aberta; a alíquota zero vem do CST das notas; o mês da DRE trocado no
+     seletor leva o número junto, e o mês sem lançamento em conta de resultado não entra; o lucro digitado por cima
+     mostra o do Domínio com o "Usar o do Domínio"; o estudo gravado sem lucro ganha o da ponte e grava de novo; o que
+     escolheu seguir com a estimativa fica com ela; e o lucro da ponte que ficou velho reabre a missão, com o
+     "Atualizar pelo Domínio";
 e nenhum erro de JavaScript. No 7, também o aviso do limite no resultado: a conta põe o Simples em 2027, mas o ano de 2026
 passa do limite.
 Termina com código 1 se alguma checagem falhar. Pré-requisito: pip install playwright e python -m playwright install chromium
@@ -124,6 +132,16 @@ SEMEAR = """
       return { codigo, cliente_id: id, competencia: d.toISOString().slice(0, 7), receita_bruta: merc + serv, receita_mercadorias: merc, receita_servicos: serv, receita_simples: null, compras: 20000, servicos_tomados: 0, ativo_e_consumo: 0,
         salarios: 0, decimo_terceiro: 0, pro_labore_valor: 0 }; });
     v.dominio_mensal.push(...ponteDe('c10', 1000, 0, 80000), ...ponteDe('c11', 1100, 70000, 0));
+    // o cenário 15 (a versão 5 da ponte do Domínio): o resultado da contabilidade mês a mês (R$ 3.000) e a venda pelo CST do
+    // PIS/Cofins (60% com alíquota zero) na indústria c7 — só com a marca window.__ponteV5 ({ linhas: o que muda num mês,
+    // estudo: o estudo já gravado })
+    if (window.__ponteV5) {
+      const o = window.__ponteV5 === true ? {} : window.__ponteV5;
+      v.dominio_mensal.filter(l => l.cliente_id === 'c7').forEach(l => Object.assign(l, { resultado_antes_ir: 3000, irpj_csll_lancados: 500, receitas_financeiras: 0, lanc_resultado: 12,
+        pc_tributada: 20000, pc_monofasica: 0, pc_st: 0, pc_aliquota_zero: 30000, pc_isenta: 0, pc_sem_incidencia: 0, pc_suspensa: 0, pc_outras: 0, pc_sem_cst: 0 }, (o.linhas || {})[l.competencia] || {}));
+      if (o.estudo) v.comparativos.push({ id: 'est7', cliente_id: 'c7', nome: null, resultado: null, atualizado_em: '2026-10-31T12:00:00Z', atualizado_por: 'financeiro@macedoereis.com.br',
+        entrada: { v: 1, entrada: { objetivo: 'presumido_real', regimeAtual: 'presumido', atividades: [{ tipo: 'industria', receita: 600000 }], compras: 360000, grupo: [], ...(o.estudo.entrada || {}) }, origens: o.estudo.origens || {} } });
+    }
     // (o estudo antigo só entra no cenário 13, que marca window.__estudoAntigo: os outros contam os estudos gravados)
     if (window.__estudoAntigo) v.comparativos.push({ id: 'est11', cliente_id: 'c11', nome: null, resultado: null, atualizado_em: '2026-11-11T21:21:00Z', atualizado_por: 'financeiro@macedoereis.com.br',
       entrada: { v: 1, entrada: { objetivo: 'presumido_real', regimeAtual: 'presumido', atividades: [{ tipo: 'comercio', receita: 840000 }], compras: 240000, grupo: [] },
@@ -931,6 +949,99 @@ def main():
         ps = abrir_com('window.__semRpc = true;')
         ok(ps.get_attribute(MC, 'data-estado') == 'aberta' and ps.locator(MC + ' [data-perguntar-contabil]').count() == 1 and 'A pergunta está no vigia' not in texto(ps, MC), 'sem pergunta nenhuma no banco, a missão segue aberta, como antes')
         ps.close()
+
+        print('15. O lucro da contabilidade pela ponte do Domínio (a versão 5)')
+        # o "vai" do Samuel das 22h13 de 11/11/2026: o resultado da contabilidade chega mês a mês, e o lucro do Real entra
+        # sozinho até onde o Controle das contabilidades dá a contabilidade como feita (julho de 2026)
+        ML, LU = '#fase .ct-m[data-id="lucro"]', '.ct-orig[data-orig="lucroContabil"]'
+        def abrir_v5(marca, gravado=False):
+            q = cx.new_page()
+            q.on('pageerror', lambda e: erros.append('ponte v5: ' + str(e)))
+            q.add_init_script('window.__ponteV5 = ' + json.dumps(marca) + ';'); q.add_init_script(TOUR); q.add_init_script(SEMEAR)
+            q.clock.set_fixed_time('2026-11-01T12:00:00')
+            q.goto(base + 'fiscal-comparativo.html?cliente=c7')
+            q.wait_for_function("() => document.querySelector('#escolhida h3') && document.querySelector('#escolhida h3').textContent === 'INDUSTRIA DE TESTE LTDA'", timeout=8000)
+            if not gravado:
+                q.wait_for_selector('#pergunta .ct-opcao', timeout=5000)
+                q.click('#pergunta .ct-opcao[data-objetivo="presumido_real"]')
+            q.wait_for_selector('#resultado table.ct', timeout=5000)
+            q.click('#trilha button[data-fase="1"]')
+            q.wait_for_selector(ML, timeout=3000)
+            return q
+        valor = lambda q: q.input_value('#f_lucroContabil').replace('\xa0', ' ')
+        q5 = abrir_v5(True)
+        ok(valor(q5) == '30.000,00' and q5.get_attribute(LU, 'data-fonte') == 'ponte' and texto(q5, LU) == 'Domínio, pela ponte: o resultado da contabilidade de out/25 a jul/26'
+           and q5.input_value('#f_lucroAte') == '2026-07', f'o lucro vem preenchido pela ponte, até o mês do Controle: {valor(q5)} ({texto(q5, LU)})')
+        ml = texto(q5, ML)
+        ok(q5.get_attribute(ML, 'data-estado') == 'feita' and 'veio do Domínio pela ponte' in ml and 'Lucro de R$ 30.000 na DRE de out/25 a jul/26 (10 dos 12 meses da receita): com ago/26 e set/26 pela mesma margem, lucro de R$ 36.000 nos 12 meses.' in ml
+           and q5.locator(ML + ' button').count() == 0, f'a missão do lucro vem cumprida pela ponte, sem botão ({ml[:110]}…)')
+        ok(q5.get_attribute('#fase .ct-m[data-id="contabil"]', 'data-estado') == 'aberta' and 'Provisório' in texto(q5, '#placar'), 'a confirmação de quem cuida da contabilidade segue aberta: o estudo fica provisório')
+        fd = texto(q5, '#fase .ct-usar-item[data-id="dre"]')
+        ok('Automático: a ponte do Domínio traz o resultado de cada mês' in fd and 'veio do Domínio pela ponte: a DRE de out/25 a jul/26 (10 de 12 meses)' in fd, f'o que usar: o lucro é automático pela ponte ({fd[:90]}…)')
+        ok(q5.input_value('#f_atividades_0_pctAliqZero') == '60' and q5.get_attribute('.ct-orig[data-orig="atividades.0.pctAliqZero"]', 'data-fonte') == 'ponte'
+           and 'com alíquota zero de PIS/Cofins nas notas de out/25 a set/26' in texto(q5, '.ct-orig[data-orig="atividades.0.pctAliqZero"]'), 'a venda com alíquota zero vem do CST das notas (60%), com a origem')
+        q5.click('#trilha button[data-fase="2"]')
+        ok(q5.get_attribute('#fase .ct-m[data-id="piscofins"]', 'data-estado') == 'feita' and 'veio do Domínio pela ponte' in texto(q5, '#fase .ct-m[data-id="piscofins"]'), 'e a missão do PIS/Cofins das vendas vem cumprida pela ponte')
+        q5.click('#trilha button[data-fase="1"]')
+        # o mês da DRE no seletor: com o lucro da ponte, o número acompanha (até set/26, os 12 meses: R$ 36.000)
+        q5.select_option('#f_lucroAte', '2026-09')
+        q5.wait_for_function("() => /na DRE de out\\/25 a set\\/26\\./.test(document.querySelector('#fase .ct-m[data-id=\"lucro\"]').textContent)", timeout=3000)
+        ok(valor(q5) == '36.000,00' and texto(q5, LU) == 'Domínio, pela ponte: o resultado da contabilidade de out/25 a set/26' and q5.input_value('#f_lucroAte') == '2026-09'
+           and 'ela está feita só até jul/26: a DRE usada vai além disso.' in texto(q5, ML), f'trocado o mês pra set/26, o lucro da ponte vai junto: {valor(q5)}, com o aviso de que passa do Controle')
+        q5.select_option('#f_lucroAte', '2026-07')
+        q5.wait_for_function("() => document.querySelector('#f_lucroContabil').value.replace(/\\s/g, ' ') === '30.000,00'", timeout=3000)
+        # o estudo grava o lucro, o período e a origem
+        q5.wait_for_function("() => (window.__mockDb.comparativos || []).some(r => r.cliente_id === 'c7' && r.entrada.entrada.lucroContabil === 30000 && r.entrada.entrada.lucroAte === '2026-07' && r.entrada.origens.lucroContabil.fonte === 'ponte')", timeout=5000)
+        ok(True, 'o estudo grava o lucro da ponte, com o período e a origem')
+        # digitado por cima: a missão segue cumprida, mostra o do Domínio e oferece usar; o clique traz de volta
+        q5.fill('#f_lucroContabil', '45000')
+        q5.wait_for_function("() => !!document.querySelector('#fase .ct-m[data-id=\"lucro\"] [data-usar-ponte]')", timeout=3000)
+        ml = texto(q5, ML); bt = q5.locator(ML + ' [data-usar-ponte]')
+        ok(q5.get_attribute(ML, 'data-estado') == 'feita' and 'Pelo Domínio, o resultado de out/25 a jul/26 é lucro de R$ 30.000.' in ml and bt.inner_text() == 'Usar o do Domínio' and bt.get_attribute('data-usar-ponte') == '2026-07'
+           and q5.get_attribute(LU, 'data-fonte') == 'digitado', f'o lucro digitado por cima: a missão mostra o do Domínio, com o "Usar o do Domínio" ({ml[-90:]})')
+        bt.click()
+        q5.wait_for_function("() => document.querySelector('#f_lucroContabil').value.replace(/\\s/g, ' ') === '30.000,00'", timeout=3000)
+        ok(q5.get_attribute(LU, 'data-fonte') == 'ponte' and q5.locator(ML + ' [data-usar-ponte]').count() == 0 and q5.get_attribute(ML, 'data-estado') == 'feita', '"Usar o do Domínio" traz o lucro da ponte de volta, e o botão sai')
+        q5.close()
+        # o mês com receita e sem lançamento em conta de resultado no Domínio: não entra (nunca lucro zero)
+        qs = abrir_v5({ 'linhas': { '2026-09': { 'lanc_resultado': 0, 'resultado_antes_ir': None } } })
+        ok(valor(qs) == '30.000,00', 'com setembro sem lançamento de resultado, o lucro até julho entra igual')
+        qs.select_option('#f_lucroAte', '2026-09')
+        qs.wait_for_function("() => /O Domínio não tem o resultado até set\\/26/.test(document.querySelector('#origLucroAte').textContent)", timeout=3000)
+        ok(valor(qs) == '30.000,00' and qs.input_value('#f_lucroAte') == '2026-07' and 'set/26 sem lançamento em conta de resultado' in texto(qs, '#origLucroAte') and 'Pra usar outra DRE, digite o lucro.' in texto(qs, '#origLucroAte'),
+           f'o mês sem lançamento não entra: o período fica em jul/26 e a tela diz por quê ({texto(qs, "#origLucroAte")[:80]}…)')
+        qs.close()
+        qj = abrir_v5({ 'linhas': { '2026-07': { 'lanc_resultado': 0, 'resultado_antes_ir': None } } })
+        mj = texto(qj, ML)
+        ok(valor(qj) == '' and qj.get_attribute(ML, 'data-estado') == 'aberta' and 'O Domínio não tem lançamento em conta de resultado em jul/26, que o Controle das contabilidades dá como feito' in mj
+           and qj.locator(ML + ' [data-usar-ponte]').count() == 0, f'julho feito no Controle e sem lançamento de resultado: o lucro não entra, e a missão diz o mês ({mj[-120:]})')
+        qj.close()
+        # o estudo gravado sem o lucro: ganha o da ponte ao abrir, e grava de novo
+        qg = abrir_v5({ 'estudo': {} }, gravado=True)
+        ok(valor(qg) == '30.000,00' and qg.get_attribute(LU, 'data-fonte') == 'ponte' and qg.get_attribute(ML, 'data-estado') == 'feita', 'o estudo gravado sem o lucro abre com o da ponte')
+        qg.wait_for_function("() => (window.__mockDb.comparativos || []).some(r => r.id === 'est7' && r.entrada.entrada.lucroContabil === 30000 && r.entrada.origens.lucroContabil.fonte === 'ponte' && r.entrada.entrada.atividades[0].pctAliqZero === 60)", timeout=6000)
+        ok(True, 'e grava de novo sozinho, com o lucro e a alíquota zero da ponte')
+        qg.close()
+        # quem escolheu seguir com a estimativa fica com ela: a missão oferece o do Domínio
+        qe = abrir_v5({ 'estudo': { 'origens': { 'lucroContabil': { 'fonte': 'confirmado', 'texto': 'conferido' } } } }, gravado=True)
+        me = texto(qe, ML)
+        ok(valor(qe) == '' and qe.get_attribute(ML, 'data-estado') == 'feita' and 'pela estimativa' in me and 'O Domínio tem o resultado de out/25 a jul/26 (10 dos 12 meses da receita): lucro de R$ 30.000.' in me
+           and qe.locator(ML + ' [data-usar-ponte]').inner_text() == 'Usar o do Domínio', f'seguindo com a estimativa, nada troca sozinho: a missão mostra o do Domínio e oferece ({me[-100:]})')
+        qe.click(ML + ' [data-usar-ponte]')
+        qe.wait_for_function("() => document.querySelector('#f_lucroContabil').value.replace(/\\s/g, ' ') === '30.000,00'", timeout=3000)
+        ok('veio do Domínio pela ponte' in texto(qe, ML) and qe.evaluate("() => !!(document.activeElement && (document.activeElement.closest('#fase .ct-m[data-id=\"lucro\"]') || document.activeElement.id === 'f_lucroContabil'))"),
+           'e o clique põe o lucro da ponte no estudo')
+        qe.close()
+        # o lucro que veio da ponte num dia e hoje o Domínio mostra outro no mesmo período: a missão reabre
+        qv = abrir_v5({ 'estudo': { 'entrada': { 'lucroContabil': 25000, 'lucroDe': '2025-10', 'lucroAte': '2026-07', 'lucroReceita': 500000 },
+            'origens': { 'lucroContabil': { 'fonte': 'ponte', 'texto': 'Domínio, pela ponte: o resultado da contabilidade de out/25 a jul/26' } } } }, gravado=True)
+        mv = texto(qv, ML)
+        ok(valor(qv) == '25.000,00' and qv.get_attribute(ML, 'data-estado') == 'aberta' and 'O Domínio mudou desde que o lucro entrou no estudo: de out/25 a jul/26, hoje ele mostra lucro de R$ 30.000.' in mv
+           and qv.locator(ML + ' [data-usar-ponte]').inner_text() == 'Atualizar pelo Domínio', f'o lucro da ponte que ficou velho não troca sozinho: a missão reabre com o "Atualizar pelo Domínio" ({mv[-110:]})')
+        qv.click(ML + ' [data-usar-ponte]')
+        qv.wait_for_function("() => { const m = document.querySelector('#fase .ct-m[data-id=\"lucro\"]'); return m && m.dataset.estado === 'feita'; }", timeout=3000)
+        ok(valor(qv) == '30.000,00' and qv.locator(ML + ' [data-usar-ponte]').count() == 0, '"Atualizar pelo Domínio" põe o número de hoje e a missão fecha de novo')
+        qv.close()
 
         ok(not erros, 'nenhum erro de JavaScript' + ('' if not erros else ': ' + ' | '.join(erros[:3])))
         b.close()

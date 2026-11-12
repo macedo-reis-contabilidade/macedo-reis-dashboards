@@ -4,12 +4,13 @@
 // Desde 11/11/2026, o caminho pelo comparativo escolhido (só o Presumido contra o Real: a receita e a presunção, o lucro
 // do Real pela contabilidade, o resto da conta), os impedimentos do Simples pelo cadastro e a precisão do estudo. Também de
 // 11/11/2026: a DRE até onde a contabilidade está feita (e não até o fim da receita) e a confirmação de quem cuida dela,
-// que também chega pela pergunta do vigia (o "vai" do Samuel das 21h19: contabil.pergunta).
+// que também chega pela pergunta do vigia (o "vai" do Samuel das 21h19: contabil.pergunta). E, com a versão 5 da ponte do
+// Domínio (o "vai" das 22h13), o lucro que a ponte traz: a missão oferece o de hoje e reabre quando o do estudo ficou velho.
 // Rodar com: node tests/comparativo-roteiro.test.mjs — dados inventados (o repositório é público).
 
 import { roteiroDoEstudo, crescimentoMedido, FASES, FASES_GERAL, fasesDoObjetivo, fontesDoEstudo, ultimoMesFechado, AUTOMATICO, precisaoDoEstudo, NIVEL_DA_PRECISAO, PESO_DA_PRECISAO, LIMITE_PRESUMIDO,
-  presuncaoDoEstudo, faixasDeMeses, sinaisDaContabilidade, confirmacaoDaContabilidade, lucroDoEstudo, perguntaDaContabilidade } from '../assets/js/comparativo-roteiro.js';
-import { entradaDoSistema, premissasParaTestar, situacaoDoGrupo, presuncaoPeloCnae, periodoDaDre } from '../assets/js/comparativo-dados.js';
+  presuncaoDoEstudo, faixasDeMeses, sinaisDaContabilidade, confirmacaoDaContabilidade, lucroDoEstudo, perguntaDaContabilidade, ponteDoLucro, alertasDoResultado } from '../assets/js/comparativo-roteiro.js';
+import { entradaDoSistema, premissasParaTestar, situacaoDoGrupo, presuncaoPeloCnae, periodoDaDre, lucroDaPonte, aplicarLucroDaPonte } from '../assets/js/comparativo-dados.js';
 import { comparar, testarPremissas, fraseDaDecisao } from '../assets/js/comparativo-motor.js';
 
 let falhas = 0, total = 0;
@@ -266,9 +267,9 @@ console.log('=== qual comparativo: as fases de cada caminho (11/11/2026) ===');
   ok('as fontes por fase do caminho', Object.keys(fo).join() === 'presuncao,lucro,premissas,veredito' && fo.presuncao.map(x => x.id).join() === 'receita,atividade' && fo.lucro.map(x => x.id).join() === 'dre,ctbconf,folha'
     && fo.premissas.map(x => x.id).join() === 'compras,credito,icms,piscofins,crescimento' && fo.veredito.map(x => x.id).join() === 'conversa', Object.entries(fo).map(([k, l]) => k + ':' + l.map(x => x.id)));
   const dre = fo.lucro[0];
-  ok('a DRE: falta, no Domínio Contabilidade, até onde a contabilidade está feita (os outros meses pela margem) — e a ponte ainda não traz', dre.estado === 'falta' && dre.campo === 'lucroContabil'
+  ok('a DRE: falta, no Domínio Contabilidade, até onde a contabilidade está feita (os outros meses pela margem) — e a ponte ainda não leu o resultado desta empresa', dre.estado === 'falta' && dre.campo === 'lucroContabil'
     && dre.onde === 'Domínio Contabilidade: a DRE (ou o balancete) de out/25 a jul/26, até onde a contabilidade está feita — o resultado antes do IRPJ e da CSLL. Ago/26 e set/26 entram pela margem dos outros meses. Pelo Controle das contabilidades, ela está feita até jul/26.'
-    && dre.auto === 'A ponte do Domínio ainda não traz o resultado da contabilidade: por enquanto, digite o lucro da DRE.', dre);
+    && dre.auto === 'A ponte do Domínio ainda não leu o resultado da contabilidade desta empresa: por enquanto, digite o lucro da DRE.' && dre.auto === AUTOMATICO.semResultado, dre);
   ok('a confirmação da contabilidade: falta, com quem confirmar e até que mês', fo.lucro[1].estado === 'falta' && fo.lucro[1].situacao === 'falta confirmar' && fo.lucro[1].onde === 'Quem faz a contabilidade dela: se o resultado até jul/26 é confiável.'
     && fo.lucro[1].auto === 'Nenhum sistema tem: é a palavra de quem fecha a contabilidade.', fo.lucro[1]);
   ok('a atividade sem as notas: pelo CNAE do cadastro, e a linha diz onde resolver', fo.presuncao[1].estado === 'padrao' && fo.presuncao[1].situacao === 'sem notas no sistema: pelo CNAE do cadastro'
@@ -534,6 +535,113 @@ console.log('=== qual comparativo: as fases de cada caminho (11/11/2026) ===');
     ok('as fontes: perguntado e sem resposta, confirmado pelo vigia, respondido sem confirmar', foDe(PG).estado === 'falta' && foDe(PG).situacao === 'perguntado a Adaini em 11/11/2026, sem resposta'
       && foDe(SIM).estado === 'tem' && foDe(SIM).situacao === 'confirmado por Adaini em 12/11/2026, pelo vigia' && foDe(NAO).estado === 'falta' && foDe(NAO).situacao === 'Adaini respondeu em 12/11/2026 e não confirmou'
       && foDe(null).situacao === 'falta confirmar', [foDe(PG).situacao, foDe(SIM).situacao, foDe(NAO).situacao]);
+  }
+
+  console.log('=== o lucro que a ponte do Domínio traz (11/11/2026, a versão 5): a missão oferece o de hoje ===');
+  {
+    // o resultado do Domínio: R$ 5.000 por mês, de outubro a setembro; a contabilidade feita até julho (10 meses: R$ 50.000;
+    // a receita desses meses é 10/12 da do ano: nos 12 meses, R$ 60.000)
+    const comps = serie.map(x => x.competencia);
+    const res = (extra = {}) => comps.map(c => ({ competencia: c, lancamentos: 30, resultado: 5000, ircs: 0, financeiras: 0, ...(extra[c] || {}) }));
+    const ctb = { faz: true, feitaAte: '2026-07', responsavel: 'Adaini', meses: [] };
+    const cx = (r, k = ctb) => ({ ...base, contabil: k, resultadoPonte: r });
+    ok('sem o resultado da ponte: nada lido, nada a oferecer', (() => { const P = ponteDoLucro({ entrada: G, origens: ORI, serie, contabil: ctb, resultadoPonte: null });
+      return P.lido === false && P.hoje === null && P.oferta === null && P.reabre === false && ponteDoLucro({ entrada: G, origens: ORI, serie, contabil: ctb, resultadoPonte: [] }).lido === false; })());
+    // 1) o estudo sem o lucro: a missão oferece o do Domínio
+    const P0 = ponteDoLucro({ entrada: G, origens: ORI, serie, contabil: ctb, resultadoPonte: res() });
+    ok('o estudo sem o lucro: o Domínio tem R$ 50.000 de outubro a julho, e a oferta é usar', P0.lido && P0.hoje.lucro === 50000 && P0.oferta.motivo === 'usar' && P0.oferta.rotulo === 'Usar o do Domínio' && P0.oferta.ate === '2026-07' && P0.reabre === false, P0);
+    const m0 = missao(rodarC(G, ORI, cx(res())), 'lucro');
+    ok('a missão do lucro, aberta: diz o que o Domínio tem e tem o botão dele, junto do digitar e do seguir com a estimativa', m0.estado === 'aberta' && m0.usarPonte.ate === '2026-07' && m0.usarPonteRotulo === 'Usar o do Domínio'
+      && m0.campo === 'lucroContabil' && m0.conferirRotulo === 'Seguir com a estimativa' && / O Domínio tem o resultado de out\/25 a jul\/26 \(10 dos 12 meses da receita\): lucro de R\$\s50\.000\.$/.test(m0.texto), m0.texto);
+    ok('o prejuízo do Domínio sai como prejuízo', / O Domínio tem o resultado de out\/25 a jul\/26 \(10 dos 12 meses da receita\): prejuízo de R\$\s30\.000\.$/.test(missao(rodarC(G, ORI, cx(res().map(x => ({ ...x, resultado: -3000 })))), 'lucro').texto));
+    // 2) o lucro da ponte no estudo: a missão cumprida, sem botão
+    const eP = { ...G }, oP = { ...ORI };
+    aplicarLucroDaPonte(eP, oP, lucroDaPonte(serie, ctb, res()));
+    const mP = missao(rodarC(eP, oP, cx(res())), 'lucro');
+    ok('com o lucro da ponte: cumprida ("veio do Domínio pela ponte"), levado aos 12 meses, sem botão', mP.estado === 'feita' && mP.como === 'veio do Domínio pela ponte' && mP.usarPonte === null
+      && /^Lucro de R\$\s50\.000 na DRE de out\/25 a jul\/26 \(10 dos 12 meses da receita\): com ago\/26 e set\/26 pela mesma margem, lucro de R\$\s60\.000 nos 12 meses\./.test(mP.texto) && !/Pelo Domínio|O Domínio mudou/.test(mP.texto), mP.texto);
+    ok('a confirmação de quem cuida segue aberta: o número veio do sistema, a palavra é dela', missao(rodarC(eP, oP, cx(res())), 'contabil').estado === 'aberta' && rodarC(eP, oP, cx(res())).provisorio === true);
+    // 3) a contabilidade andou (o Controle agora diz agosto): a missão oferece atualizar
+    const k8 = { ...ctb, feitaAte: '2026-08' };
+    const P8 = ponteDoLucro({ entrada: eP, origens: oP, serie, contabil: k8, resultadoPonte: res(), dre: periodoDaDre(serie, eP) });
+    const m8 = missao(rodarC(eP, oP, cx(res(), k8)), 'lucro');
+    ok('a contabilidade andou até agosto: a missão segue cumprida e oferece "Atualizar pelo Domínio" até lá', P8.oferta.motivo === 'andou' && P8.oferta.lucro === 55000 && P8.reabre === false && m8.estado === 'feita' && m8.usarPonte.ate === '2026-08'
+      && m8.usarPonteRotulo === 'Atualizar pelo Domínio' && / A contabilidade já está feita até ago\/26: atualize o lucro com a DRE até lá\. Pelo Domínio, de out\/25 a ago\/26: lucro de R\$\s55\.000\.$/.test(m8.texto), m8.texto);
+    // 4) o mesmo período, e o Domínio já mostra outro número (entrou lançamento em março): a missão reabre
+    const mudou = res({ '2026-03': { resultado: 9000 } });
+    const PM = ponteDoLucro({ entrada: eP, origens: oP, serie, contabil: ctb, resultadoPonte: mudou, dre: periodoDaDre(serie, eP) });
+    const rM = rodarC(eP, oP, cx(mudou)), mM = missao(rM, 'lucro');
+    ok('o Domínio mudou no mesmo período: a missão reabre (decide), com o número de hoje e o "Atualizar pelo Domínio"', PM.oferta.motivo === 'mudou' && PM.oferta.lucro === 54000 && PM.reabre === true && mM.estado === 'aberta' && mM.peso === 'decide'
+      && mM.usarPonte.ate === '2026-07' && mM.usarPonteRotulo === 'Atualizar pelo Domínio' && / O Domínio mudou desde que o lucro entrou no estudo: de out\/25 a jul\/26, hoje ele mostra lucro de R\$\s54\.000\.$/.test(mM.texto)
+      && mM.efeito === 'o lucro do estudo já não é o que o Domínio mostra: o IRPJ e a CSLL do Real saem dele' && rM.provisorio === true, mM.texto);
+    ok('o mês que mudou fica depois do período do estudo: nada a atualizar', ponteDoLucro({ entrada: eP, origens: oP, serie, contabil: ctb, resultadoPonte: res({ '2026-09': { resultado: 1 } }), dre: periodoDaDre(serie, eP) }).oferta === null);
+    // 5) o lucro digitado (R$ 45.000, de outubro a julho) e o Domínio com outro: cumprida, com o do Domínio pra comparar
+    const eD = { ...G, lucroContabil: 45000, lucroDe: '2025-10', lucroAte: '2026-07' }, oD = { ...ORI, lucroContabil: { fonte: 'digitado' } };
+    const mD = missao(rodarC(eD, oD, cx(res())), 'lucro');
+    ok('o lucro digitado diferente do Domínio: a missão cumprida mostra o do Domínio e oferece usar', mD.estado === 'feita' && mD.como === 'digitado' && mD.usarPonte.ate === '2026-07' && mD.usarPonteRotulo === 'Usar o do Domínio'
+      && / Pelo Domínio, o resultado de out\/25 a jul\/26 é lucro de R\$\s50\.000\.$/.test(mD.texto), mD.texto);
+    ok('o lucro digitado igual ao do Domínio, no mesmo período: nada a oferecer', missao(rodarC({ ...eD, lucroContabil: 50000 }, oD, cx(res())), 'lucro').usarPonte === null);
+    // 6) quem escolheu seguir com a estimativa: a missão cumprida oferece o do Domínio (não troca sozinha)
+    const mE = missao(rodarC(G, { ...ORI, lucroContabil: { fonte: 'confirmado' } }, cx(res())), 'lucro');
+    ok('seguindo com a estimativa: cumprida ("pela estimativa"), com o do Domínio à mão', mE.estado === 'feita' && mE.como === 'pela estimativa' && mE.usarPonte.ate === '2026-07' && / O Domínio tem o resultado de out\/25 a jul\/26/.test(mE.texto), mE.texto);
+    // 7) o Controle dá junho e julho como feitos e o Domínio não tem lançamento em conta de resultado neles
+    const semLanc = res({ '2026-06': { lancamentos: 0, resultado: null }, '2026-07': { lancamentos: 0, resultado: null } });
+    const mS = missao(rodarC(G, ORI, cx(semLanc)), 'lucro');
+    ok('meses feitos no Controle e sem lançamento de resultado no Domínio: sem oferta, e a missão diz quais', mS.usarPonte === null && mS.estado === 'aberta'
+      && / O Domínio não tem lançamento em conta de resultado em jun\/26 e jul\/26, que o Controle das contabilidades dá como feitos: o resultado desses meses não está lá, e a ponte não traz o lucro\.$/.test(mS.texto), mS.texto);
+    ok('um mês só: no singular', / em jul\/26, que o Controle das contabilidades dá como feito: o resultado desse mês não está lá/.test(missao(rodarC(G, ORI, cx(res({ '2026-07': { lancamentos: 0, resultado: null } }))), 'lucro').texto));
+    // 8) a ponte sem um mês do período
+    ok('a ponte sem o resultado de um mês do período: diz qual, sem oferta', (() => { const m = missao(rodarC(G, ORI, cx(res().filter(x => x.competencia !== '2026-02'))), 'lucro');
+      return m.usarPonte === null && / A ponte do Domínio ainda não tem o resultado em fev\/26: o lucro não vem dela\.$/.test(m.texto); })());
+    // 9) sem o Controle dizer até onde: a ponte leu, mas não há o que oferecer (o mês se escolhe na tela)
+    ok('sem o Controle das contabilidades: lido, sem oferta e sem frase', (() => { const r = rodarC(G, ORI, { ...base, contabil: null, resultadoPonte: res() }), m = missao(r, 'lucro');
+      return m.usarPonte === null && !/Domínio (tem|não tem)|ponte do Domínio/.test(m.texto); })());
+    // as fontes da fase: com a ponte, o lucro é automático
+    const fo2 = (e, o, r) => fontesDoEstudo({ entrada: e, origens: o, comparacao: comparar({ ...e, regimes: ['presumido', 'real'], lucroFator: e.lucroContabil != null ? 1.2 : 1 }), serie, hoje: '2026-11-12', objetivo: 'presumido_real', contabil: ctb, resultadoPonte: r });
+    ok('as fontes: com o resultado pela ponte, a linha do lucro diz que é automático (e, sem ele, que a ponte ainda não leu)', fo2(eP, oP, res()).lucro[0].auto === AUTOMATICO.resultado && fo2(eP, oP, res()).lucro[0].situacao === 'veio do Domínio pela ponte: a DRE de out/25 a jul/26 (10 de 12 meses)'
+      && fo2(G, ORI, null).lucro[0].auto === AUTOMATICO.semResultado && /Controle das contabilidades dá a contabilidade como feita/.test(AUTOMATICO.resultado), fo2(eP, oP, res()).lucro[0]);
+    // a linha do PIS/Cofins: medido pelo CST das notas é automático; no padrão, diz quando a ponte traz
+    const pcDe = o => fo2(G, o, null).premissas.find(x => x.id === 'piscofins');
+    ok('as fontes do PIS/Cofins: pelo CST das notas, automático; no padrão, a ponte traz quando as notas têm o CST', pcDe({ ...ORI, 'atividades.0.pctAliqZero': { fonte: 'ponte', cst: true } }).auto === AUTOMATICO.ponte
+      && pcDe({ ...ORI, 'atividades.0.pctAliqZero': { fonte: 'ponte', cst: true } }).estado === 'tem' && pcDe(ORI).auto === AUTOMATICO.cst && pcDe(ORI).estado === 'padrao', pcDe(ORI));
+    ok('a missão do PIS/Cofins com a alíquota zero medida nas notas: cumprida pela ponte', (() => { const m = missao(rodarC({ ...G, atividades: [{ ...G.atividades[0], pctAliqZero: 0 }] }, { ...ORI, 'atividades.0.pctAliqZero': { fonte: 'ponte', cst: true } }, base), 'piscofins');
+      return m.estado === 'feita' && m.como === 'veio do Domínio pela ponte'; })());
+    // com o Simples na comparação: a missão "O lucro do Real" também oferece o do Domínio
+    const T = comP({ atividades: [{ tipo: 'comercio', receita: 1000000 }], compras: 500000, regimeAtual: 'simples', objetivo: 'todos' });
+    const mT = missao(rodarC(T, ORI, cx(res())), 'lucro');
+    ok('com o Simples na comparação: a missão do lucro do Real tem o botão e a frase do Domínio', mT && mT.usarPonte && mT.usarPonte.ate === '2026-07' && mT.usarPonteRotulo === 'Usar o do Domínio' && / O Domínio tem o resultado de out\/25 a jul\/26 \(10 dos 12 meses da receita\): lucro de R\$\s50\.000\.$/.test(mT.texto), mT && mT.texto);
+    const eT = { ...T }, oT = { ...ORI };
+    aplicarLucroDaPonte(eT, oT, lucroDaPonte(serie, ctb, res()));
+    ok('e, com o lucro da ponte no estudo, ela vem cumprida pela ponte', (() => { const m = missao(rodarC(eT, oT, cx(res())), 'lucro'); return m.estado === 'feita' && m.como === 'veio do Domínio pela ponte' && m.usarPonte === null; })());
+
+    // ---------- os alertas do resultado, na confirmação de quem cuida da contabilidade ----------
+    // (a) o mês em que o resultado passa da receita do mês: dezembro com prejuízo de R$ 200.000 (a receita do mês é R$ 83.333)
+    const dez = res({ '2025-12': { resultado: -200000 } });
+    ok('o lucro da ponte diz os meses atípicos: o resultado que passa da receita do mês e de metade da receita média', (() => { const a = lucroDaPonte(serie, ctb, dez).atipicos;
+      return a.length === 1 && a[0].competencia === '2025-12' && a[0].resultado === -200000 && Math.abs(a[0].receita - 1000000 / 12) < 0.01 && lucroDaPonte(serie, ctb, res()).atipicos.length === 0; })());
+    ok('o mês sem receita com o prejuízo pequeno do mês parado não é atípico; com o prejuízo do tamanho de um ano, é', (() => {
+      const semJan = serie.filter(x => x.competencia !== '2026-01');
+      return lucroDaPonte(semJan, ctb, res({ '2026-01': { resultado: -3000 } })).atipicos.length === 0 && lucroDaPonte(semJan, ctb, res({ '2026-01': { resultado: -90000 } })).atipicos.map(x => x.competencia).join() === '2026-01'; })());
+    const eDz = { ...G }, oDz = { ...ORI };
+    aplicarLucroDaPonte(eDz, oDz, lucroDaPonte(serie, ctb, dez));
+    const cDz = missao(rodarC(eDz, oDz, cx(dez)), 'contabil');
+    ok('a confirmação mostra o mês atípico, e ele vai na pergunta do vigia', / No resultado do Domínio, dez\/25 \(prejuízo de R\$\s200\.000\) passa da receita do mês: parece lançamento do ano inteiro de uma vez \(o custo das mercadorias, a depreciação\), que distorce um período que não é o ano fechado\./.test(cDz.texto)
+      && /o resultado de dez\/25 \(prejuízo de R\$\s200\.000\) passa da receita do mês/.test(cDz.perguntar.sinais), cDz.texto);
+    ok('sem o lucro ainda (a DRE pedida até julho), a confirmação já mostra o mês atípico do período', / No resultado do Domínio, dez\/25 \(prejuízo de R\$\s200\.000\) passa da receita do mês/.test(missao(rodarC(G, { ...ORI, lucroContabil: { fonte: 'padrao' } }, cx(dez)), 'contabil').texto));
+    ok('o resultado sem mês atípico não ganha a frase', !/No resultado do Domínio/.test(missao(rodarC(eP, oP, cx(res())), 'contabil').texto));
+    // (b) o lucro da contabilidade acima do que as notas e a folha deixam: R$ 600.000 de lucro numa empresa de R$ 1 milhão
+    // de receita e R$ 500 mil de compras — só fecha com estoque formado, ou com compra sem o custo lançado
+    const eAlto = { ...G, lucroContabil: 600000, lucroDe: '2025-10', lucroAte: '2026-09' }, oAlto = { ...ORI, lucroContabil: { fonte: 'digitado' } };
+    const rAlto = rodarC(eAlto, oAlto, cx(null)), cAlto = missao(rAlto, 'contabil');
+    ok('o lucro acima do que as notas e a folha deixam: a confirmação diz os dois números e pergunta do estoque', /Pela contabilidade, o lucro no Real dá R\$\s[\d.]+ nos 12 meses; pelas notas e pela folha do sistema \(a receita menos as compras, as despesas com nota, a folha e os tributos\), daria no máximo R\$\s[\d.]+\. Só fecha se a empresa formou estoque no período, ou se parte das compras ficou sem o custo lançado: pergunte como o custo das vendas \(o estoque\) é lançado\./.test(cAlto.texto)
+      && /o lucro da contabilidade no Real \(R\$\s[\d.]+ nos 12 meses\) passa do que as notas e a folha do sistema deixam \(R\$\s[\d.]+\): o custo das vendas \(o estoque\) está lançado mês a mês\?/.test(cAlto.perguntar.sinais), cAlto.texto);
+    ok('o lucro dentro do que as notas deixam (R$ 50.000): sem o alerta', !/Pela contabilidade, o lucro no Real dá/.test(cDz.texto) && !/Pela contabilidade, o lucro no Real dá/.test(missao(rodarC(eD, oD, cx(res())), 'contabil').texto));
+    ok('a empresa sem compras (serviço) com o lucro acima da receita menos a folha: o alerta fala da folha e das despesas, não do estoque', (() => {
+      const S = comP({ atividades: [{ tipo: 'servico', receita: 1000000 }], folha: 400000, regimeAtual: 'presumido', objetivo: 'presumido_real', lucroContabil: 900000 });
+      const m = missao(rodarC(S, { ...ORI, lucroContabil: { fonte: 'digitado' } }, { ...base, contabil: ctb }), 'contabil');
+      return /Só fecha se a folha ou outra despesa do sistema não entrou na contabilidade\./.test(m.texto) && !/estoque/.test(m.texto) && /: a folha e as despesas entraram\?/.test(m.perguntar.sinais); })());
+    ok('os alertas, soltos: sem o lucro e sem mês atípico, nenhum; a lista tem o texto da missão e o curto da pergunta', alertasDoResultado({ L: { atipicos: [] }, comparacao: null, entrada: G }).length === 0 && alertasDoResultado().length === 0
+      && alertasDoResultado({ L: { atipicos: [{ competencia: '2025-12', resultado: 90000, receita: 100 }, { competencia: '2026-01', resultado: -5, receita: 0 }] } })[0].curto === 'o resultado de dez/25 (lucro de R$\u00a090.000) e jan/26 (prejuízo de R$\u00a05) passam da receita do mês');
   }
 
   console.log('=== a precisão do estudo ===');

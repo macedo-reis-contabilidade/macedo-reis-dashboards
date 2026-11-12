@@ -9,7 +9,9 @@
 // tela (só o Presumido contra o Real, ou com o Simples; sem escolha, o que o sistema sugere — e `objetivo` pede o outro),
 // o que o cadastro veda no Simples, o lucro da contabilidade no Real e a precisão do estudo (o que falta e o efeito de cada
 // item). No Presumido contra o Real de uma empresa do regime geral, o Simples não entra no texto (simplesNoEstudo: nem os
-// impedimentos, nem o anexo) — só uma linha pra quando perguntarem. Testado em tests/assistente-funcao.test.mjs.
+// impedimentos, nem o anexo) — só uma linha pra quando perguntarem. Com a versão 5 da ponte do Domínio (11/11/2026), o
+// lucro da contabilidade que ela traz (o resultado mês a mês, até onde o Controle dá a contabilidade como feita): de onde
+// veio o do estudo e o que o Domínio tem hoje. Testado em tests/assistente-funcao.test.mjs.
 // ============================================================
 
 import { REGIMES, ROTULO_REGIME, TIPOS, OBJETIVOS, fraseDaDecisao, rotuloDoTipo } from '../../../assets/js/comparativo-motor.js';
@@ -177,7 +179,7 @@ function blocoNumeros(estudo, conta = null) {
   ['compras', 'aliqCreditoIcms', 'pctComprasSimples', 'despesasCredito', 'outrasDespesas', 'folha', 'proLabore'].forEach(k => out.push(linha(k)));
   // o lucro do Real: o da contabilidade (a DRE até onde ela está feita, levada aos 12 meses pela receita), com os ajustes;
   // sem ele, a conta estima. E a confirmação de quem cuida da contabilidade, com o que o Domínio mostra daqueles meses
-  const L = lucroDoEstudo({ entrada: e, origens: o, serie: estudo.serie, contabil: estudo.contabil });
+  const L = lucroDoEstudo({ entrada: e, origens: o, serie: estudo.serie, contabil: estudo.contabil, resultadoPonte: estudo.resultadoPonte });
   const mm = c => rotuloComp(c);
   if (fin(e.lucroContabil)) {
     const dre = L.dre, parcial = !!(dre && Math.abs(dre.fator - 1) > 0.0005);
@@ -188,6 +190,21 @@ function blocoNumeros(estudo, conta = null) {
     out.push('- ' + CAMPOS.lucroContabil.rotulo + ': não informado — a conta estima o lucro do Real pela receita menos as compras, a folha e as despesas [' + origemDe(o, 'lucroContabil') + ']'
       + (s && !s.antes && s.faltam.length ? '. A DRE a pedir: de ' + mm(s.de) + ' a ' + mm(s.ate) + ' (' + s.meses + ' dos ' + s.total + ' meses da receita, até onde a contabilidade está feita); os que faltam entram pela margem dos outros' : ''));
   }
+  // o resultado da contabilidade que a ponte do Domínio tem hoje (a versão 5): o que a missão do lucro oferece na tela
+  const P = L.ponte, lp = P && P.hoje, lop = x => (Number(x) < 0 ? 'prejuízo de ' + brl(-Number(x)) : 'lucro de ' + brl(x));
+  if (P && P.lido) {
+    const of = P.oferta;
+    if (of) out.push('- O Domínio, pela ponte, hoje: o resultado da contabilidade de ' + mm(of.de) + ' a ' + mm(of.ate) + ' é ' + lop(of.lucro) + ' (antes do IRPJ e da CSLL, sem o zeramento)'
+      + (of.motivo === 'usar' ? ' — o estudo está sem o lucro: na tela, a missão do lucro tem o botão "' + of.rotulo + '"'
+        : of.motivo === 'andou' ? ' — a contabilidade andou além da DRE do estudo: na tela, "' + of.rotulo + '"'
+        : of.motivo === 'mudou' ? ' — O LUCRO DO ESTUDO VEIO DA PONTE E O DOMÍNIO JÁ MOSTRA OUTRO NÚMERO no mesmo período (entrou lançamento depois): na tela, "' + of.rotulo + '", e a missão do lucro reabriu'
+        : ' — diferente do lucro digitado no estudo: na tela, "' + of.rotulo + '" troca pelo dele') + '.');
+    else if (lp && lp.lucro != null) out.push('- O Domínio, pela ponte, hoje: o mesmo resultado do estudo, de ' + mm(lp.de) + ' a ' + mm(lp.ate) + ' (' + lop(lp.lucro) + '; ' + lp.lancamentos + ' lançamentos em conta de resultado'
+      + (Number(lp.ircs) ? '; IRPJ e CSLL lançados no período, fora do resultado: ' + brl(lp.ircs) : '') + ').');
+    else if (lp && lp.falta === 'sem_lancamento') out.push('- O Domínio, pela ponte: sem lançamento em conta de resultado em ' + lp.quais.map(mm).join(', ') + ', que o Controle das contabilidades dá como feito: o resultado desses meses não está no Domínio, e a ponte não traz o lucro (não é lucro zero).');
+    else if (lp && lp.falta === 'nao_lido') out.push('- O Domínio, pela ponte: ainda sem o resultado de ' + lp.quais.map(mm).join(', ') + ' — o lucro não vem dela.');
+    else out.push('- O Domínio, pela ponte: tem o resultado da contabilidade mês a mês, mas o lucro só entra sozinho até onde o Controle das contabilidades dá a contabilidade como feita (sem isso, é digitado ou escolhido o mês na tela).');
+  } else if (estudo.cliente) out.push('- O Domínio, pela ponte: ainda sem o resultado da contabilidade desta empresa (o lucro, por enquanto, é digitado da DRE).');
   const ctb = estudo.contabil;
   if (ctb) out.push('- A contabilidade, pelo Controle das contabilidades: ' + (ctb.faz === false ? 'o escritório não faz a desta empresa' : ctb.feitaAte ? 'feita até ' + rotuloComp(ctb.feitaAte) : 'nenhum mês feito')
     + (ctb.responsavel && ctb.faz !== false ? ' · quem cuida: ' + ctb.responsavel : '') + '.');
@@ -228,7 +245,7 @@ function blocoFases(rot) {
     const comoCumprir = m => {
       if (m.estado === 'feita') return '';
       const minuscula = t => t.charAt(0).toLowerCase() + t.slice(1);   // só a primeira letra: "digitar o lucro da DRE"
-      const jeitos = [m.relatorio ? 'soltar ' + m.relatorio + ' na caixa dos relatórios do Domínio' : null, m.campo ? minuscula(m.irRotulo || 'ir ao campo') : null,
+      const jeitos = [m.usarPonte ? 'clicar "' + (m.usarPonteRotulo || 'Usar o do Domínio') + '"' : null, m.relatorio ? 'soltar ' + m.relatorio + ' na caixa dos relatórios do Domínio' : null, m.campo ? minuscula(m.irRotulo || 'ir ao campo') : null,
         m.conferir ? 'marcar "' + (m.conferirRotulo || 'Está certo') + '"' : null].filter(Boolean);
       return jeitos.length ? ' (na tela: ' + jeitos.join(', ou ') + ')' : '';
     };
@@ -322,7 +339,7 @@ const LIMITE_PRIMEIRO = 'o aviso do limite vem na primeira frase, junto com o re
 // com o Simples vedado pelo cadastro e na comparação, a linha dele é simulação: vem na frente, com o mais barato sem ele
 const VEDADO_PRIMEIRO = 'o Simples está vedado hoje pelo cadastro e a linha dele é simulação: diga isso na primeira frase, com os impedimentos e o mais barato sem ele; depois, ';
 // só o Presumido contra o Real: de 2027 em diante a diferença é o IRPJ e a CSLL — a presunção de um lado, o lucro do outro
-const GERAL = ' Entre o Presumido e o Real, de 2027 em diante a diferença é só o IRPJ e a CSLL (a presunção contra o lucro): diga o lucro em que os dois empatam e de onde veio o lucro da conta — o da contabilidade (a DRE, até que mês ela vai e se quem cuida da contabilidade já confirmou; se o Domínio mostra problema naqueles meses, diga quais) ou a estimativa, que não serve pra decidir quando as compras passam da receita.';
+const GERAL = ' Entre o Presumido e o Real, de 2027 em diante a diferença é só o IRPJ e a CSLL (a presunção contra o lucro): diga o lucro em que os dois empatam e de onde veio o lucro da conta — o da contabilidade (trazido do Domínio pela ponte ou digitado da DRE: até que mês ele vai e se quem cuida da contabilidade já confirmou; se o Domínio mostra problema naqueles meses, diga quais) ou a estimativa, que não serve pra decidir quando as compras passam da receita.';
 const fim = conta => 'Na resposta: ' + (conta.limite ? LIMITE_PRIMEIRO : conta.vedado ? VEDADO_PRIMEIRO : '') + 'o resultado em uma ou duas frases (o mais barato no ano da decisão e quanto), o porquê pelos tributos que mais pesam e, se ainda pode virar, o quê (as missões que decidem, as premissas no padrão — diga que são padrão a conferir).'
   + (conta.regimes && !conta.regimes.includes('simples') ? GERAL : '') + ' Perguntaram o que falta pra o estudo ficar mais preciso: a precisão do estudo, com o efeito de cada item, o que decide primeiro. Use os números daqui, sem refazer conta: outro cenário é outra chamada, com e_se. Mudar o estudo é na tela Comparativo tributário.';
 

@@ -301,7 +301,7 @@
     import { nomePorEmail } from './assets/js/equipe.js';
     import { fraseDaDecisao, TIPOS, ANEXOS, ROTULO_REGIME, REGIMES, OBJETIVOS, ehObjetivo, ehServico, rotuloDoTipo } from './assets/js/comparativo-motor.js';
     import { aplicarRelatorios, FONTES, rotuloComp, mesclarSerie, pareceFolha, cnpjsDoCabecalho, juntarFolha, folhaDoAno, aplicarFolha, doRegimeGeral, simplesNoEstudo,
-      periodoDaDre, dreSugerida, janelaDaReceita, mesesDeAte } from './assets/js/comparativo-dados.js';
+      periodoDaDre, dreSugerida, janelaDaReceita, mesesDeAte, lucroDaPonte, aplicarLucroDaPonte } from './assets/js/comparativo-dados.js';
     // o estudo (o gravado ou os números do sistema, as empresas dos sócios) e a conta: a mesma regra do assistente do escritório
     import { PADRAO_ATIV, comPadroes, ORIGENS_PADRAO, CAMPOS, erroSemTabela, carregarEstudo, contaDoEstudo, situacaoComGrupo, resumoParaGravar, opcoesDeObjetivo,
       perguntaDaConfirmacao, pedirConfirmacao } from './assets/js/comparativo-estudo.js';
@@ -353,9 +353,10 @@
     // trocando: a pergunta "qual comparativo" aberta de novo (o comparativo escolhido fica em entrada.objetivo)
     // avisoContabil: o que aconteceu com a pergunta mandada pro vigia de quem cuida da contabilidade ({ texto, erro })
     // notasSimples: as de `notas` que só interessam com o Simples na comparação (o limite com as empresas dos sócios, o anexo)
+    // resultadoPonte: o resultado da contabilidade mês a mês pela ponte do Domínio (a versão 5), pro lucro do Real
     const st = { cliente: null, nome: '', entrada: null, origens: {}, notas: [], notasSimples: [], conferencia: null, rels: [], fontes: [],
       estudoId: null, gravadoEm: null, gravadoPor: null, semTabela: false, serie: null, serieRel: null, folhaRel: null, grupoSeries: [], grupoFora: [], socios: null,
-      vedacoes: null, contabil: null, trocando: false, avisoContabil: null,
+      vedacoes: null, contabil: null, resultadoPonte: null, trocando: false, avisoContabil: null,
       jornada: { inicial: true, feitas: new Set(), fases: new Set() }, faseVista: null };
     let ultimoRoteiro = null;
 
@@ -404,7 +405,7 @@
       await gravarPendente();
       st.cliente = null; st.nome = nome; st.estudoId = null; st.gravadoEm = null; st.gravadoPor = null; st.rels = []; st.conferencia = null;
       st.serie = null; st.serieRel = null; st.folhaRel = null; st.grupoSeries = []; st.grupoFora = []; st.socios = null; st.faseVista = null; st.jornada = { inicial: true, feitas: new Set(), fases: new Set() };
-      st.vedacoes = null; st.contabil = null; st.atividade = null; st.trocando = false; st.avisoContabil = null;
+      st.vedacoes = null; st.contabil = null; st.atividade = null; st.resultadoPonte = null; st.trocando = false; st.avisoContabil = null;
       st.entrada = comPadroes({ atividades: [{ tipo: 'comercio', receita: 0 }], grupo: [] });
       st.origens = { ...ORIGENS_PADRAO, 'atividades.0.receita': { fonte: 'padrao', texto: 'digite a receita dos 12 meses' }, 'atividades.0.tipo': { fonte: 'padrao' },
         compras: { fonte: 'padrao', texto: 'digite ou solte os relatórios' }, folha: { fonte: 'padrao', texto: 'digite os 12 meses', dica: 'salários, 13º e férias' }, proLabore: { fonte: 'padrao', texto: 'digite' },
@@ -445,7 +446,11 @@
       st.vedacoes = est.vedacoes || null; st.contabil = est.contabil || null; st.trocando = false; st.avisoContabil = null;
       // o que o sistema apurou da atividade (as notas do Domínio e o CNAE): é o que cumpre a missão da presunção
       st.atividade = est.atividade || null;
+      // o resultado da contabilidade mês a mês pela ponte do Domínio (a versão 5): a missão do lucro oferece o de hoje
+      st.resultadoPonte = est.resultadoPonte || null;
       renderEmpresa(); renderPergunta(); renderForm(); calcular();
+      // o estudo gravado que ganhou da ponte o que ainda não tinha (o lucro da contabilidade, a alíquota zero): grava de novo
+      if (st.estudoId && est.pelaPonte && est.pelaPonte.length && st.entrada.objetivo) { clearTimeout(tGravar); tGravar = setTimeout(gravar, 1500); }
       if (st.estudoId) $('gravado').textContent = 'Estudo gravado em ' + new Date(st.gravadoEm).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' }) + (st.gravadoPor ? ' por ' + (nomePorEmail(st.gravadoPor) || st.gravadoPor) : '') + '.';
       contextoDoAssistente();
     }
@@ -736,7 +741,20 @@
       // seletor e entra quando o lucro for digitado
       if (caminho === 'lucroAte') {
         const jan = janelaDaReceita(st.serie);
-        if (jan && temLucro()) { definirPeriodo(jan, el.value); mudou(); }
+        if (!jan || !temLucro()) return;
+        // o lucro que veio da ponte do Domínio acompanha o mês: o resultado até o mês escolhido; se o Domínio não o tem até
+        // lá (um mês sem lançamento em conta de resultado), o período fica como estava, com o porquê
+        if ((st.origens.lucroContabil || {}).fonte === 'ponte') {
+          const lp = lucroDaPonte(st.serie, st.contabil, st.resultadoPonte, el.value);
+          const pos = aplicarLucroDaPonte(st.entrada, st.origens, lp);
+          renderForm();
+          if ($('f_lucroAte')) $('f_lucroAte').focus({ preventScroll: true });
+          if (!pos && $('origLucroAte')) $('origLucroAte').textContent = 'O Domínio não tem o resultado até ' + rotuloComp(el.value) +
+            (lp && lp.falta === 'sem_lancamento' ? ': ' + lp.quais.map(rotuloComp).join(', ') + ' sem lançamento em conta de resultado' : '') + '. Pra usar outra DRE, digite o lucro.';
+          if (pos) mudou();
+          return;
+        }
+        definirPeriodo(jan, el.value); mudou();
         return;
       }
       const m = /^atividades\.(\d+)\.tipo$/.exec(caminho);
@@ -803,7 +821,8 @@
       if ($('grupoSit')) { const tg = textoGrupo(); $('grupoSit').textContent = tg.txt; $('grupoSit').classList.toggle('ct-alerta', tg.alerta); }
       // a conta inteira (a mesma do assistente do escritório): comparar, as premissas, o roteiro, os prazos, o que muda e os avisos
       const conta = contaDoEstudo({ entrada: st.entrada, origens: st.origens, conferencia: st.conferencia, notas: st.notas, notasSimples: st.notasSimples, serie: st.serie,
-        grupoSeries: st.grupoSeries, grupoFora: st.grupoFora, socios: st.socios, aliq2027, hoje: hojeLocal(), vedacoes: st.vedacoes, contabil: st.contabil, atividade: st.atividade });
+        grupoSeries: st.grupoSeries, grupoFora: st.grupoFora, socios: st.socios, aliq2027, hoje: hojeLocal(), vedacoes: st.vedacoes, contabil: st.contabil, atividade: st.atividade,
+        resultadoPonte: st.resultadoPonte });
       if (!conta.comparacao) {
         ultimo = null;
         box.innerHTML = '<p class="ct-vazio">' + esc(conta.erro) + '</p>';
@@ -939,7 +958,9 @@
         ms.forEach(m => {
           if (m.peso === 'detalhe' && !sep) { lis.push('<li class="ct-m-sep">Extras: não seguram a fase</li>'); sep = true; }
           const prox = rot.proximo && rot.proximo.id === m.id;
-          const acoes = m.estado === 'feita' ? (m.desfazer ? '<div class="ct-m-acoes"><button type="button" class="btn btn-ghost btn-sm" data-desconfirmar-contabil="1">' + esc(m.desfazerRotulo || 'Desfazer') + '</button></div>' : '') : '<div class="ct-m-acoes">' +
+          // o resultado que a ponte do Domínio tem hoje (a missão do lucro): usar, ou atualizar o que veio dela
+          const daPonte = m.usarPonte ? '<button type="button" class="btn btn-ghost btn-sm" data-usar-ponte="' + esc(m.usarPonte.ate || '') + '">' + esc(m.usarPonteRotulo || 'Usar o do Domínio') + '</button>' : '';
+          const acoes = m.estado === 'feita' ? (m.desfazer || daPonte ? '<div class="ct-m-acoes">' + (m.desfazer ? '<button type="button" class="btn btn-ghost btn-sm" data-desconfirmar-contabil="1">' + esc(m.desfazerRotulo || 'Desfazer') + '</button>' : '') + daPonte + '</div>' : '') : '<div class="ct-m-acoes">' + daPonte +
             (m.relatorio ? '<button type="button" class="btn btn-ghost btn-sm" data-relatorio="1">Soltar ' + esc(m.relatorio) + '</button>' : '') +
             (m.campo ? '<button type="button" class="btn btn-ghost btn-sm" data-ir="' + esc(m.campo) + '">' + esc(m.irRotulo || 'Ir ao campo') + '</button>' : '') +
             (m.acao === 'mais-grupo' ? '<button type="button" class="btn btn-ghost btn-sm" data-mais-grupo="1">' + esc(m.acaoRotulo) + '</button>' : '') +
@@ -990,6 +1011,17 @@
       if (ir) { irAoCampo(ir.dataset.ir); return; }
       const pc = e.target.closest('[data-perguntar-contabil]');
       if (pc) { perguntarContabil(pc); return; }
+      // o lucro da contabilidade pela ponte do Domínio: o resultado até o mês da oferta entra no estudo, com o período
+      const up = e.target.closest('[data-usar-ponte]');
+      if (up) {
+        if (aplicarLucroDaPonte(st.entrada, st.origens, lucroDaPonte(st.serie, st.contabil, st.resultadoPonte, up.dataset.usarPonte || null))) {
+          renderForm(); calcular();
+          clearTimeout(tGravar); tGravar = setTimeout(gravar, 1500);
+          const li = document.querySelector('#fase .ct-m[data-id="lucro"]'), b = li && li.querySelector('button');
+          if (b) b.focus(); else if ($('f_lucroContabil')) $('f_lucroContabil').focus({ preventScroll: true });
+        }
+        return;
+      }
       // a confirmação de quem cuida da contabilidade: fica no estudo com quem marcou, o dia e até que mês (e dá pra desfazer)
       const cc = e.target.closest('[data-confirmar-contabil]'), dc = e.target.closest('[data-desconfirmar-contabil]');
       if (cc || dc) {
@@ -1065,7 +1097,8 @@
       const linha = { cliente_id: st.cliente ? st.cliente.id : null, nome: st.cliente ? null : st.nome,
         entrada: { v: 1, entrada: st.entrada, origens: st.origens, conferencia: st.conferencia, ...(st.serieRel ? { serieRel: st.serieRel } : {}), ...(st.folhaRel ? { folhaRel: st.folhaRel } : {}) }, resultado, atualizado_por: usuario, atualizado_em: agora };
       $('gravado').classList.remove('ct-erro'); $('gravado').textContent = 'Gravando…';
-      gravando = (async () => {
+      // (a gravação de agora fica numa variável própria: outra, que esperava esta acabar, pode trocar o `gravando` no meio)
+      const esta = gravando = (async () => {
         const r = st.estudoId
           ? await supabase.from('comparativos').update(linha).eq('id', st.estudoId)
           : await supabase.from('comparativos').insert({ ...linha, criado_por: usuario }).select('id').single();
@@ -1077,7 +1110,7 @@
         st.gravadoEm = agora;
         $('gravado').textContent = 'Gravado às ' + new Date(agora).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) + '.';
       })();
-      await gravando; gravando = null;
+      await esta; if (gravando === esta) gravando = null;
     }
     window.addEventListener('pagehide', () => { if (tGravar) { clearTimeout(tGravar); tGravar = null; gravar(); } });
 

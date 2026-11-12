@@ -1098,7 +1098,9 @@ console.log('O comparativo tributário (a mesma conta da tela, com o "e se"):');
     && /- A confirmação de quem cuida da contabilidade dela \(Adaini\) de que o resultado até jul\/26 é confiável: falta \(na tela, a missão "A confirmação da contabilidade", que confirma com um clique ou manda a pergunta pro vigia de quem cuida\)\./.test(t)
     && /\[a conferir · decide o resultado\] A confirmação da contabilidade: Antes de apresentar, confirme com quem cuida da contabilidade dela \(Adaini\)/.test(t)
     && /- A confirmação da contabilidade \[decide o resultado\]: o lucro errado troca o resultado entre o Presumido e o Real/.test(t), (t.match(/- O que o Domínio mostra[^\n]*\n[^\n]*/) || [''])[0]);
-  chk('a resposta do Presumido contra o Real pede o mês da DRE, a confirmação e os problemas do Domínio', /de onde veio o lucro da conta — o da contabilidade \(a DRE, até que mês ela vai e se quem cuida da contabilidade já confirmou; se o Domínio mostra problema naqueles meses, diga quais\)/.test(t));
+  chk('a resposta do Presumido contra o Real pede de onde veio o lucro (a ponte ou a DRE digitada), o mês, a confirmação e os problemas do Domínio', /de onde veio o lucro da conta — o da contabilidade \(trazido do Domínio pela ponte ou digitado da DRE: até que mês ele vai e se quem cuida da contabilidade já confirmou; se o Domínio mostra problema naqueles meses, diga quais\)/.test(t));
+  chk('sem a versão 5 da ponte nesta empresa: o texto diz que o Domínio ainda não trouxe o resultado', /\n- O Domínio, pela ponte: ainda sem o resultado da contabilidade desta empresa \(o lucro, por enquanto, é digitado da DRE\)\./.test(t)
+    && /Fonte: O lucro da contabilidade \[falta\] — [^\n]*A ponte do Domínio ainda não leu o resultado da contabilidade desta empresa: por enquanto, digite o lucro da DRE\./.test(t));
   chk('as fases do caminho (a receita e a presunção, o lucro do Real, o resto da conta, o veredito), sem prazo do Simples', /\n1\. A receita e a presunção — /.test(t) && /\n2\. O lucro do Real — /.test(t) && /\n3\. O resto da conta — /.test(t) && /\n4\. O veredito — /.test(t)
     && /PRAZOS PRA DECIDIR\n- Presumido ou Real em 2027: [^\n]*A escolha vale pro ano inteiro/.test(t) && !/Entrar no Simples/.test(t));
   // pedido do Samuel, 11/11/2026 (19h12): a atividade e a presunção, o próprio sistema apura pelas notas do Domínio
@@ -1121,6 +1123,45 @@ console.log('O comparativo tributário (a mesma conta da tela, com o "e se"):');
       && /O lucro do Real parte do lucro da contabilidade \(R\$\s?40\.000,00 na DRE: R\$\s?48\.000,00 nos 12 meses, pela receita\)/.test(tg), (tg.match(/- Lucro contábil[^\n]*/) || [''])[0]);
     const tge = await fsG.comparativo({ e_se: { lucro_contabil_12_meses: 60000 } });
     chk('o "e se" sobre a DRE de 10 meses: o de antes é o dos 12 meses (R$ 48.000), e o novo entra como o dos 12 meses', /- Lucro contábil antes do IRPJ e da CSLL \(a DRE\): R\$\s?48\.000,00 → R\$\s?60\.000,00/.test(tge), (tge.match(/- Lucro contábil[^\n]*/) || [''])[0]);
+  }
+  // 11/11/2026 (22h13, o "vai" do Samuel pra versão 5 da ponte): o resultado da contabilidade chega mês a mês, e o lucro do
+  // Real entra sozinho até onde o Controle dá a contabilidade como feita — o assistente diz de onde veio e o que o Domínio
+  // tem hoje; a venda com alíquota zero sai do CST das notas
+  {
+    const v5 = (o = {}) => ({ ...extras, dominio_mensal: extras.dominio_mensal.map(l => ({ ...l, resultado_antes_ir: 3000, irpj_csll_lancados: 500, receitas_financeiras: 0, lanc_resultado: 12,
+      pc_tributada: 20000, pc_monofasica: 0, pc_st: 0, pc_aliquota_zero: 30000, pc_isenta: 0, pc_sem_incidencia: 0, pc_suspensa: 0, pc_outras: 0, pc_sem_cst: 0, ...((o.linhas || {})[l.competencia] || {}) })), comparativos: o.comparativos || [] });
+    const texto = async o => { const b = bancoFalso({ extras: v5(o) }); return { t: await criarFerramentas({ banco: b.banco, hoje: '2026-11-12', contexto: { cliente_id: ID_I }, usuario: { email: 'fiscal@macedoereis.com.br', nome: 'Thalia', socio: false } }).comparativo({}), pedidos: b.log.map(x => decodeURIComponent(x.caminho)) }; };
+    const { t: t5, pedidos } = await texto();
+    chk('a leitura do Domínio pede as colunas da versão 5 (o resultado e o CST do PIS/Cofins)', (pedidos || []).some(u => /dominio_mensal\?/.test(u) && /resultado_antes_ir/.test(u) && /lanc_resultado/.test(u) && /pc_aliquota_zero/.test(u)), (pedidos || []).filter(u => /dominio_mensal/.test(u)).map(u => u.slice(0, 80)));
+    chk('o lucro veio do Domínio pela ponte: R$ 30.000 de outubro a julho, levado aos 12 meses (R$ 36.000), e o Domínio de hoje é o mesmo', /- Lucro contábil antes do IRPJ e da CSLL \(a DRE\): R\$\s?30\.000,00 \[Domínio, pela ponte: o resultado da contabilidade de out\/25 a jul\/26\] — a DRE de out\/25 a jul\/26 \(10 dos 12 meses da receita\): levado aos 12 meses pela receita \(a margem dos meses que a DRE tem\), R\$\s?36\.000,00/.test(t5)
+      && /\n- O Domínio, pela ponte, hoje: o mesmo resultado do estudo, de out\/25 a jul\/26 \(lucro de R\$\s?30\.000,00; 120 lançamentos em conta de resultado; IRPJ e CSLL lançados no período, fora do resultado: R\$\s?5\.000,00\)\./.test(t5), (t5.match(/- Lucro contábil[^\n]*\n[^\n]*/) || [''])[0]);
+    chk('a missão do lucro cumprida pela ponte, a confirmação de quem cuida ainda aberta, e a fonte da fase diz que é automático', /\[cumprida: veio do Domínio pela ponte\] O lucro da contabilidade: Lucro de R\$\s?30\.000 na DRE de out\/25 a jul\/26 \(10 dos 12 meses da receita\)/.test(t5)
+      && /\[a conferir · decide o resultado\] A confirmação da contabilidade: /.test(t5) && /Fonte: O lucro da contabilidade \[veio do Domínio pela ponte: a DRE de out\/25 a jul\/26 \(10 de 12 meses\)\] — [^\n]*Automático: a ponte do Domínio traz o resultado de cada mês/.test(t5)
+      && !/ainda sem o resultado da contabilidade/.test(t5), (t5.match(/\] O lucro da contabilidade: [^\n]{0,200}/) || [''])[0]);
+    chk('a venda com alíquota zero pelo CST das notas: 60%, com a origem, e a missão do PIS/Cofins cumprida pela ponte', /vendas com alíquota zero de PIS\/Cofins 60% \[Domínio, pela ponte: 60% das vendas de mercadoria com alíquota zero de PIS\/Cofins nas notas de out\/25 a set\/26\]/.test(t5)
+      && /\[cumprida: veio do Domínio pela ponte\] O PIS\/Cofins das vendas: /.test(t5), (t5.match(/vendas com alíquota zero[^;\n]*/) || [''])[0]);
+    // o estudo gravado com o lucro digitado: o Domínio aparece pra comparar, com o botão da tela
+    const digitado = [{ id: 'eeee1111-2222-4333-8444-555566667777', cliente_id: ID_I, nome: null, atualizado_em: '2026-11-11T23:00:00Z', atualizado_por: 'fiscal@macedoereis.com.br',
+      entrada: { v: 1, entrada: { atividades: [{ tipo: 'industria', receita: 600000 }], compras: 360000, proLabore: 19452, regimeAtual: 'presumido', objetivo: 'presumido_real', lucroContabil: 40000, lucroDe: '2025-10', lucroAte: '2026-07', lucroReceita: 500000 },
+        origens: { lucroContabil: { fonte: 'digitado', texto: 'digitado' } } } }];
+    const td = (await texto({ comparativos: digitado })).t;
+    chk('o lucro digitado no estudo e outro no Domínio: o texto diz os dois e o botão da tela', /R\$\s?40\.000,00 \[digitado\]/.test(td) && /\n- O Domínio, pela ponte, hoje: o resultado da contabilidade de out\/25 a jul\/26 é lucro de R\$\s?30\.000,00 \(antes do IRPJ e da CSLL, sem o zeramento\) — diferente do lucro digitado no estudo: na tela, "Usar o do Domínio" troca pelo dele\./.test(td)
+      && /\[cumprida: digitado\] O lucro da contabilidade: [^\n]*Pelo Domínio, o resultado de out\/25 a jul\/26 é lucro de R\$\s?30\.000\./.test(td), (td.match(/- O Domínio, pela ponte[^\n]*/) || [''])[0]);
+    // o lucro que veio da ponte e o Domínio já mostra outro no mesmo período: a missão reaberta
+    const velho = [{ ...digitado[0], entrada: { v: 1, entrada: { ...digitado[0].entrada.entrada, lucroContabil: 30000 }, origens: { lucroContabil: { fonte: 'ponte', texto: 'Domínio, pela ponte: o resultado da contabilidade de out/25 a jul/26' } } } }];
+    const tv = (await texto({ comparativos: velho, linhas: { '2026-03': { resultado_antes_ir: 8000 } } })).t;
+    chk('o lucro da ponte que ficou velho: o texto avisa em maiúsculas e a missão está reaberta, com o "Atualizar pelo Domínio"', /O LUCRO DO ESTUDO VEIO DA PONTE E O DOMÍNIO JÁ MOSTRA OUTRO NÚMERO no mesmo período \(entrou lançamento depois\): na tela, "Atualizar pelo Domínio", e a missão do lucro reabriu\./.test(tv)
+      && /\[a conferir · decide o resultado\] O lucro da contabilidade: [^\n]*hoje ele mostra lucro de R\$\s?35\.000\. \(na tela: clicar "Atualizar pelo Domínio"\)/.test(tv), (tv.match(/\] O lucro da contabilidade: [^\n]*/) || [''])[0].slice(-220));
+    // o mês feito no Controle e sem lançamento de resultado no Domínio: nunca lucro zero
+    const ts = (await texto({ linhas: { '2026-07': { lanc_resultado: 0, resultado_antes_ir: null } } })).t;
+    chk('julho sem lançamento em conta de resultado: o lucro não entra, e o texto diz que não é lucro zero', /não informado — a conta estima o lucro do Real/.test(ts)
+      && /\n- O Domínio, pela ponte: sem lançamento em conta de resultado em jul\/26, que o Controle das contabilidades dá como feito: o resultado desses meses não está no Domínio, e a ponte não traz o lucro \(não é lucro zero\)\./.test(ts), (ts.match(/- O Domínio, pela ponte[^\n]*/) || [''])[0]);
+    // a lista branca: as colunas da versão 5 são lidas pelo consultar, com as notas do resultado e do CST
+    const D = TABELAS.dominio_mensal;
+    chk('a lista branca do Domínio tem as 55 colunas da versão 5, com as notas do resultado (nunca lucro zero) e do CST', ['resultado_antes_ir', 'irpj_csll_lancados', 'receitas_financeiras', 'lanc_resultado', 'pc_tributada', 'pc_aliquota_zero', 'pc_sem_cst',
+      'venda_producao', 'saidas_exterior', 'icms_saidas', 'icms_compras', 'iss_devido', 'base_pis_cofins', 'pis_cofins_a_recolher', 'receita_irpj_8', 'receita_csll_12', 'apuracao_trimestral', 'base_irpj', 'csll_apurada'].every(c => D.cols.includes(c))
+      && D.cols.length === new Set(D.cols).size && /NUNCA lucro zero/.test(D.notas.resultado_antes_ir) && /controle das contabilidades/.test(D.notas.resultado_antes_ir) && /no Simples a venda cai toda em pc_sem_cst/.test(D.notas.pc_tributada)
+      && /a versão 5/.test(D.desc) && /resultado \(a 5, 11\/11\/2026\)/.test(TABELAS.dominio_rodadas.notas.faltou), D.cols.length);
   }
   // 11/11/2026 (21h19, o "vai" do Samuel): a pergunta da confirmação no vigia de quem cuida da contabilidade — o assistente
   // lê o estado dela pela função do banco (banco.chamar, com o login de quem pergunta) e diz onde ela está

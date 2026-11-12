@@ -2,9 +2,10 @@
 // MACEDO & REIS — Comparativo tributário: os números que o sistema já tem
 // Módulo ES puro, sem DOM: monta a entrada do motor (comparativo-motor.js) com o que o sistema sabe da empresa —
 // o cadastro, o caso da Reforma (os relatórios do Domínio e as notas que já foram lidos lá), o Fator R, o PGDAS que a
-// ponte da Receita traz, o Domínio pela ponte (05/11/2026: a receita, as compras e a folha dos meses fechados) e os
-// relatórios do Domínio soltos na tela — e diz de onde veio cada número (`origens`), como a
-// procedência da Reforma: o que não veio de lugar nenhum é "padrão — confira". Testado por
+// ponte da Receita traz, o Domínio pela ponte (05/11/2026: a receita, as compras e a folha dos meses fechados; 11/11/2026,
+// a versão 5: o resultado da contabilidade mês a mês — o lucro do Real até onde ela está feita, lucroDaPonte — e a venda
+// pela situação tributária do PIS/Cofins, pisCofinsDaPonte) e os relatórios do Domínio soltos na tela — e diz de onde veio
+// cada número (`origens`), como a procedência da Reforma: o que não veio de lugar nenhum é "padrão — confira". Testado por
 // tests/comparativo-dados.test.mjs.
 // ============================================================
 
@@ -214,9 +215,13 @@ const periodo = s => s.n === 12 ? rotuloComp(s.de) + ' a ' + rotuloComp(s.ate) :
 // linhas: as de dominio_mensal da empresa, só os meses fechados (quem chama corta: carregarEstudo). Dois códigos com o
 // mesmo documento no mesmo mês ficam com o maior de cada número, como na ficha da empresa. Null = o Domínio não disse
 // (o bloco não foi lido, a folha de empresa inativa lá, a apuração do Simples de quem não apura): nunca vira zero.
+// Desde 11/11/2026 (a versão 5 da ponte), a venda pela situação tributária do PIS/Cofins (o CST do item da nota): 01 a 03
+// tributada, 04 monofásica, 05 substituição tributária, 06 alíquota zero, 07 isenta, 08 sem incidência, 09 suspensa, as
+// outras e a sem CST (no Simples o item não tem o CST: a venda cai toda em pc_sem_cst)
+export const CAMPOS_PISCOFINS = ['pc_tributada', 'pc_monofasica', 'pc_st', 'pc_aliquota_zero', 'pc_isenta', 'pc_sem_incidencia', 'pc_suspensa', 'pc_outras', 'pc_sem_cst'];
 export const CAMPOS_PONTE = ['receita_bruta', 'receita_mercadorias', 'receita_servicos', 'receita_simples', 'receita_st', 'receita_monofasica', 'receita_exportacao',
   'receita_anexo_1', 'receita_anexo_2', 'receita_anexo_3', 'receita_anexo_4', 'receita_anexo_5', 'compras', 'servicos_tomados', 'ativo_e_consumo',
-  'salarios', 'decimo_terceiro', 'pro_labore_valor', 'base_inss', 'inss_rat', 'inss_terceiros'];
+  'salarios', 'decimo_terceiro', 'pro_labore_valor', 'base_inss', 'inss_rat', 'inss_terceiros', ...CAMPOS_PISCOFINS];
 export function mesesDaPonte(linhas) {
   const por = new Map();
   (linhas || []).forEach(l => {
@@ -273,6 +278,24 @@ export function simplesDaPonte(janela) {
   const pct = c => (baseMerc > 0 && ms.some(m => m[c] != null) ? Math.min(100, s(c) / baseMerc * 100) : null);
   return { anexos, somaAnexos, pctST: pct('receita_st'), pctMono: pct('receita_monofasica'), exportacao: s('receita_exportacao') };
 }
+// a venda pela situação tributária do PIS/Cofins (a versão 5 da ponte), nos meses em que a ponte leu o bloco (os 12 mais
+// recentes dos que vieram). Volta { n, de, ate, total (toda a venda: mercadoria e serviço, antes das devoluções),
+// classificada (a parte com CST de 01 a 09), zero (06 e 07: alíquota zero e isenta), isenta, mono (04 e 05: a revenda
+// monofásica e a com substituição tributária), st, fora (08 e 09: sem incidência e com suspensão), mercadorias (a venda de
+// mercadoria dos mesmos meses) } ou null sem o bloco ou sem venda. A medida só vale com quase toda a venda classificada
+// (cstVale): no Simples o item não tem o CST, e a nota com CST 49 ou 99 não diz nada
+export const CST_MINIMO = 0.95;
+export function pisCofinsDaPonte(meses) {
+  const com = (meses || []).filter(m => CAMPOS_PISCOFINS.some(c => m[c] != null)).slice(-12);
+  if (!com.length) return null;
+  const s = c => com.reduce((t, m) => t + num(m[c]), 0);
+  const total = CAMPOS_PISCOFINS.reduce((t, c) => t + s(c), 0);
+  if (!(total > 0)) return null;
+  return { n: com.length, de: com[0].competencia, ate: com[com.length - 1].competencia, total, classificada: total - s('pc_sem_cst') - s('pc_outras'),
+    zero: s('pc_aliquota_zero') + s('pc_isenta'), isenta: s('pc_isenta'), mono: s('pc_monofasica') + s('pc_st'), st: s('pc_st'),
+    fora: s('pc_sem_incidencia') + s('pc_suspensa'), mercadorias: s('receita_mercadorias') };
+}
+export const cstVale = pc => !!pc && pc.total > 0 && pc.classificada / pc.total >= CST_MINIMO;
 
 // as linhas de receita a partir do total e da divisão mercadoria × serviço
 function linhas(receita, mercadorias, servicos, tipoMerc, tipoServ) {
@@ -513,6 +536,33 @@ export function entradaDoSistema({ cliente = null, caso = null, fatorR = [], pgd
       origens.rat = origem('ponte', 'Domínio, pela ponte: RAT com o FAP de ' + pct2(rat) + '% nas guias de ' + periodo(bi), 'o INSS do RAT que a folha recolheu (já com o FAP) dividido pela base do INSS dos empregados');
       origens.fap = origem('ponte', 'já está no RAT das guias');
       origens.terceiros = origem('ponte', 'Domínio, pela ponte: ' + pct2(terc) + '% nas guias de ' + periodo(bi), 'o INSS de terceiros que a folha recolheu dividido pela base do INSS dos empregados');
+    }
+  }
+  // o PIS/Cofins das vendas pelas notas (11/11/2026, a versão 5 da ponte): com o CST em quase toda a venda (a empresa do
+  // Presumido ou do Real — no Simples o item não tem o CST), a parte com alíquota zero ou isenta e a revenda monofásica
+  // ou com substituição tributária saem das notas, sobre a venda de mercadoria dos mesmos meses. A marca da Cesta Básica
+  // Nacional segue com a equipe (a nota não diz); o que é sem incidência ou com suspensão (a exportação) fica dito
+  const pc = pisCofinsDaPonte(sPonte ? sPonte.janela : mp);
+  if (iMerc >= 0 && pc) {
+    const p = 'atividades.' + iMerc, am = atividades[iMerc];
+    const base = pc.mercadorias > 0 ? pc.mercadorias : pc.total;
+    const parte = v => Math.round(Math.min(100, v / base * 100) * 100) / 100;
+    if (cstVale(pc)) {
+      const pz = parte(pc.zero), pm = parte(pc.mono), nasNotas = ' de PIS/Cofins nas notas de ' + periodoCurto(pc);
+      am.pctAliqZero = pz;
+      origens[p + '.pctAliqZero'] = { ...origem('ponte', pz > 0 ? 'Domínio, pela ponte: ' + pct1(pz) + '% das vendas de mercadoria com alíquota zero' + (pc.isenta > 0 ? ' ou isentas' : '') + nasNotas : 'Domínio, pela ponte: nenhuma venda com alíquota zero' + nasNotas,
+        'pela situação tributária (o CST) do PIS em cada item das notas de saída: 06, alíquota zero, e 07, isenta. No Presumido e no Real: as da Cesta Básica Nacional (LC 214, Anexos I e XV) seguem com zero — marque na atividade —; as outras pagam 10% da alíquota desde abril de 2026 (LC 224/2025)'), cst: true };
+      if (am.tipo === 'comercio') {
+        am.pctMonofasico = pm;
+        origens[p + '.pctMonofasico'] = { ...origem('ponte', pm > 0 ? 'Domínio, pela ponte: ' + pct1(pm) + '% das vendas de mercadoria de revenda monofásica' + (pc.st > 0 ? ' ou com substituição tributária' : '') + nasNotas : 'Domínio, pela ponte: nenhuma revenda monofásica' + nasNotas,
+          'pela situação tributária (o CST) do PIS em cada item das notas de saída: 04, a revenda monofásica, e 05, a substituição tributária'), cst: true };
+      } else if (pm > 0) notas.push('As notas têm ' + pct1(pm) + '% das vendas de mercadoria como revenda monofásica ou com substituição tributária de PIS/Cofins (CST 04 e 05), e a atividade está como indústria: a conta não separa essa revenda — confira.');
+      const pf = pc.fora / pc.total * 100;
+      if (pf >= 0.5) notas.push('As notas têm ' + pct1(pf) + '% das vendas sem incidência ou com suspensão de PIS/Cofins (CST 08 e 09: a exportação, a venda com suspensão): o comparativo não separa essas vendas e conta o PIS/Cofins nelas — confira.');
+    } else if (regimeHoje === 'presumido' || regimeHoje === 'real') {
+      // a ponte leu as notas e a maior parte da venda não tem o CST do PIS/Cofins (ou vem como "outras"): segue a conferir
+      const antes = origens[p + '.pctAliqZero'];
+      origens[p + '.pctAliqZero'] = origem('padrao', 'padrão: nenhuma — confira (só ' + pct1(pc.classificada / pc.total * 100) + '% das vendas têm o CST do PIS/Cofins nas notas do Domínio)', antes && antes.dica);
     }
   }
 
@@ -962,4 +1012,82 @@ export function dreSugerida(serie, contabil = null) {
   if (!semControle && (!feitaAte || feitaAte < j.de)) return { de: j.de, ate: null, meses: 0, total: j.meses.length, faltam: j.meses.slice(), antes: true };
   const ate = semControle || feitaAte >= j.ate ? j.ate : feitaAte;
   return { de: j.de, ate, meses: mesesDeAte(j.de, ate).length, total: j.meses.length, faltam: ate < j.ate ? mesesDeAte(mesDepois(ate), j.ate) : [], antes: false };
+}
+
+// ---------- o resultado da contabilidade pela ponte do Domínio (11/11/2026, a versão 5 do pacote) ----------
+// O pedido do Samuel das 20h11: "a ponte da Domínio deveria puxar essa informação até a data que supostamente a
+// contabilidade está feita". A ponte traz, por empresa e mês, o resultado antes do IRPJ e da CSLL (resultado_antes_ir: o
+// que foi lançado nas contas de resultado, fora o zeramento; negativo = prejuízo), o IRPJ e a CSLL lançados à parte
+// (irpj_csll_lancados), as receitas financeiras (dentro do resultado) e quantos lançamentos em conta de resultado o mês
+// tem (lanc_resultado: 0 = a contabilidade do mês não está no Domínio — o resultado fica null, NUNCA lucro zero).
+export const CAMPOS_RESULTADO = ['resultado_antes_ir', 'irpj_csll_lancados', 'receitas_financeiras', 'lanc_resultado'];
+// as linhas de dominio_mensal → Map(competência → { competencia, lancamentos, resultado, ircs, financeiras }), só os meses
+// em que a ponte leu o bloco (lanc_resultado não nulo). Dois códigos do Domínio ligados à mesma empresa: fica o que tem
+// mais lançamentos em conta de resultado no mês (o resultado tem sinal: não é "o maior de cada número")
+export function resultadoDaPonte(linhas) {
+  const por = new Map();
+  const v = x => (x == null || x === '' || !Number.isFinite(Number(x)) ? null : Number(x));
+  (linhas || []).forEach(l => {
+    if (!l || !RE_COMP.test(String(l.competencia))) return;
+    const n = v(l.lanc_resultado);
+    if (n == null || n < 0) return;
+    const antes = por.get(l.competencia);
+    if (antes && antes.lancamentos >= n) return;
+    por.set(l.competencia, { competencia: l.competencia, lancamentos: n, resultado: v(l.resultado_antes_ir), ircs: v(l.irpj_csll_lancados), financeiras: v(l.receitas_financeiras) });
+  });
+  return por;
+}
+// o resultado como o estudo guarda (a lista dos meses, em ordem) e de volta ao mapa: aceita o mapa, a lista ou as linhas
+export const listaDoResultado = linhas => [...resultadoDaPonte(linhas).values()].sort((a, b) => (a.competencia < b.competencia ? -1 : 1));
+const mapaDoResultado = r => (r instanceof Map ? r : Array.isArray(r) && r.length && r[0] && 'lancamentos' in r[0] ? new Map(r.map(x => [x.competencia, x])) : resultadoDaPonte(r));
+// O lucro da contabilidade pela ponte, do primeiro mês da receita até `ate` — sem `ate`, até onde o Controle das
+// contabilidades dá a contabilidade como feita (dreSugerida): sem o Controle o sistema não sabe em que mês parar, e o mês
+// ainda em aberto no Domínio daria um resultado pela metade.
+// Volta null (sem a série, sem nenhum mês lido pela ponte, ou sem `ate` e sem o Controle dizer até onde: a empresa fora
+// dele, a contabilidade de fora do escritório, nenhum mês da receita feito), { de, ate, meses, falta: 'nao_lido', quais }
+// (a ponte não tem o resultado de algum mês do período), { de, ate, meses, falta: 'sem_lancamento', quais } (o mês tem
+// receita e nenhum lançamento em conta de resultado no Domínio: a contabilidade dele não está lá) ou { de, ate, meses,
+// lucro (negativo = prejuízo), receita (a dos mesmos meses, que leva o lucro aos 12), ircs, financeiras, lancamentos,
+// atipicos }. atipicos: os meses em que o resultado passa da receita do mês e de metade da receita média do período
+// ([{ competencia, resultado, receita }]) — o lançamento do ano inteiro de uma vez (o custo das mercadorias, a
+// depreciação), que distorce a soma de um período que não é o ano fechado
+export function lucroDaPonte(serie, contabil, resultado, ate = null) {
+  const res = mapaDoResultado(resultado);
+  if (!res.size) return null;
+  const j = janelaDaReceita(serie);
+  if (!j) return null;
+  let fim = RE_COMP.test(String(ate || '')) && ate >= j.de && ate <= j.ate ? String(ate) : null;
+  if (!fim) {
+    if (ate || !contabil || contabil.faz === false) return null;
+    const sug = dreSugerida(serie, contabil);
+    if (!sug || sug.antes || !sug.ate) return null;
+    fim = sug.ate;
+  }
+  const meses = mesesDeAte(j.de, fim);
+  const base = { de: j.de, ate: fim, meses: meses.length };
+  const temReceita = c => (j.porMes.get(c) || 0) > 0;
+  // o mês com lançamento em conta de resultado e sem o número não foi lido inteiro; o sem lançamento e sem receita é zero
+  const naoLido = meses.filter(c => !res.has(c) || (res.get(c).lancamentos > 0 && res.get(c).resultado == null));
+  if (naoLido.length) return { ...base, falta: 'nao_lido', quais: naoLido };
+  const semLanc = meses.filter(c => res.get(c).lancamentos === 0 && temReceita(c));
+  if (semLanc.length) return { ...base, falta: 'sem_lancamento', quais: semLanc };
+  const soma = k => Math.round(meses.reduce((t, c) => t + num(res.get(c)[k]), 0) * 100) / 100;
+  const receita = meses.reduce((t, c) => t + (j.porMes.get(c) || 0), 0);
+  const media = receita / meses.length;
+  const atipicos = meses.map(c => ({ competencia: c, resultado: num(res.get(c).resultado), receita: j.porMes.get(c) || 0 }))
+    .filter(x => Math.abs(x.resultado) > x.receita && Math.abs(x.resultado) > 0.5 * media && media > 0);
+  return { ...base, lucro: soma('resultado'), receita: receita > 0 ? receita : null, ircs: soma('ircs'), financeiras: soma('financeiras'),
+    lancamentos: meses.reduce((t, c) => t + res.get(c).lancamentos, 0), atipicos };
+}
+// a origem do lucro que veio da ponte (o período vai junto, pra tela e pro assistente dizerem de quando é)
+export const origemDoLucroDaPonte = lp => ({ ...origem('ponte', 'Domínio, pela ponte: o resultado da contabilidade de ' + rotuloComp(lp.de) + ' a ' + rotuloComp(lp.ate),
+  'a soma do resultado de cada mês no Domínio: o que foi lançado nas contas de resultado, antes do IRPJ e da CSLL e sem o zeramento do exercício' + (lp.lancamentos ? ' (' + lp.lancamentos.toLocaleString('pt-BR') + ' lançamentos)' : '')), de: lp.de, ate: lp.ate });
+// põe o lucro da ponte no estudo: o número, o período da DRE (lucroDe a lucroAte), a receita desses meses (é ela que
+// leva o lucro aos 12 meses: periodoDaDre) e a origem. Volta true se pôs (o lucro da ponte tem de ter o número)
+export function aplicarLucroDaPonte(entrada, origens, lp) {
+  if (!entrada || !origens || !lp || lp.lucro == null || !Number.isFinite(Number(lp.lucro))) return false;
+  entrada.lucroContabil = Number(lp.lucro); entrada.lucroDe = lp.de; entrada.lucroAte = lp.ate; entrada.lucroReceita = lp.receita > 0 ? lp.receita : null;
+  delete entrada.lucroAnual;
+  origens.lucroContabil = origemDoLucroDaPonte(lp);
+  return true;
 }

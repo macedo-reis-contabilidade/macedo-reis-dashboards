@@ -4,6 +4,8 @@
 // compras junto, o lucro do Real em % da receita, o ICMS de todas as atividades, as empresas dos sócios fora da soma).
 // Desde 11/11/2026: qual comparativo (o escolhido ou o que o sistema sugere), o que o cadastro veda no Simples (o documento
 // do sócio pessoa jurídica não sai), a contabilidade feita até que mês, a precisão do estudo e o lucro da contabilidade.
+// E a versão 5 da ponte do Domínio: o lucro da contabilidade que entra sozinho até o mês do Controle (no estudo novo e no
+// gravado sem lucro) e a venda com alíquota zero de PIS/Cofins medida no CST das notas.
 // Rodar com: node tests/comparativo-estudo.test.mjs
 import { comparar } from '../assets/js/comparativo-motor.js';
 import { PADROES, comPadroes, ORIGENS_PADRAO, CAMPOS, erroSemTabela, entradaDoMotor, carregarEstudo, estudoGravado, contaDoEstudo, situacaoComGrupo,
@@ -479,6 +481,75 @@ console.log('Qual comparativo, os impedimentos do Simples, a contabilidade e a p
     && contaDoEstudo({ ...g, entrada: { ...g.entrada, objetivo: undefined }, aliq2027: ALIQ, hoje: '2026-11-11' }).objetivo === 'presumido_real');
   const semRec = contaDoEstudo({ entrada: comPadroes({ atividades: [{ tipo: 'comercio', receita: 0 }], regimeAtual: 'presumido' }), origens: {}, hoje: '2026-11-11' });
   chk('sem receita, a conta não roda, mas diz o caminho e a precisão', semRec.comparacao === null && semRec.objetivo === 'presumido_real' && semRec.vedado === null && semRec.precisao.nivel === 'provisorio' && semRec.precisao.falta[0].id === 'receita');
+}
+
+console.log('O resultado da contabilidade e o CST do PIS/Cofins pela ponte do Domínio (a versão 5, 11/11/2026)');
+{
+  // a indústria do Presumido: 12 meses de R$ 50.000 (out/25 a set/26), o resultado do Domínio de R$ 3.000 por mês, 60% da
+  // venda com alíquota zero pelo CST das notas, a contabilidade feita até julho — e outubro, ainda em aberto, com um
+  // resultado que não pode entrar
+  const IND = { id: 'c9', nome_principal: 'INDUSTRIA DA PONTE LTDA', nome_fantasia: null, documento: '99999999000199', tipo_pessoa: 'PJ', regime_tributario: 'Lucro Presumido', cidade: 'Igrejinha', uf: 'RS',
+    cnae_principal: '1041-4/00 - Fabricação de óleos vegetais em bruto, exceto óleo de milho', cnaes_secundarios: [], natureza_juridica: '206-2 - Sociedade Empresária Limitada' };
+  const mes = i => new Date(Date.UTC(2025, i, 1)).toISOString().slice(0, 7);
+  const linha = (i, extra = {}) => ({ codigo: 900, cliente_id: 'c9', competencia: mes(9 + i), receita_bruta: 50000, receita_mercadorias: 50000, receita_servicos: 0, receita_simples: null, compras: 30000, servicos_tomados: 0, ativo_e_consumo: 0,
+    salarios: 0, decimo_terceiro: 0, pro_labore_valor: 1621, pc_tributada: 20000, pc_monofasica: 0, pc_st: 0, pc_aliquota_zero: 30000, pc_isenta: 0, pc_sem_incidencia: 0, pc_suspensa: 0, pc_outras: 0, pc_sem_cst: 0,
+    resultado_antes_ir: 3000, irpj_csll_lancados: 500, receitas_financeiras: 0, lanc_resultado: 12, ...extra });
+  const extrasDe = (o = {}) => ({
+    dominio_mensal: [...Array.from({ length: 12 }, (_, i) => linha(i, (o.linhas || {})[mes(9 + i)] || {})), linha(12, { resultado_antes_ir: 999999, lanc_resultado: 3 })],
+    contabil_empresas: o.semControle ? [] : [{ cliente_id: 'c9', faz: true, inicio: '2025-01', fim: null, responsavel: 'Adaini' }],
+    contabil_meses: Array.from({ length: 19 }, (_, i) => ({ cliente_id: 'c9', competencia: mes(i), situacao: 'feita', feita_em: '2026-08-10' })), dominio_andamento: [], receita_empresas: [] });
+  const SOC = [{ cliente_id: 'c9', nome: 'SOCIO DA PONTE', cpf: '123.456.789-09', participacao_percentual: 100 }];
+  const abrir = async (o = {}) => { const b = banco({ socios: SOC, extras: extrasDe(o), comparativos: o.comparativos || [] }); return { est: await carregarEstudo({ ler: b.ler, cliente: IND, hoje: '2026-11-11' }), log: b.log }; };
+
+  // ---------- o estudo novo: o lucro entra sozinho, até onde o Controle dá a contabilidade como feita ----------
+  const { est, log } = await abrir();
+  chk('a leitura pede as colunas da versão 5: o resultado da contabilidade e a venda pelo CST do PIS/Cofins', log.some(x => x.t === 'dominio_mensal' && x.o.eq && x.o.eq.cliente_id === 'c9'
+    && ['resultado_antes_ir', 'irpj_csll_lancados', 'receitas_financeiras', 'lanc_resultado', 'pc_aliquota_zero', 'pc_sem_cst', 'pc_monofasica'].every(c => new RegExp('\\b' + c + '\\b').test(x.o.cols))));
+  chk('o lucro da contabilidade entra sozinho: de outubro a julho (10 meses × R$ 3.000), com a receita desses meses e a origem da ponte', est.entrada.lucroContabil === 30000 && est.entrada.lucroDe === '2025-10' && est.entrada.lucroAte === '2026-07'
+    && est.entrada.lucroReceita === 500000 && est.origens.lucroContabil.fonte === 'ponte' && est.origens.lucroContabil.texto === 'Domínio, pela ponte: o resultado da contabilidade de out/25 a jul/26', JSON.stringify([est.entrada.lucroContabil, est.origens.lucroContabil]));
+  chk('o resultado mês a mês vai com o estudo: só os meses fechados (outubro de 2026, em aberto, fica fora)', est.resultadoPonte.length === 12 && est.resultadoPonte[0].competencia === '2025-10' && est.resultadoPonte[11].competencia === '2026-09'
+    && !est.resultadoPonte.some(x => x.resultado === 999999) && est.pelaPonte.length === 0 && !/"codigo"/.test(JSON.stringify(est.resultadoPonte)));
+  chk('os números do sistema (o "Recomeçar") também trazem o lucro da ponte', est.sistema.entrada.lucroContabil === 30000 && est.sistema.origens.lucroContabil.fonte === 'ponte');
+  chk('a venda com alíquota zero vem do CST das notas: 60%, com a origem da ponte', est.entrada.atividades[0].pctAliqZero === 60 && est.origens['atividades.0.pctAliqZero'].fonte === 'ponte' && est.origens['atividades.0.pctAliqZero'].cst === true);
+  const conta = contaDoEstudo({ ...est, entrada: { ...est.entrada, objetivo: 'presumido_real' }, aliq2027: ALIQ, hoje: '2026-11-11' });
+  const mLucro = conta.roteiro.fases.flatMap(f => f.missoes).find(m => m.id === 'lucro');
+  chk('a conta: o lucro do Real é o da contabilidade, levado aos 12 meses (fator 1,2), e a conta diz o que a ponte tem hoje', conta.comparacao.anos[0].real.lucroInformado === true && perto(conta.dre.fator, 1.2, 1e-9) && conta.lucroPonte.lucro === 30000
+    && conta.lucroPonte.ate === '2026-07' && perto(conta.comparacao.decisao.real.doze, 36000), JSON.stringify([conta.dre, conta.lucroPonte]));
+  chk('a missão do lucro vem cumprida pela ponte, sem botão; a confirmação de quem cuida segue aberta', mLucro.estado === 'feita' && mLucro.como === 'veio do Domínio pela ponte' && mLucro.usarPonte === null
+    && conta.roteiro.fases.flatMap(f => f.missoes).find(m => m.id === 'contabil').estado === 'aberta' && conta.roteiro.provisorio === true, mLucro.texto);
+  chk('a missão do PIS/Cofins vem cumprida pela ponte (a alíquota zero medida nas notas)', (() => { const m = conta.roteiro.fases.flatMap(f => f.missoes).find(x => x.id === 'piscofins'); return m && m.estado === 'feita' && m.como === 'veio do Domínio pela ponte'; })());
+
+  // ---------- sem o Controle dizer até onde: nada entra sozinho, mas o resultado fica à mão ----------
+  const semCtb = (await abrir({ semControle: true })).est;
+  chk('fora do Controle das contabilidades: o lucro não entra sozinho (o sistema não sabe até que mês)', semCtb.entrada.lucroContabil == null && semCtb.origens.lucroContabil.fonte === 'padrao' && semCtb.resultadoPonte.length === 12
+    && contaDoEstudo({ ...semCtb, entrada: { ...semCtb.entrada, objetivo: 'presumido_real' }, aliq2027: ALIQ, hoje: '2026-11-11' }).lucroPonte === null);
+  // ---------- o mês feito no Controle e sem lançamento de resultado no Domínio: nunca lucro zero ----------
+  const semLanc = (await abrir({ linhas: { '2026-07': { lanc_resultado: 0, resultado_antes_ir: null } } })).est;
+  const cSL = contaDoEstudo({ ...semLanc, entrada: { ...semLanc.entrada, objetivo: 'presumido_real' }, aliq2027: ALIQ, hoje: '2026-11-11' });
+  chk('julho feito no Controle e sem lançamento em conta de resultado no Domínio: o lucro não entra, e a missão diz o mês', semLanc.entrada.lucroContabil == null && cSL.lucroPonte.falta === 'sem_lancamento' && cSL.lucroPonte.quais.join() === '2026-07'
+    && /O Domínio não tem lançamento em conta de resultado em jul\/26/.test(cSL.roteiro.fases.flatMap(f => f.missoes).find(m => m.id === 'lucro').texto));
+
+  // ---------- o estudo gravado ----------
+  const gravado = (entrada, origens = {}) => [{ id: 'e9', cliente_id: 'c9', entrada: { v: 1, entrada: { atividades: [{ tipo: 'industria', receita: 600000 }], regimeAtual: 'presumido', objetivo: 'presumido_real', compras: 360000, ...entrada }, origens }, atualizado_em: '2026-11-11T20:00:00Z', atualizado_por: 'financeiro@macedoereis.com.br' }];
+  const g1 = (await abrir({ comparativos: gravado({}, { 'atividades.0.pctAliqZero': { fonte: 'padrao', texto: 'padrão: nenhuma — confira' } }) })).est;
+  chk('o gravado sem o lucro ganha o da ponte, e a alíquota zero no padrão ganha a medida das notas (a tela grava de novo)', g1.estudoId === 'e9' && g1.entrada.lucroContabil === 30000 && g1.entrada.lucroAte === '2026-07' && g1.origens.lucroContabil.fonte === 'ponte'
+    && g1.entrada.atividades[0].pctAliqZero === 60 && g1.origens['atividades.0.pctAliqZero'].cst === true && g1.pelaPonte.join() === 'lucro,piscofins', JSON.stringify([g1.entrada.lucroContabil, g1.pelaPonte]));
+  const g2 = (await abrir({ comparativos: gravado({ atividades: [{ tipo: 'industria', receita: 600000, pctAliqZero: 100, aliqZeroCesta: true }] }, { lucroContabil: { fonte: 'confirmado', texto: 'conferido' }, 'atividades.0.pctAliqZero': { fonte: 'digitado' } }) })).est;
+  const c2 = contaDoEstudo({ ...g2, aliq2027: ALIQ, hoje: '2026-11-11' }), m2 = c2.roteiro.fases.flatMap(f => f.missoes).find(m => m.id === 'lucro');
+  chk('quem escolheu seguir com a estimativa fica com ela (a missão oferece o do Domínio), e a alíquota zero digitada fica', g2.entrada.lucroContabil == null && g2.origens.lucroContabil.fonte === 'confirmado' && g2.pelaPonte.length === 0
+    && g2.entrada.atividades[0].pctAliqZero === 100 && g2.entrada.atividades[0].aliqZeroCesta === true && m2.estado === 'feita' && m2.usarPonte.ate === '2026-07' && m2.usarPonteRotulo === 'Usar o do Domínio', JSON.stringify([g2.pelaPonte, m2.usarPonte]));
+  const g3 = (await abrir({ comparativos: gravado({ lucroContabil: 45000, lucroDe: '2025-10', lucroAte: '2026-07', lucroReceita: 500000 }, { lucroContabil: { fonte: 'digitado', texto: 'digitado' } }) })).est;
+  const m3 = contaDoEstudo({ ...g3, aliq2027: ALIQ, hoje: '2026-11-11' }).roteiro.fases.flatMap(f => f.missoes).find(m => m.id === 'lucro');
+  chk('o lucro digitado fica: a missão cumprida mostra o do Domínio e oferece usar', g3.entrada.lucroContabil === 45000 && g3.origens.lucroContabil.fonte === 'digitado' && !g3.pelaPonte.includes('lucro') && m3.estado === 'feita'
+    && m3.usarPonteRotulo === 'Usar o do Domínio' && /Pelo Domínio, o resultado de out\/25 a jul\/26 é lucro de R\$\s30\.000\./.test(m3.texto), m3.texto);
+  // o lucro que veio da ponte num dia e hoje o Domínio mostra outro no mesmo período: fica o do estudo, e a missão reabre
+  const g4 = (await abrir({ linhas: { '2026-03': { resultado_antes_ir: 8000 } }, comparativos: gravado({ lucroContabil: 30000, lucroDe: '2025-10', lucroAte: '2026-07', lucroReceita: 500000 },
+    { lucroContabil: { fonte: 'ponte', texto: 'Domínio, pela ponte: o resultado da contabilidade de out/25 a jul/26' } }) })).est;
+  const m4 = contaDoEstudo({ ...g4, aliq2027: ALIQ, hoje: '2026-11-11' }).roteiro.fases.flatMap(f => f.missoes).find(m => m.id === 'lucro');
+  chk('o lucro da ponte que ficou velho não troca sozinho: a missão reabre com "Atualizar pelo Domínio" e o número de hoje (R$ 35.000)', g4.entrada.lucroContabil === 30000 && !g4.pelaPonte.includes('lucro') && m4.estado === 'aberta'
+    && m4.usarPonteRotulo === 'Atualizar pelo Domínio' && /hoje ele mostra lucro de R\$\s35\.000\./.test(m4.texto), m4.texto);
+  // a empresa sem cadastro não tem a ponte
+  chk('o estudo de empresa sem cadastro: sem o resultado da ponte', (() => { const g = estudoGravado({ id: 'e1', nome: 'X', entrada: { v: 1, entrada: { atividades: [{ tipo: 'comercio', receita: 1 }] } } }); return g.resultadoPonte === null && g.pelaPonte.length === 0; })());
 }
 
 console.log('\n' + (falhas ? falhas + ' falha(s)' : 'tudo certo'));
