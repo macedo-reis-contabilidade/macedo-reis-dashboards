@@ -5,7 +5,7 @@
 // interna do plano nunca entra (a regra da casa: anotação interna não sai em PDF).
 // A fonte padrão do jsPDF não tem o travessão nem alguns símbolos: o texto passa pelo limpar().
 // =====================================================================
-import { EMENDA, DATA_42, DATA_40, ETAPAS, padraoDoGrupo, diagnostico, simular, fmtNum, fmtReais } from './jornada-6x1.js';
+import { EMENDA, DECISAO_STF, DATA_42, DATA_40, ETAPAS, padraoDoGrupo, diagnostico, simular, fmtNum, fmtReais } from './jornada-6x1.js';
 
 const dataBr = iso => iso ? String(iso).slice(0, 10).split('-').reverse().join('/') : '';
 export const limpar = t => String(t == null ? '' : t)
@@ -35,8 +35,15 @@ export function relatorioJornadaPdf(J, { empresa, grupos, opcoes = {}, etapa = '
   item('A partir de ' + dataBr(DATA_42) + ': no máximo 42 horas por semana e 2 dias de folga remunerada por semana, um de preferência no domingo. A escala 6x1 acaba.', 'EC 141, art. 6º, I; Constituição, art. 7º, XV');
   item('A partir de ' + dataBr(DATA_40) + ': no máximo 40 horas por semana. O limite de 8 horas por dia continua.', 'EC 141, art. 6º, II; Constituição, art. 7º, XIII');
   item('Sem reduzir o salário, nem de forma proporcional. Quem já trabalha 40 horas ou menos não tem redução, mas ganha as 2 folgas.', 'EC 141, arts. 2º e 4º');
-  item('Passar das 8 horas por dia (por exemplo, 8h24 de segunda a sexta pra fechar 42 horas) só com convenção ou acordo coletivo, até ' + dataBr(DATA_40) + '. A convenção também pode fazer a média de 2 folgas no mês, com pelo menos 1 por semana.', 'EC 141, art. 7º; Constituição, art. 7º, § 2º');
-  item('Em ' + dataBr(DATA_42) + ', as cláusulas da convenção sobre jornada e folga que forem contra a emenda deixam de valer.', 'EC 141, art. 3º');
+  if (DECISAO_STF.vale) {
+    item('Até ' + dataBr(DATA_40) + ', a convenção ou o acordo coletivo pode passar das 8 horas por dia pra distribuir as 42 horas. Sem convenção ou acordo até ' + dataBr('2026-12-15') + ', o STF admitiu as 42 horas em 5 dias de até 8h24, sem hora extra nos 24 minutos, até ' + dataBr(DECISAO_STF.ate) + '.', 'EC 141, art. 7º; STF, ' + DECISAO_STF.processo + ', ' + dataBr(DECISAO_STF.data) + ', item I');
+    item('As folgas: o STF tirou as travas semanal e mensal; a convenção ou o acordo define como os 2 dias de repouso por semana são tirados.', 'Constituição, art. 7º, § 2º; STF, ' + DECISAO_STF.processo + ', item IV');
+    item('Em ' + dataBr(DATA_42) + ', as cláusulas da convenção sobre jornada e folga que forem contra a emenda deixam de valer; as outras seguem até o fim da convenção, e há 90 dias, até ' + dataBr(DECISAO_STF.revisao) + ', pra rever as contrapartidas na negociação.', 'EC 141, art. 3º; STF, ' + DECISAO_STF.processo + ', item II');
+    item('A decisão do STF é do relator, em medida cautelar, e vale já pra todos, mas ainda vai a referendo do Plenário: pode ser revista.');
+  } else {
+    item('Passar das 8 horas por dia (por exemplo, 8h24 de segunda a sexta pra fechar 42 horas) só com convenção ou acordo coletivo, até ' + dataBr(DATA_40) + '. A convenção também pode fazer a média de 2 folgas no mês, com pelo menos 1 por semana.', 'EC 141, art. 7º; Constituição, art. 7º, § 2º');
+    item('Em ' + dataBr(DATA_42) + ', as cláusulas da convenção sobre jornada e folga que forem contra a emenda deixam de valer.', 'EC 141, art. 3º');
+  }
 
   titulo('Como a empresa está hoje');
   texto(dadosAte ? 'Pelo Domínio, em ' + dataBr(dadosAte) + '.' : 'Pelo que a empresa informou.', { tam: 9, cor: [90, 90, 90] });
@@ -89,6 +96,6 @@ export function relatorioJornadaPdf(J, { empresa, grupos, opcoes = {}, etapa = '
   item('Avisar os funcionários da escala nova.');
 
   y += 2;
-  texto('Pontos ainda em aberto: a escala 12x36 a partir de ' + dataBr(DATA_40) + ' (depende de lei ou de negociação coletiva) e a lei complementar de transição pras micro e pequenas empresas (EC 141, art. 5º), que ainda não existe. Este relatório é uma estimativa com os dados disponíveis; a decisão é da empresa.', { tam: 8.5, cor: [110, 110, 110] });
+  texto('Pontos ainda em aberto: a escala 12x36 a partir de ' + dataBr(DATA_40) + ' (depende de lei ou de negociação coletiva) e a lei complementar de transição pras micro e pequenas empresas (EC 141, art. 5º), que ainda não existe (o STF deu ao Congresso 180 dias, em 12/11/2026, pras duas). Este relatório é uma estimativa com os dados disponíveis; a decisão é da empresa.', { tam: 8.5, cor: [110, 110, 110] });
   return doc;
 }

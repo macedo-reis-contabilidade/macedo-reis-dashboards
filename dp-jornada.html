@@ -129,7 +129,7 @@
     import { hojeLocal } from './assets/js/utils.js';
     import { fmtData } from './assets/js/rescisao-datas.js';
     import {
-      EMENDA, DATA_42, DATA_40, ETAPAS, padraoDoGrupo, diagnostico, resumoDaEmpresa, simular, salarioMedio,
+      EMENDA, DECISAO_STF, DATA_42, DATA_40, ETAPAS, padraoDoGrupo, diagnostico, resumoDaEmpresa, simular, salarioMedio,
       encargosDoRegime, fmtNum, fmtReais, fmtHoras, SITUACOES, rotuloDaSituacao, ROTULOS
     } from './assets/js/jornada-6x1.js';
     import { relatorioJornadaPdf } from './assets/js/jornada-6x1-pdf.js';
@@ -323,7 +323,7 @@
         </div>
 
         <div class="j6-sec"><h3>O que muda</h3>
-          <div class="j6-linha"><label><input type="checkbox" id="sCct" ${estado.cct ? 'checked' : ''}> A convenção ou um acordo coletivo deixa passar das 8 h por dia (até 16/12/2027)</label></div>
+          <div class="j6-linha"><label><input type="checkbox" id="sCct" ${estado.cct ? 'checked' : ''}> A convenção ou um acordo coletivo deixa passar das 8 h por dia (até 16/12/2027; sem ele, o STF admitiu 8h24 em 5 dias até 15/12/2027)</label></div>
           <div class="j6-etapas">${grupos.length ? blocoEtapa('e42') + blocoEtapa('e40') : '<p class="j6-dim">Sem os grupos, não dá pra dizer o que muda.</p>'}</div>
         </div>
 
@@ -358,7 +358,7 @@
           <p class="j6-msg" id="pMsg" role="status"></p>
         </div>
 
-        <div class="j6-sec"><h3>A base legal</h3><p class="j6-base">Emenda Constitucional ${esc(EMENDA.numero)}, publicada em ${esc(fmtData(EMENDA.publicada))}: a CF, art. 7º, XIII (8 h por dia e 40 h por semana) e XV (2 folgas, uma de preferência no domingo); a transição do art. 6º (42 h em ${esc(fmtData(DATA_42))}, 40 h em ${esc(fmtData(DATA_40))}); sem redução de salário (art. 2º); a jornada já de 40 h ou menos não reduz (art. 4º); as cláusulas coletivas contrárias perdem a eficácia em ${esc(fmtData(DATA_42))} (art. 3º); a lei complementar pro MEI, a ME e a EPP (art. 5º) ainda não existe. <a href="${esc(EMENDA.fonte)}" target="_blank" rel="noopener noreferrer">O texto oficial</a>. O que é leitura, não texto, vem marcado assim nos itens.</p></div>`;
+        <div class="j6-sec"><h3>A base legal</h3><p class="j6-base">Emenda Constitucional ${esc(EMENDA.numero)}, publicada em ${esc(fmtData(EMENDA.publicada))}: a CF, art. 7º, XIII (8 h por dia e 40 h por semana) e XV (2 folgas, uma de preferência no domingo); a transição do art. 6º (42 h em ${esc(fmtData(DATA_42))}, 40 h em ${esc(fmtData(DATA_40))}); sem redução de salário (art. 2º); a jornada já de 40 h ou menos não reduz (art. 4º); as cláusulas coletivas contrárias perdem a eficácia em ${esc(fmtData(DATA_42))} (art. 3º); a lei complementar pro MEI, a ME e a EPP (art. 5º) ainda não existe. <a href="${esc(EMENDA.fonte)}" target="_blank" rel="noopener noreferrer">O texto oficial</a>. ${DECISAO_STF.vale ? `O STF (${esc(DECISAO_STF.processo)}, ministro ${esc(DECISAO_STF.relator)}, ${esc(fmtData(DECISAO_STF.data))}) negou adiar a emenda e, sem convenção ou acordo até 15/12/2026, admitiu as 42 h em 5 dias de até 8h24, sem hora extra nos 24 minutos, até ${esc(fmtData(DECISAO_STF.ate))}; tirou as travas semanal e mensal das folgas (a convenção define, mantidos os 2 repousos); deu 90 dias, desde 16/12/2026, pra rever as convenções; e 180 dias ao Congresso pra lei das ME e EPP e dos regimes diferenciados. É ${esc(DECISAO_STF.obs)}. <a href="${esc(DECISAO_STF.fonte)}" target="_blank" rel="noopener noreferrer">A decisão</a>.` : ''} O que é leitura, não texto, vem marcado assim nos itens.</p></div>`;
       ligarFicha();
     }
 

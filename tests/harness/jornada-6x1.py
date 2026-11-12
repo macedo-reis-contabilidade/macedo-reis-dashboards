@@ -97,7 +97,7 @@ def main():
         ids = p.eval_on_selector_all('#lista tr[data-id]', 'els => els.map(e => e.dataset.id)')
         ok(ids[0] == 'j1', f'a empresa em 6x1 primeiro ({ids})')
         linha = p.inner_text('#lista tr[data-id="j1"]')
-        ok('5 em 6x1' in linha and '3 em 5x2 com o sábado compensado' in linha and '8 mudam' in linha and '32 h/semana a menos' in linha and '5 dia(s)-pessoa a menos' in linha,
+        ok('5 em 6x1' in linha and '3 em 5x2 com o sábado compensado' in linha and '8 mudam' in linha and '16 h/semana a menos' in linha and '5 dia(s)-pessoa a menos' in linha,
            f'quantos mudam, as horas e os dias-pessoa ({linha!r})')
         ok('nada a mudar' in p.inner_text('#lista tr[data-id="j3"]'), 'a de 40 h em 5 dias: nada a mudar')
 
@@ -108,11 +108,11 @@ def main():
         ok(p.locator('.j6-passo.is-agora').count() == 1 and '2. O simulador' in p.inner_text('.j6-passo.is-agora'), 'o guia: o retrato feito, o simulador agora')
         ok(p.locator('.j6-tab tbody tr').count() == 2, 'os dois grupos do Domínio')
         muda = p.inner_text('.j6-etapas')
-        ok('16/12/2026: 42 h e 2 folgas' in muda and 'precisa cair pra 40 h' in muda and 'O dia mais longo tem 8h48' in muda, 'o que muda em 16/12/2026 (sem convenção, 40 h)')
+        ok('16/12/2026: 42 h e 2 folgas' in muda and 'precisa cair pra 42 h' in muda and 'O dia mais longo tem 8h48: passar das 8h24' in muda and 'ADI 8.041' in muda, 'o que muda em 16/12/2026 (sem convenção, as 8h24 do STF)')
         saidas = p.inner_text('.j6-saidas')
-        ok('1 pessoa' in saidas and 'R$' in saidas and '138,67 h/mês' in saidas and '32 h/semana' in saidas, f'o simulador ({saidas!r})')
+        ok('1 pessoa' in saidas and 'R$' in saidas and '69,33 h/mês' in saidas and '16 h/semana' in saidas, f'o simulador ({saidas!r})')
         p.check('#sCct'); p.wait_for_timeout(200)
-        ok('16 h/semana' in p.inner_text('.j6-saidas'), 'com a convenção das 8h24, 16 h a menos (2 por pessoa)')
+        ok('16 h/semana' in p.inner_text('.j6-saidas'), 'com a convenção, as mesmas 16 h a menos (2 por pessoa)')
         p.uncheck('#sCct'); p.wait_for_timeout(200)
         p.select_option('#sEtapa', 'e40'); p.wait_for_timeout(200)
         ok('32 h/semana' in p.inner_text('.j6-saidas') and p.input_value('#sEtapa') == 'e40', 'trocar a data refaz a conta')

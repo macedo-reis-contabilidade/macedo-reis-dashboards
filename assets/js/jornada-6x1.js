@@ -21,6 +21,18 @@
 // O que é leitura, não texto (dito assim na tela e no relatório): o divisor 210 nas 42 h (220 × 42 ÷ 44); a hora do
 // horista reajustada pra não perder no mês; as 8 h por dia sem convenção ou acordo coletivo; o reflexo da hora extra
 // habitual nas 2 folgas; a 12x36 (média de 42 h) depois de 16/12/2027.
+//
+// O STF (ADI 8.041 e 8.042, medida cautelar, ministro Flávio Dino, 12/11/2026; efeito pra todos e imediato, vai a
+// referendo do Plenário e pode ser revista — DECISAO_STF): negou adiar a emenda e, no dispositivo (item 54):
+// I - sem convenção ou acordo coletivo até 15/12/2026, até 15/12/2027 vale distribuir as 42 h em 5 dias, com até
+//     8h24 por dia, sem adicional de hora extra nos 24 minutos;
+// II - 90 dias, contados de 16/12/2026, pra rever na negociação as contrapartidas das convenções; as cláusulas
+//     incompatíveis deixam de valer em 16/12/2026, e as outras seguem até o fim do instrumento;
+// III - neutralidade salarial, também nos pisos;
+// IV - sem as travas semanal e mensal pra tirar as folgas: a convenção ou o acordo define, mantidos os 2 repousos
+//     por semana; nos primeiros 90 dias, com a negociação frustrada, uma portaria conjunta dos ministérios (até 90 dias);
+// V e VI - 180 dias pro Congresso fazer a lei dos regimes diferenciados (art. 7º, § 3º) e a das ME e EPP (art. 5º),
+//     sem tirar as 40 h nem os 2 repousos.
 // =====================================================================
 
 export const EMENDA = {
@@ -30,6 +42,17 @@ export const EMENDA = {
 };
 export const DATA_42 = '2026-12-16';   // EC 141, art. 6º, I, e art. 10, I: 2 meses depois da publicação
 export const DATA_40 = '2027-12-16';   // art. 6º, II: 1 ano depois
+export const DECISAO_STF = {
+  vale: true,                      // false se o Plenário não referendar: o limite sem convenção volta às 8 h por dia
+  processo: 'ADI 8.041 e 8.042 (medida cautelar)',
+  relator: 'Flávio Dino',
+  data: '2026-11-12',
+  ate: '2027-12-15',               // a jornada de 8h24 sem convenção, item I
+  diaMax: 8.4,                     // 8h24
+  revisao: '2027-03-16',           // 90 dias de 16/12/2026 (item II): a revisão das contrapartidas da convenção
+  fonte: 'https://conjur.com.br/wp-content/uploads/2026/11/ADI-8041-MC-assinado.pdf',
+  obs: 'decisão cautelar do relator, com efeito pra todos e imediato; vai a referendo do Plenário do STF e pode ser revista'
+};
 export const ETAPAS = {
   e42: { id: 'e42', desde: DATA_42, horas: 42, folgas: 2, divisor: 210, rotulo: '16/12/2026: 42 h e 2 folgas' },
   e40: { id: 'e40', desde: DATA_40, horas: 40, folgas: 2, divisor: 200, rotulo: '16/12/2027: 40 h' }
@@ -93,13 +116,19 @@ export function padraoDoGrupo(g) {
 }
 
 // ---------- o que muda em cada etapa ----------
-// O limite de horas que a empresa consegue usar em 5 dias: com convenção ou acordo coletivo que deixe passar das
-// 8 h por dia, as 42 h; sem, 8 h × 5 = 40 h já em 16/12/2026 (a leitura mais segura do art. 7º, XIII, e do art. 7º da EC).
+// O limite de horas que a empresa consegue usar em 5 dias: em 16/12/2026, as 42 h — com convenção ou acordo coletivo
+// (EC 141, art. 7º) ou, sem eles, pela decisão do STF de 12/11/2026 (8h24 por dia até 15/12/2027, DECISAO_STF). Se a
+// decisão cair, sem convenção volta a 8 h × 5 = 40 h já em 16/12/2026.
 export function limiteDaEtapa(etapa, { cct = false } = {}) {
   const e = ETAPAS[etapa];
   if (!e) throw new Error('etapa: e42 ou e40');
-  return etapa === 'e42' && !cct ? 40 : e.horas;
+  return etapa === 'e42' && !cct && !DECISAO_STF.vale ? 40 : e.horas;
 }
+// o dia mais longo sem compensação: 8 h; em 16/12/2026 sem convenção, as 8h24 da decisão do STF
+export function diaMaxDaEtapa(etapa, { cct = false } = {}) {
+  return etapa === 'e42' && !cct && DECISAO_STF.vale ? DECISAO_STF.diaMax : 8;
+}
+const textoStf = 'STF, ' + DECISAO_STF.processo + ', ' + DECISAO_STF.data.split('-').reverse().join('/') + ' (' + DECISAO_STF.obs + ')';
 
 // itens: { tipo: 'folgas' | 'horas' | 'diaria' | 'salario' | 'fora' | 'conferir', texto, base }
 export function diagnostico(g, etapa, { cct = false, art8 = null } = {}) {
@@ -116,7 +145,8 @@ export function diagnostico(g, etapa, { cct = false, art8 = null } = {}) {
   // as 2 folgas valem pra todo mundo a partir de 16/12/2026
   if (p.folgas != null && p.folgas < 2) {
     itens.push({ tipo: 'folgas', texto: 'Hoje folga ' + fmtNum(p.folgas) + ' dia por semana; a partir de 16/12/2026 são 2 (um, de preferência, no domingo).',
-      base: 'CF, art. 7º, XV (EC 141, art. 10, I). Com convenção ou acordo coletivo, a média de 2 no mês, com pelo menos 1 por semana (art. 7º, § 2º).' });
+      base: 'CF, art. 7º, XV (EC 141, art. 10, I). Com convenção ou acordo coletivo, a média de 2 no mês, com pelo menos 1 por semana (art. 7º, § 2º)'
+        + (DECISAO_STF.vale ? '; o STF tirou as travas semanal e mensal: a convenção ou o acordo define como as folgas são tiradas, mantidos os 2 repousos por semana (' + textoStf + ', item IV).' : '.') });
   } else if (p.folgas == null) {
     itens.push({ tipo: 'conferir', texto: 'Sem a semana no Domínio: confirmar com a empresa quantos dias trabalha (a partir de 16/12/2026, 2 folgas por semana).',
       base: 'CF, art. 7º, XV' });
@@ -129,14 +159,20 @@ export function diagnostico(g, etapa, { cct = false, art8 = null } = {}) {
     const corte = arred(p.horas - limite, 2);
     itens.push({ tipo: 'horas', texto: 'Contrato de ' + fmtNum(p.horas) + ' h por semana: precisa cair pra ' + limite + ' h (' + fmtNum(corte) + ' h a menos por semana por pessoa), sem reduzir o salário.',
       base: (etapa === 'e42' ? 'EC 141, art. 6º, I' : 'EC 141, art. 6º, II') + ', e art. 2º (sem redução de salário)'
-        + (etapa === 'e42' && !cct ? '. As 42 h em 5 dias pedem 8h24 por dia, e passar das 8 h só com convenção ou acordo coletivo (art. 7º da EC): sem ele, 40 h.' : '') });
+        + (etapa === 'e42' && !cct
+          ? (DECISAO_STF.vale
+            ? '. Sem convenção ou acordo até 15/12/2026, as 42 h podem ir em 5 dias de até 8h24, sem hora extra nos 24 minutos, até 15/12/2027 (' + textoStf + ', item I).'
+            : '. As 42 h em 5 dias pedem 8h24 por dia, e passar das 8 h só com convenção ou acordo coletivo (art. 7º da EC): sem ele, 40 h.')
+          : '') });
   } else if (p.horas != null && p.horas <= 40 && etapa === 'e42') {
     itens.push({ tipo: 'horas', texto: 'Já em ' + fmtNum(p.horas) + ' h por semana: não reduz (as 2 folgas valem).', base: 'EC 141, art. 4º', ok: true });
   }
   // o dia mais longo
-  if (p.maiorDia != null && p.maiorDia > 8 && !escalaLonga && !foraDoControle) {
-    itens.push({ tipo: 'diaria', texto: 'O dia mais longo tem ' + fmtHoras(p.maiorDia) + ': passar das 8 h só com compensação por acordo ou convenção coletiva.',
-      base: 'CF, art. 7º, XIII; EC 141, art. 7º (até 16/12/2027, pra distribuir as 42 h)' });
+  const diaMax = diaMaxDaEtapa(etapa, { cct });
+  if (p.maiorDia != null && p.maiorDia > diaMax + 1e-9 && !escalaLonga && !foraDoControle) {
+    itens.push({ tipo: 'diaria', texto: 'O dia mais longo tem ' + fmtHoras(p.maiorDia) + ': passar das ' + fmtHoras(diaMax) + ' só com compensação por acordo ou convenção coletiva.',
+      base: 'CF, art. 7º, XIII; EC 141, art. 7º (até 16/12/2027, pra distribuir as 42 h)'
+        + (diaMax > 8 ? '; as 8h24 sem convenção, até 15/12/2027: ' + textoStf + ', item I' : '') });
   }
   // o salário-hora
   if (num(g.unidade) === 1 || num(g.forma) === 2) {
@@ -151,7 +187,7 @@ export function diagnostico(g, etapa, { cct = false, art8 = null } = {}) {
   if (p.escala === '12x36' || p.escala === '24x72') {
     itens.push({ tipo: 'conferir', texto: etapa === 'e42'
       ? 'A ' + p.escala + ' dá a média de 42 h por semana: cabe no limite de 16/12/2026.'
-      : 'A ' + p.escala + ' dá a média de 42 h: acima das 40 h de 16/12/2027. Depende de lei (art. 7º, § 3º) ou da negociação coletiva; a PEC das jornadas especiais ainda não foi apresentada.',
+      : 'A ' + p.escala + ' dá a média de 42 h: acima das 40 h de 16/12/2027. Depende de lei (art. 7º, § 3º; o STF deu ao Congresso 180 dias pra fazê-la, em 12/11/2026) ou da negociação coletiva; a PEC das jornadas especiais ainda não foi apresentada.',
       base: 'CLT, art. 59-A; CF, art. 7º, § 3º' });
   }
   if (categoria === 111 || num(g.forma) === 3) {
