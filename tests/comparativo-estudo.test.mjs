@@ -6,13 +6,17 @@
 // do sócio pessoa jurídica não sai), a contabilidade feita até que mês, a precisão do estudo e o lucro da contabilidade.
 // E a versão 5 da ponte do Domínio: o lucro da contabilidade que entra sozinho até o mês do Controle (no estudo novo e no
 // gravado sem lucro) e a venda com alíquota zero de PIS/Cofins medida no CST das notas.
+// Desde 12/11/2026: a alíquota zero pela apuração do PIS/Cofins do Domínio, quando o CST das notas não cobre a venda, e
+// quanto o lucro teria de andar pra decisão virar entre o Presumido e o Real (viradaDoLucro).
 // Rodar com: node tests/comparativo-estudo.test.mjs
 import { comparar } from '../assets/js/comparativo-motor.js';
 import { PADROES, comPadroes, ORIGENS_PADRAO, CAMPOS, erroSemTabela, entradaDoMotor, carregarEstudo, estudoGravado, contaDoEstudo, situacaoComGrupo,
   oQueMuda, avisosDoEstudo, alertaDoLimite, resumoParaGravar, aplicarESe, E_SE, objetivoDoEstudo, opcoesDeObjetivo, alertaDasVedacoes, contabilDoEstudo,
-  perguntaDaConfirmacao, pedirConfirmacao, ERRO_AO_PERGUNTAR } from '../assets/js/comparativo-estudo.js';
+  perguntaDaConfirmacao, pedirConfirmacao, ERRO_AO_PERGUNTAR, viradaDoLucro, ESTOQUE_PLAUSIVEL } from '../assets/js/comparativo-estudo.js';
 
 let falhas = 0;
+const brl = v => (Number(v) || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+const pct = (v, d = 1) => (Number(v) || 0).toLocaleString('pt-BR', { maximumFractionDigits: d });
 const chk = (nome, cond, extra) => { if (!cond) falhas++; console.log((cond ? '  ✓ ' : '  ✗ ') + nome + (!cond && extra !== undefined ? ' → ' + extra : '')); };
 const perto = (a, b, tol = 0.011) => Math.abs(Number(a) - Number(b)) <= tol;
 const ALIQ = { cbs: 11.3, cbs_aplicada: 11.2, ibs: 0.1 };
@@ -550,6 +554,63 @@ console.log('O resultado da contabilidade e o CST do PIS/Cofins pela ponte do Do
     && m4.usarPonteRotulo === 'Atualizar pelo Domínio' && /hoje ele mostra lucro de R\$\s35\.000\./.test(m4.texto), m4.texto);
   // a empresa sem cadastro não tem a ponte
   chk('o estudo de empresa sem cadastro: sem o resultado da ponte', (() => { const g = estudoGravado({ id: 'e1', nome: 'X', entrada: { v: 1, entrada: { atividades: [{ tipo: 'comercio', receita: 1 }] } } }); return g.resultadoPonte === null && g.pelaPonte.length === 0; })());
+}
+
+console.log('O PIS/Cofins pela apuração do Domínio e quanto falta pro resultado virar (12/11/2026)');
+{
+  // a indústria do Presumido de R$ 50.000 por mês, com R$ 5.000 de ICMS destacado: as notas só têm o CST em 60% da venda, e
+  // a apuração do Domínio não tem nada na base cheia e recolhe 0,365% da receita sem o ICMS desde abril de 2026 (R$ 164,25)
+  const IND = { id: 'c8', nome_principal: 'INDUSTRIA DA APURACAO LTDA', nome_fantasia: null, documento: '88888888000188', tipo_pessoa: 'PJ', regime_tributario: 'Lucro Presumido', cidade: 'Igrejinha', uf: 'RS',
+    cnae_principal: '1041-4/00 - Fabricação de óleos vegetais em bruto, exceto óleo de milho', cnaes_secundarios: [], natureza_juridica: '206-2 - Sociedade Empresária Limitada' };
+  const mes = i => new Date(Date.UTC(2025, i, 1)).toISOString().slice(0, 7);
+  const linha = i => ({ codigo: 800, cliente_id: 'c8', competencia: mes(9 + i), receita_bruta: 50000, receita_mercadorias: 50000, receita_servicos: 0, receita_simples: null, compras: 30000, servicos_tomados: 0, ativo_e_consumo: 0,
+    salarios: 0, decimo_terceiro: 0, pro_labore_valor: 1621, pc_tributada: 20000, pc_monofasica: 0, pc_st: 0, pc_aliquota_zero: 10000, pc_isenta: 0, pc_sem_incidencia: 0, pc_suspensa: 0, pc_outras: 20000, pc_sem_cst: 0,
+    icms_saidas: 5000, icms_st_saidas: 0, ipi_saidas: 0, base_pis_cofins: 0, pis_apurado: 0, cofins_apurada: 0, creditos_pis_cofins: 0, pis_cofins_a_recolher: mes(9 + i) >= '2026-04' ? 164.25 : 0 });
+  const extras = { dominio_mensal: Array.from({ length: 12 }, (_, i) => linha(i)), contabil_empresas: [], contabil_meses: [], dominio_andamento: [], receita_empresas: [] };
+  const abrir = async (comparativos = []) => { const b = banco({ socios: [], extras, comparativos }); return { est: await carregarEstudo({ ler: b.ler, cliente: IND, hoje: '2026-11-12' }), log: b.log }; };
+  const { est, log } = await abrir();
+  chk('a leitura pede a apuração do PIS/Cofins e o que sai da base (o ICMS, o ST e o IPI das saídas)', log.some(x => x.t === 'dominio_mensal' && ['pis_cofins_a_recolher', 'base_pis_cofins', 'pis_apurado', 'cofins_apurada', 'creditos_pis_cofins', 'icms_saidas', 'icms_st_saidas', 'ipi_saidas'].every(c => new RegExp('\\b' + c + '\\b').test(x.o.cols))));
+  chk('o estudo novo: toda a venda com alíquota zero, pela apuração do Domínio (a origem da ponte, com a marca da apuração)', est.entrada.atividades[0].pctAliqZero === 100 && est.entrada.atividades[0].aliqZeroCesta === false
+    && est.origens['atividades.0.pctAliqZero'].fonte === 'ponte' && est.origens['atividades.0.pctAliqZero'].apuracao === true && /pela apuração do PIS\/Cofins de out\/25 a set\/26/.test(est.origens['atividades.0.pctAliqZero'].texto), JSON.stringify(est.origens['atividades.0.pctAliqZero']));
+  const conta = contaDoEstudo({ ...est, entrada: { ...est.entrada, objetivo: 'presumido_real' }, aliq2027: ALIQ, hoje: '2026-11-12' });
+  const mPc = conta.roteiro.fases.flatMap(f => f.missoes).find(m => m.id === 'piscofins');
+  chk('a missão do PIS/Cofins vem cumprida pela ponte, com o que a venda paga desde abril', mPc.estado === 'feita' && mPc.como === 'veio do Domínio pela ponte' && /das vendas com alíquota zero: em 2026, R\$\s1\.363 no Presumido\. Desde abril de 2026 a alíquota zero de fora da Cesta Básica Nacional/.test(mPc.texto), mPc.texto);
+  // o estudo gravado com a alíquota zero no padrão recebe a da apuração; o que a equipe digitou ou conferiu fica
+  const gravado = (ativ, origens) => [{ id: 'e8', cliente_id: 'c8', entrada: { v: 1, entrada: { atividades: [{ tipo: 'industria', receita: 600000, ...ativ }], regimeAtual: 'presumido', objetivo: 'presumido_real', compras: 360000 }, origens },
+    atualizado_em: '2026-11-12T10:00:00Z', atualizado_por: 'financeiro@macedoereis.com.br' }];
+  const g1 = (await abrir(gravado({}, { 'atividades.0.pctAliqZero': { fonte: 'padrao', texto: 'padrão: nenhuma — confira' } }))).est;
+  chk('o gravado com a alíquota zero no padrão ganha a da apuração (a tela grava de novo)', g1.estudoId === 'e8' && g1.entrada.atividades[0].pctAliqZero === 100 && g1.origens['atividades.0.pctAliqZero'].apuracao === true && g1.pelaPonte.join() === 'piscofins', JSON.stringify([g1.entrada.atividades[0], g1.pelaPonte]));
+  const g2 = (await abrir(gravado({ pctAliqZero: 40 }, { 'atividades.0.pctAliqZero': { fonte: 'digitado', texto: 'digitado' } }))).est;
+  const g3 = (await abrir(gravado({ pctAliqZero: 0 }, { 'atividades.0.pctAliqZero': { fonte: 'confirmado', texto: 'conferido' } }))).est;
+  chk('a alíquota zero digitada ou conferida pela equipe fica como está', g2.entrada.atividades[0].pctAliqZero === 40 && g2.origens['atividades.0.pctAliqZero'].fonte === 'digitado' && g3.entrada.atividades[0].pctAliqZero === 0
+    && g3.origens['atividades.0.pctAliqZero'].fonte === 'confirmado' && !g2.pelaPonte.length && !g3.pelaPonte.length);
+
+  // ---------- quanto o lucro teria de andar pra decisão virar (viradaDoLucro) ----------
+  // o comércio do Presumido de R$ 1 milhão com R$ 500 mil de compras: o Real empata com o Presumido com lucro de R$ 95.000
+  // (os R$ 22.800 de IRPJ e CSLL do Presumido ÷ 24%)
+  const C = lucro => comparar({ ...comPadroes({ atividades: [{ tipo: 'comercio', receita: 1000000 }], compras: 500000, regimeAtual: 'presumido' }), regimes: ['presumido', 'real'], lucroContabil: lucro, ajustesLalur: 0 });
+  const virada = c => viradaDoLucro(c), l27 = c => c.decisao.real.lucro;
+  const cPerto = C(40000), vPerto = virada(cPerto);
+  chk('o Real ganha por pouco: quanto do custo teria de ser estoque, em % das compras — e o alerta, porque é estoque que se forma num ano', cPerto.decisao.melhor === 'real' && vPerto.alerta === true && vPerto.rotulo === 'pode virar pelo estoque'
+    && vPerto.txt === 'Pra o Presumido ficar mais barato que o Real em 2027, o lucro do Real teria de subir ' + brl(95000 - l27(cPerto)) + ': é o quanto do custo e da despesa que a contabilidade lançou teria de ser estoque que ficou no fim do período, investimento (que vai pro ativo) ou lançamento de outro ano. São '
+      + Math.round((95000 - l27(cPerto)) / 500000 * 100) + '% das compras dos 12 meses (' + brl(500000) + '): se o estoque cresceu isso no período e as compras foram direto pro custo, o resultado vira — confirme como o custo das vendas é lançado.'
+    && (95000 - l27(cPerto)) / 500000 <= ESTOQUE_PLAUSIVEL, vPerto.txt);
+  const cLonge = C(-150000), vLonge = virada(cLonge);
+  chk('o Real ganha com folga (mais de um quarto das compras): a linha diz a parte das compras, sem alerta', vLonge.alerta === false && (95000 - l27(cLonge)) / 500000 > ESTOQUE_PLAUSIVEL
+    && new RegExp(' São ' + Math.round((95000 - l27(cLonge)) / 500000 * 100) + '% das compras dos 12 meses \\(R\\$\\s500\\.000,00\\)\\.$').test(vLonge.txt), vLonge.txt);
+  const cMuito = C(-900000), vMuito = virada(cMuito);
+  chk('o prejuízo que passa de todas as compras: só com estoque o resultado não vira', vMuito.alerta === false && / Passa de todas as compras dos 12 meses \(R\$\s500\.000,00\): só com estoque o resultado não vira\.$/.test(vMuito.txt), vMuito.txt);
+  const cPres = C(400000), vPres = virada(cPres);
+  chk('o Presumido ganha: quanto de custo ou despesa faltaria lançar pra o Real passar', cPres.decisao.melhor === 'presumido' && vPres.alerta === false
+    && vPres.txt === 'Pra o Real ficar mais barato que o Presumido em 2027, o lucro teria de cair ' + brl(l27(cPres) - 95000) + ' (' + pct((l27(cPres) - 95000) / 1000000 * 100) + '% da receita): custo ou despesa do período que ainda falte lançar na contabilidade (o custo das vendas, a depreciação, a folha, os juros).', vPres.txt);
+  const cEst = C(null), vEst = virada(cEst);
+  chk('com o lucro estimado: a linha fala das compras que a estimativa conta inteiras como custo (e não de lançamento de outro ano)', cEst.decisao.real.informado === false && /o lucro teria de cair .+: custo ou despesa do período que ainda falte na conta /.test(vEst.txt)
+    && /das compras e das despesas com nota, que a estimativa conta inteiras como custo, teria de ser estoque que ficou no fim do período ou investimento \(que vai pro ativo\)\./.test(
+      virada(comparar({ ...comPadroes({ atividades: [{ tipo: 'comercio', receita: 1000000 }], compras: 900000, regimeAtual: 'presumido' }), regimes: ['presumido', 'real'], lucroContabil: null, ajustesLalur: 0 })).txt), vEst.txt);
+  chk('a empresa sem compras (serviço): a linha sai sem a comparação com as compras', (() => { const v = virada(comparar({ ...comPadroes({ atividades: [{ tipo: 'servico', receita: 1000000 }], regimeAtual: 'presumido' }), regimes: ['presumido', 'real'], lucroContabil: -50000, ajustesLalur: 0 }));
+    return v && v.alerta === false && / ou lançamento de outro ano\.$/.test(v.txt); })());
+  chk('com o Simples entre os dois primeiros, ou sem a decisão: sem a linha', virada(null) === null && virada(comparar({ ...comPadroes({ atividades: [{ tipo: 'comercio', receita: 1000000 }], compras: 500000, regimeAtual: 'simples' }), lucroContabil: 40000, ajustesLalur: 0 })) === null);
+  chk('a linha entra no "O que muda o resultado", depois do empate', (() => { const m = oQueMuda(cPerto, []); const i = m.findIndex(x => /^O Real empata com o Presumido/.test(x.txt)); return i >= 0 && m[i + 1] === undefined ? false : /^Pra o Presumido ficar mais barato que o Real em 2027/.test(m[i + 1].txt) && m[i + 1].alerta === true; })());
 }
 
 console.log('\n' + (falhas ? falhas + ' falha(s)' : 'tudo certo'));

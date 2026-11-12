@@ -7,7 +7,8 @@ import { entradaDoSistema, aplicarRelatorios, premissasParaTestar, prazosDaEscol
   ehRefeicaoRS, ehRdaRS, empresasDosSocios, receitaDaEmpresa, situacaoDoGrupo, serieDaEmpresa, foraDaSoma, avisoDaSoma, mesclarSerie,
   pareceFolha, cnpjsDoCabecalho, juntarFolha, folhaDoAno, aplicarFolha, mesesDaPonte, seriePonte, somaDaPonte, objetivoSugerido, porQueDoObjetivo, objetivoValido, doRegimeGeral, simplesNoEstudo,
   presuncaoPeloCnae, periodoCurto, mesesDeAte, janelaDaReceita, periodoDaDre, dreSugerida,
-  CAMPOS_PONTE, CAMPOS_PISCOFINS, CAMPOS_RESULTADO, pisCofinsDaPonte, cstVale, resultadoDaPonte, listaDoResultado, lucroDaPonte, aplicarLucroDaPonte, origemDoLucroDaPonte } from '../assets/js/comparativo-dados.js';
+  CAMPOS_PONTE, CAMPOS_PISCOFINS, CAMPOS_RESULTADO, pisCofinsDaPonte, cstVale, resultadoDaPonte, listaDoResultado, lucroDaPonte, aplicarLucroDaPonte, origemDoLucroDaPonte,
+  CAMPOS_APURACAO, apuracaoPisCofins, MES_LC224 } from '../assets/js/comparativo-dados.js';
 import { comparar, testarPremissas } from '../assets/js/comparativo-motor.js';
 
 let falhas = 0, total = 0;
@@ -630,6 +631,73 @@ console.log('=== o PIS/Cofins das vendas pelo CST das notas (a versão 5 da pont
   // a ponte antiga (sem os campos do CST): tudo como antes
   const antiga = entradaDoSistema({ cliente: ind, dominio: doze().map(({ competencia, receita_bruta, receita_mercadorias, receita_servicos }) => ({ codigo: 1, competencia, receita_bruta, receita_mercadorias, receita_servicos })) });
   ok('sem a versão 5 da ponte: o padrão a conferir de antes', antiga.origens['atividades.0.pctAliqZero'].fonte === 'padrao' && antiga.origens['atividades.0.pctAliqZero'].texto === 'padrão: nenhuma — confira' && antiga.entrada.atividades[0].pctAliqZero === undefined);
+}
+
+console.log('=== o PIS/Cofins pela apuração do Domínio, quando o CST das notas não cobre a venda (12/11/2026) ===');
+{
+  // 12 meses de uma indústria do Presumido, de out/25 a set/26: R$ 50.000 por mês, com R$ 5.000 de ICMS destacado (a
+  // receita sem o ICMS: R$ 45.000). As notas só têm o CST em 60% da venda (a medida das notas não vale)
+  const mes = (i, extra = {}) => { const d = new Date(Date.UTC(2025, 9 + i, 1)); return { codigo: 1, competencia: d.toISOString().slice(0, 7), receita_bruta: 50000, receita_mercadorias: 50000, receita_servicos: 0,
+    icms_saidas: 5000, icms_st_saidas: 0, ipi_saidas: 0, pc_tributada: 20000, pc_monofasica: 0, pc_st: 0, pc_aliquota_zero: 10000, pc_isenta: 0, pc_sem_incidencia: 0, pc_suspensa: 0, pc_outras: 20000, pc_sem_cst: 0,
+    base_pis_cofins: 0, pis_apurado: 0, cofins_apurada: 0, creditos_pis_cofins: 0, pis_cofins_a_recolher: 0, ...extra }; };
+  const doze = f => Array.from({ length: 12 }, (_, i) => mes(i, f ? f(i, mes(i).competencia) : {}));
+  // a alíquota zero que recolhe 10% desde abril de 2026: nada na base cheia; de abril em diante, 0,365% de R$ 45.000 = R$ 164,25
+  const lc = doze((i, c) => (c >= '2026-04' ? { pis_cofins_a_recolher: 164.25 } : {}));
+  const ap = apuracaoPisCofins(lc);
+  ok('as colunas da apuração estão entre as que o estudo lê da ponte', CAMPOS_APURACAO.every(c => CAMPOS_PONTE.includes(c)) && CAMPOS_APURACAO.includes('pis_cofins_a_recolher') && CAMPOS_APURACAO.includes('icms_saidas') && MES_LC224 === '2026-04');
+  ok('a alíquota zero da LC 224: 12 meses, nada na base cheia, nada antes de abril e 0,365% da receita sem o ICMS depois', ap.n === 12 && ap.de === '2025-10' && ap.ate === '2026-09' && ap.receita === 600000 && ap.liquida === 540000
+    && ap.cheia === 0 && ap.nPos === 6 && perto(ap.taxaPos, 0.00365, 1e-9) && ap.taxaPre === 0 && perto(ap.cobertura, 1, 1e-9) && ap.conclui === 'zero_lc224', ap);
+  // toda a venda na base cheia: a base é a receita sem o ICMS, o débito é 3,65% dela e o saldo a recolher é o débito
+  const cheia = doze(() => ({ base_pis_cofins: 45000, pis_apurado: 292.5, cofins_apurada: 1350, pis_cofins_a_recolher: 1642.5 }));
+  ok('toda a venda na base cheia: conclui que paga', apuracaoPisCofins(cheia).conclui === 'paga' && perto(apuracaoPisCofins(cheia).cheia, 1, 1e-9) && apuracaoPisCofins(cheia).taxaPos === 0);
+  ok('o saldo a recolher zerado (a guia já paga) não muda: a base cheia é que diz', apuracaoPisCofins(doze(() => ({ base_pis_cofins: 45000, pis_apurado: 292.5, cofins_apurada: 1350, pis_cofins_a_recolher: 0 }))).conclui === 'paga');
+  ok('o ICMS-ST e o IPI destacados também saem da receita', (() => { const x = apuracaoPisCofins(doze(() => ({ icms_st_saidas: 3000, ipi_saidas: 2000, base_pis_cofins: 40000, pis_apurado: 260, cofins_apurada: 1200, pis_cofins_a_recolher: 1460 })));
+    return x.liquida === 480000 && perto(x.cheia, 1, 1e-9) && x.conclui === 'paga'; })());
+  // o que não conclui
+  const nao = f => apuracaoPisCofins(doze(f));
+  ok('parte da venda fora da base (90%): não conclui', nao(() => ({ base_pis_cofins: 40500, pis_apurado: 263.25, cofins_apurada: 1215, pis_cofins_a_recolher: 1478.25 })).conclui === null && perto(nao(() => ({ base_pis_cofins: 40500 })).cheia, 0.9, 1e-9));
+  ok('a base maior que a receita (o regime de caixa, meses juntos): não conclui', nao(() => ({ base_pis_cofins: 70000, pis_apurado: 455, cofins_apurada: 2100, pis_cofins_a_recolher: 2555 })).conclui === null);
+  ok('com crédito (o não cumulativo): não conclui', nao(() => ({ base_pis_cofins: 45000, pis_apurado: 742.5, cofins_apurada: 3420, creditos_pis_cofins: 900, pis_cofins_a_recolher: 3262.5 })).conclui === null);
+  ok('nada recolhido nunca e nada na base: não conclui (Cesta Básica, monofásica, exportação, ou a apuração que não é feita no Domínio)', nao(() => ({})).conclui === null && nao(() => ({})).cheia === 0);
+  ok('recolhimento além da base antes de abril de 2026: não é a LC 224, não conclui', nao(() => ({ pis_cofins_a_recolher: 164.25 })).conclui === null);
+  ok('o recolhido depois de abril longe dos 0,365% (0,2% e 0,5%): não conclui', nao((i, c) => (c >= '2026-04' ? { pis_cofins_a_recolher: 90 } : {})).conclui === null && nao((i, c) => (c >= '2026-04' ? { pis_cofins_a_recolher: 225 } : {})).conclui === null);
+  ok('perto dos 0,365% (0,34% e 0,40%): conclui', nao((i, c) => (c >= '2026-04' ? { pis_cofins_a_recolher: 153 } : {})).conclui === 'zero_lc224' && nao((i, c) => (c >= '2026-04' ? { pis_cofins_a_recolher: 180 } : {})).conclui === 'zero_lc224');
+  ok('só 2 meses depois de abril de 2026: não conclui a alíquota zero', apuracaoPisCofins(lc.slice(0, 8)).conclui === null && apuracaoPisCofins(lc.slice(0, 8)).nPos === 2);
+  ok('a apuração em menos de metade da receita, ou em menos de 3 meses: não conclui', apuracaoPisCofins(cheia.map((m, i) => (i < 8 ? { ...m, pis_cofins_a_recolher: null } : m))).conclui === null
+    && apuracaoPisCofins(cheia.map((m, i) => (i < 10 ? { ...m, pis_cofins_a_recolher: null } : m))).n === 2 && apuracaoPisCofins(cheia.map((m, i) => (i < 5 ? { ...m, pis_cofins_a_recolher: null } : m))).conclui === 'paga');
+  ok('sem a apuração (a ponte antiga, quem não apura) ou sem receita: nada', apuracaoPisCofins(doze(() => ({ pis_cofins_a_recolher: null }))) === null && apuracaoPisCofins([]) === null && apuracaoPisCofins(null) === null
+    && apuracaoPisCofins(doze(() => ({ receita_bruta: 0 }))) === null);
+
+  // no estudo: a indústria do Presumido com o CST em 60% da venda
+  const ind = { regime_tributario: 'Lucro Presumido', cnae_principal: '1041-4/00', uf: 'RS' };
+  const g = entradaDoSistema({ cliente: ind, dominio: lc });
+  const a0 = g.entrada.atividades[0], oz = g.origens['atividades.0.pctAliqZero'];
+  ok('a alíquota zero pela apuração: 100% das vendas, fora da Cesta Básica, com a origem da ponte e a marca da apuração', a0.pctAliqZero === 100 && a0.aliqZeroCesta === false && oz.fonte === 'ponte' && oz.apuracao === true && !oz.cst
+    && oz.texto === 'Domínio, pela ponte: pela apuração do PIS/Cofins de out/25 a set/26, a venda é de alíquota zero (ou isenta) e recolhe 10% da alíquota desde abril de 2026 (0,37% da receita sem o ICMS)'
+    && /LC 224\/2025/.test(oz.dica) && /Cesta Básica Nacional/.test(oz.dica), [a0, oz]);
+  ok('medida pela apuração, a alíquota zero sai do teste das premissas', !premissasParaTestar(g.entrada, g.origens, ['presumido', 'real']).some(t => /pctAliqZero$/.test(t.campo)));
+  const gp = entradaDoSistema({ cliente: ind, dominio: cheia });
+  ok('toda a venda na base cheia: zero medido pela apuração', gp.entrada.atividades[0].pctAliqZero === 0 && gp.origens['atividades.0.pctAliqZero'].apuracao === true
+    && gp.origens['atividades.0.pctAliqZero'].texto === 'Domínio, pela ponte: pela apuração do PIS/Cofins de out/25 a set/26, toda a venda entrou na base do PIS/Cofins (nenhuma com alíquota zero)');
+  const gn = entradaDoSistema({ cliente: ind, dominio: doze(() => ({ base_pis_cofins: 40500, pis_apurado: 263.25, cofins_apurada: 1215, pis_cofins_a_recolher: 1478.25 })) });
+  ok('sem conclusão: segue no padrão a conferir, com o que as notas e a apuração mostram', gn.entrada.atividades[0].pctAliqZero === undefined && gn.origens['atividades.0.pctAliqZero'].fonte === 'padrao'
+    && gn.origens['atividades.0.pctAliqZero'].texto === 'padrão: nenhuma — confira (só 60% das vendas têm o CST do PIS/Cofins nas notas do Domínio; pela apuração do PIS/Cofins de out/25 a set/26, 90% da receita sem o ICMS entrou na base cheia)',
+    gn.origens['atividades.0.pctAliqZero']);
+  // a conta de 2026 do Presumido: só os 10% da alíquota, de abril a dezembro. A conta tira o ICMS pelo padrão dela (17% das
+  // vendas, não o destacado): 0,365% de R$ 498.000 (600.000 − 17%) × 9/12 = R$ 1.363,28 — no padrão, seriam 3,65% de
+  // R$ 498.000 = R$ 18.177,00
+  const cg = comparar({ ...g.entrada, regimes: ['presumido', 'real'] });
+  const pisCofins = r => r.itens.filter(i => i.tributo === 'PIS' || i.tributo === 'Cofins').reduce((t, i) => t + i.valor, 0);
+  ok('a conta do Presumido de 2026: PIS/Cofins de R$ 1.363,28 (0,365% da receita sem o ICMS, de abril a dezembro), não os R$ 18.177,00 de 3,65% em tudo', cg.anos[0].ano === 2026 && perto(pisCofins(cg.anos[0].presumido), 1363.275, 0.01)
+    && perto(pisCofins(comparar({ ...gn.entrada, regimes: ['presumido', 'real'] }).anos[0].presumido), 18177, 0.01), pisCofins(cg.anos[0].presumido));
+  ok('a base acima da receita: a origem diz o porquê provável', /156% da receita sem o ICMS entrou na base cheia \(a base passa da receita: regime de caixa ou meses apurados juntos\)\)$/.test(
+    entradaDoSistema({ cliente: ind, dominio: doze(() => ({ base_pis_cofins: 70200, pis_apurado: 456.3, cofins_apurada: 2106, pis_cofins_a_recolher: 2562.3 })) }).origens['atividades.0.pctAliqZero'].texto));
+  // o Real (não cumulativo: o saldo tem crédito) não usa a apuração; e o CST completo segue valendo na frente
+  const gr = entradaDoSistema({ cliente: { ...ind, regime_tributario: 'Lucro Real' }, dominio: lc });
+  ok('no Real, a apuração não decide: o padrão a conferir, só com o CST', gr.origens['atividades.0.pctAliqZero'].fonte === 'padrao' && gr.origens['atividades.0.pctAliqZero'].texto === 'padrão: nenhuma — confira (só 60% das vendas têm o CST do PIS/Cofins nas notas do Domínio)');
+  const gc = entradaDoSistema({ cliente: ind, dominio: lc.map(m => ({ ...m, pc_tributada: 12500, pc_aliquota_zero: 37500, pc_outras: 0 })) });
+  ok('com o CST em toda a venda, vale a medida das notas (75%), não a da apuração', gc.entrada.atividades[0].pctAliqZero === 75 && gc.origens['atividades.0.pctAliqZero'].cst === true && !gc.origens['atividades.0.pctAliqZero'].apuracao);
+  ok('dois códigos do Domínio na mesma empresa: o maior de cada número (como o resto da ponte)', mesesDaPonte([...lc, ...lc.map(m => ({ ...m, codigo: 2, pis_cofins_a_recolher: m.pis_cofins_a_recolher / 2, icms_saidas: 1000 }))]).find(m => m.competencia === '2026-05').pis_cofins_a_recolher === 164.25);
 }
 
 console.log('\n' + (total - falhas) + ' de ' + total + ' conferências ok' + (falhas ? ' — ' + falhas + ' FALHA(S)' : ''));

@@ -231,8 +231,8 @@ function blocoNumeros(estudo, conta = null) {
   if (e.semLc224) out.push('- Com liminar contra o aumento do Presumido (LC 224/2025): fora da conta');
   return out;
 }
-// o "Por onde começar" da tela: as fases e as missões
-function blocoFases(rot) {
+// o "Por onde começar" da tela: as fases e as missões (fontes: false tira as linhas do "O que usar nesta fase")
+function blocoFases(rot, { fontes = true } = {}) {
   const sit = rot.pronto ? 'PRONTO PRA APRESENTAR: as missões que decidem estão cumpridas.'
     : rot.provisorio ? 'PROVISÓRIO: faltam missões que podem virar o resultado — ' + rot.passos.filter(p => p.estado !== 'feito' && p.peso === 'decide').map(p => p.curto || p.titulo).join('; ') + '.'
     : 'QUASE LÁ: o que falta não vira o resultado.';
@@ -252,8 +252,9 @@ function blocoFases(rot) {
     f.missoes.forEach(m => out.push('   - [' + (m.estado === 'feita' ? 'cumprida' + (m.como ? ': ' + m.como : '') : (m.falta ? 'falta' : 'a conferir') + ' · ' + (m.peso === 'decide' ? 'decide o resultado' : m.peso === 'detalhe' ? 'extra' : 'importa'))
       + '] ' + m.titulo + ': ' + m.texto + comoCumprir(m)));
     // o que usar na fase: onde buscar cada informação hoje e o que vai chegar sozinho pelas pontes
-    (f.fontes || []).forEach(x => out.push('   - Fonte: ' + x.info + ' [' + (x.situacao || x.rotuloEstado) + '] — onde buscar: ' + x.onde + (x.auto ? ' ' + x.auto : '')));
+    if (fontes) (f.fontes || []).forEach(x => out.push('   - Fonte: ' + x.info + ' [' + (x.situacao || x.rotuloEstado) + '] — onde buscar: ' + x.onde + (x.auto ? ' ' + x.auto : '')));
   });
+  if (!fontes && rot.fases.some(f => (f.fontes || []).length)) out.push('(Pelo tamanho do estudo, ficou de fora onde buscar cada informação: a tela mostra em "O que usar nesta fase".)');
   if (rot.proximo) out.push('Próximo passo: ' + rot.proximo.titulo + '.');
   return out;
 }
@@ -339,16 +340,28 @@ const LIMITE_PRIMEIRO = 'o aviso do limite vem na primeira frase, junto com o re
 // com o Simples vedado pelo cadastro e na comparação, a linha dele é simulação: vem na frente, com o mais barato sem ele
 const VEDADO_PRIMEIRO = 'o Simples está vedado hoje pelo cadastro e a linha dele é simulação: diga isso na primeira frase, com os impedimentos e o mais barato sem ele; depois, ';
 // só o Presumido contra o Real: de 2027 em diante a diferença é o IRPJ e a CSLL — a presunção de um lado, o lucro do outro
-const GERAL = ' Entre o Presumido e o Real, de 2027 em diante a diferença é só o IRPJ e a CSLL (a presunção contra o lucro): diga o lucro em que os dois empatam e de onde veio o lucro da conta — o da contabilidade (trazido do Domínio pela ponte ou digitado da DRE: até que mês ele vai e se quem cuida da contabilidade já confirmou; se o Domínio mostra problema naqueles meses, diga quais) ou a estimativa, que não serve pra decidir quando as compras passam da receita.';
+const GERAL = ' Entre o Presumido e o Real, de 2027 em diante a diferença é só o IRPJ e a CSLL (a presunção contra o lucro): diga o lucro em que os dois empatam e de onde veio o lucro da conta — o da contabilidade (trazido do Domínio pela ponte ou digitado da DRE: até que mês ele vai e se quem cuida da contabilidade já confirmou; se o Domínio mostra problema naqueles meses, diga quais) ou a estimativa, que não serve pra decidir quando as compras passam da receita. Diga também quanto o lucro teria de andar pra o resultado virar entre os dois, quando o estudo disser (está em O QUE MUDA O RESULTADO).';
 const fim = conta => 'Na resposta: ' + (conta.limite ? LIMITE_PRIMEIRO : conta.vedado ? VEDADO_PRIMEIRO : '') + 'o resultado em uma ou duas frases (o mais barato no ano da decisão e quanto), o porquê pelos tributos que mais pesam e, se ainda pode virar, o quê (as missões que decidem, as premissas no padrão — diga que são padrão a conferir).'
   + (conta.regimes && !conta.regimes.includes('simples') ? GERAL : '') + ' Perguntaram o que falta pra o estudo ficar mais preciso: a precisão do estudo, com o efeito de cada item, o que decide primeiro. Use os números daqui, sem refazer conta: outro cenário é outra chamada, com e_se. Mudar o estudo é na tela Comparativo tributário.';
 
-export function textoDoComparativo({ estudo, conta, pedido = null }) {
+// a linha do "O que muda o resultado": a que está em alerta diz por quê (a premissa no padrão que vira, ou o rótulo dela)
+const linhaDoQueMuda = m => '- ' + (m.alerta ? '[' + (m.rotulo || 'premissa no padrão que vira o resultado') + '] ' : '') + m.txt;
+
+// O texto inteiro do estudo. É um documento só (não tem página seguinte): o laço do modelo dá a ele LIMITE_DO_TEXTO
+// caracteres no lugar dos 14 mil das outras ferramentas (12/11/2026: com 16 mil, o estudo chegava sem o fim — os prazos,
+// os avisos da conta e as instruções da resposta). Se um estudo passar disso, saem as linhas de onde buscar cada
+// informação (o "O que usar nesta fase"), que são o que menos falta faz, e o fim segue inteiro.
+export const LIMITE_DO_TEXTO = 30000;
+export function textoDoComparativo({ estudo, conta, pedido = null, limite = LIMITE_DO_TEXTO }) {
+  const inteiro = montarTexto({ estudo, conta, pedido, fontes: true });
+  return inteiro.length <= limite ? inteiro : montarTexto({ estudo, conta, pedido, fontes: false });
+}
+function montarTexto({ estudo, conta, pedido = null, fontes = true }) {
   const out = [...cabecalho(estudo), ...linhaDoObjetivo(estudo, conta, pedido)];
   const comSimples = regimesDe(conta).includes('simples');
   if (!conta.comparacao) {
     out.push('A CONTA NÃO RODA: ' + conta.erro);
-    out.push(...blocoNumeros(estudo, conta), '', ...blocoVedacoes(estudo, conta), '', ...blocoFases(conta.roteiro));
+    out.push(...blocoNumeros(estudo, conta), '', ...blocoVedacoes(estudo, conta), '', ...blocoFases(conta.roteiro, { fontes }));
     out.push('Na resposta: diga o que falta (a receita dos 12 meses, na tela Comparativo tributário — digitada ou pelo faturamento do Domínio) e o que o sistema já tem.');
     return out.join('\n');
   }
@@ -358,12 +371,12 @@ export function textoDoComparativo({ estudo, conta, pedido = null }) {
     ...(conta.vedado ? ['ATENÇÃO, OS IMPEDIMENTOS DO SIMPLES: ' + conta.vedado] : []), ...blocoConferencia(estudo, c));
   out.push('', ...blocoPrecisao(conta));
   out.push('', 'POR TRIBUTO (R$ no ano: ' + c.anos.map(rotAno).join(' · ') + ')', ...blocoTributos(c, conta));
-  if (conta.muda.length) out.push('', 'O QUE MUDA O RESULTADO', ...conta.muda.map(m => '- ' + (m.alerta ? '[premissa no padrão que vira o resultado] ' : '') + m.txt));
+  if (conta.muda.length) out.push('', 'O QUE MUDA O RESULTADO', ...conta.muda.map(linhaDoQueMuda));
   out.push('', ...blocoVedacoes(estudo, conta));
   // o limite do Simples com as empresas dos sócios só interessa com o Simples na comparação
   if (comSimples) out.push('', ...blocoGrupo(estudo, conta));
   out.push('', ...blocoNumeros(estudo, conta));
-  out.push('', ...blocoFases(conta.roteiro));
+  out.push('', ...blocoFases(conta.roteiro, { fontes }));
   if (conta.prazos.length) out.push('', 'PRAZOS PRA DECIDIR', ...conta.prazos.map(p => '- ' + p.titulo + ': ' + p.texto));
   if (conta.avisos.length) out.push('', 'AVISOS DA CONTA', ...conta.avisos.map(a => '- ' + a));
   const hoje = blocoSistemaHoje(estudo);
@@ -385,7 +398,7 @@ export function textoDoESe({ estudo, conta, eSe, contaESe, pedido = null }) {
   out.push('', 'RESULTADO COM A MUDANÇA', ...blocoResultado(c, contaESe), 'A decisão (' + c.anoDecisao + '): ' + fraseDaDecisao(c),
     ...(contaESe.limite ? ['ATENÇÃO, O LIMITE DO SIMPLES: ' + contaESe.limite] : []), ...(contaESe.vedado ? ['ATENÇÃO, OS IMPEDIMENTOS DO SIMPLES: ' + contaESe.vedado] : []));
   out.push('', 'POR TRIBUTO, COM A MUDANÇA (R$ no ano: ' + c.anos.map(rotAno).join(' · ') + ')', ...blocoTributos(c, contaESe));
-  if (contaESe.muda.length) out.push('', 'O QUE MUDA O RESULTADO, COM A MUDANÇA', ...contaESe.muda.map(m => '- ' + (m.alerta ? '[premissa no padrão que vira o resultado] ' : '') + m.txt));
+  if (contaESe.muda.length) out.push('', 'O QUE MUDA O RESULTADO, COM A MUDANÇA', ...contaESe.muda.map(linhaDoQueMuda));
   if (c0) {
     const r0 = c0.anos.find(r => r.ano === c0.anoDecisao) || c0.anos[0];
     out.push('', 'SEM A MUDANÇA (o estudo), em ' + r0.ano + ': ' + regimesDe(conta).map(g => ROTULO_REGIME[g] + ' ' + (r0[g].disponivel ? brl(r0[g].total) : 'fora')).join(' · ')

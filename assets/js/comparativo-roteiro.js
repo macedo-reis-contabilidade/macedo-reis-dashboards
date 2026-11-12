@@ -20,6 +20,8 @@
 // Com a versão 5 da ponte do Domínio (11/11/2026, o "vai" das 22h13), o resultado da contabilidade chega mês a mês: a
 // missão do lucro diz o que o Domínio tem hoje e oferece o número (ponteDoLucro: "Usar o do Domínio", "Atualizar pelo
 // Domínio"), e reabre quando o lucro do estudo veio da ponte e o Domínio já mostra outro no mesmo período.
+// Em 12/11/2026, a confirmação ganhou o terceiro sinal do resultado (alertasDoResultado): o custo ou a despesa que só a
+// contabilidade tem, além das notas e da folha, quando passa de um quarto da receita ou é o que põe o Real na frente.
 // Testado por tests/comparativo-roteiro.test.mjs.
 // ============================================================
 
@@ -136,7 +138,7 @@ export const AUTOMATICO = {
   // a versão 5 da ponte (11/11/2026): o resultado da contabilidade mês a mês e a venda pelo CST do PIS/Cofins
   resultado: 'Automático: a ponte do Domínio traz o resultado de cada mês, e o lucro entra até onde o Controle das contabilidades dá a contabilidade como feita.',
   semResultado: 'A ponte do Domínio ainda não leu o resultado da contabilidade desta empresa: por enquanto, digite o lucro da DRE.',
-  cst: 'A ponte do Domínio traz quando os itens das notas têm a situação tributária do PIS/Cofins (o CST); sem ela, pelo relatório.',
+  cst: 'A ponte do Domínio traz quando os itens das notas têm a situação tributária do PIS/Cofins (o CST) ou, sem ela, quando a apuração do PIS/Cofins do Domínio fecha sozinha (toda a venda na base, ou a alíquota zero que recolhe 10% desde abril de 2026); senão, pelo relatório.',
   contrato: 'As pontes não trazem: está no contrato.',
   conversa: 'Nenhum sistema tem: é conversa com o cliente.'
 };
@@ -299,12 +301,18 @@ export function lucroDoEstudo({ entrada = {}, origens = {}, serie = null, contab
   return { jan, sug, dre, de, ate, sinais: sinaisDaContabilidade(contabil, de, ate), conf, perg, confirmado: manual || pelaPergunta, pelaPergunta, quem, responsavel: resp,
     ponte: ponteDoLucro({ entrada: e, origens, serie, contabil, resultadoPonte, dre }), atipicos: (doPeriodo && doPeriodo.atipicos) || [] };
 }
-// Dois sinais de que o resultado da contabilidade pode não valer como o lucro do período — pra confirmação de quem cuida
+// Os sinais de que o resultado da contabilidade pode não valer como o lucro do período — pra confirmação de quem cuida
 // dela (12/11/2026, com o resultado mês a mês pela ponte): o mês em que o resultado passa da receita do mês (o lançamento
-// do ano inteiro de uma vez: o custo das mercadorias, a depreciação) e o lucro da contabilidade acima do que as notas e a
+// do ano inteiro de uma vez: o custo das mercadorias, a depreciação); o lucro da contabilidade acima do que as notas e a
 // folha do sistema deixam (no Real, nos 12 meses: a receita menos as compras, as despesas com nota, a folha e os tributos —
 // só fecha com estoque formado ou investimento no período, que não são custo, ou com compra que ficou sem o custo
-// lançado). Volta [{ curto, texto }]: o curto vai na pergunta do vigia, o texto na missão.
+// lançado); e o contrário (12/11/2026, a primeira empresa do Comparativo: o prejuízo da contabilidade passava muito do
+// que as notas e a folha explicavam, e a tela não dizia): o resultado abaixo do que elas explicam, que é custo ou despesa
+// que só a contabilidade tem. Um tanto disso é o normal (a depreciação, os juros, o aluguel pago a
+// pessoa física): só vira alerta quando passa de um quarto da receita (CUSTO_SEM_NOTA), ou quando é ele que põe o Real na
+// frente — pelas notas e pela folha o lucro chegaria ao empate e o Presumido ganharia.
+// Volta [{ curto, texto }]: o curto vai na pergunta do vigia, o texto na missão.
+export const CUSTO_SEM_NOTA = 0.25;
 export function alertasDoResultado({ L = null, comparacao = null, entrada = {} } = {}) {
   const out = [];
   const at = (L && L.atipicos) || [];
@@ -321,6 +329,23 @@ export function alertasDoResultado({ L = null, comparacao = null, entrada = {} }
     out.push({ curto: 'o lucro da contabilidade no Real (' + brl(real.lucro) + ' nos 12 meses) passa do que as notas e a folha do sistema deixam (' + teto + ')' + (comCompras ? ': tem estoque ou ativo novo no período, e o custo das vendas está lançado mês a mês?' : ': a folha e as despesas entraram?'),
       texto: 'Pela contabilidade, o lucro no Real dá ' + brl(real.lucro) + ' nos 12 meses; pelas notas e pela folha do sistema (a receita menos as compras, as despesas com nota, a folha e os tributos), daria no máximo ' + teto + '. '
         + (comCompras ? 'Só fecha se a empresa formou estoque ou investiu no período (o que vai pro estoque ou pro ativo não é custo), ou se parte das compras ficou sem o custo lançado: pergunte como o custo das vendas (o estoque) é lançado.' : 'Só fecha se a folha ou outra despesa do sistema não entrou na contabilidade.') });
+  }
+  // o contrário: o resultado da contabilidade abaixo do que as notas e a folha explicam
+  if (real && real.disponivel && real.lucroInformado && real.lucroEstimado != null) {
+    const alem = real.lucroEstimado - real.lucro, receita = num(r0.receita);
+    const dec = comparacao.decisao, ep = dec && dec.real && dec.real.empate ? dec.real.empate.presumido : null;
+    const rDec = comparacao.anos.find(r => r.ano === comparacao.anoDecisao) || r0;
+    // é o custo sem nota que põe o Real na frente: pela contabilidade o lucro fica abaixo do empate, pelas notas não
+    const poeNaFrente = !!(ep && !ep.nunca && rDec.real && rDec.real.lucroEstimado != null && rDec.real.lucro < ep.lucro && rDec.real.lucroEstimado >= ep.lucro);
+    if (alem > Math.max(20000, CUSTO_SEM_NOTA * receita) || (poeNaFrente && alem > Math.max(5000, 0.02 * receita))) {
+      const parte = receita > 0 ? ' (' + pct0(alem / receita * 100) + '% da receita)' : '';
+      const oQue = 'a depreciação, os juros, o ajuste do estoque, lançamento de outro período';
+      out.push({ curto: 'a contabilidade tem ' + brl(alem) + ' de custo ou despesa além das notas e da folha do sistema' + (receita > 0 ? ' (' + pct0(alem / receita * 100) + '% da receita dos 12 meses)' : '') + ': o que é (' + oQue + ')?',
+        texto: 'Pela contabilidade, o resultado no Real é ' + lucroOuPrejuizo(real.lucro) + ' nos 12 meses; pelas notas e pela folha do sistema (a receita menos as compras, as despesas com nota, a folha e os tributos), seria '
+          + lucroOuPrejuizo(real.lucroEstimado) + '. A contabilidade tem ' + brl(alem) + ' de custo ou despesa além das notas e da folha' + parte + '.'
+          + (poeNaFrente ? ' É isso que põe o Real na frente: sem ele, o lucro chegaria ao empate (' + brl(ep.lucro) + ') e o Presumido ganharia.' : '')
+          + ' Pergunte o que é: ' + oQue + '.' });
+    }
   }
   return out;
 }

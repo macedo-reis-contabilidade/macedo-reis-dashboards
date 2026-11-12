@@ -643,6 +643,33 @@ console.log('=== qual comparativo: as fases de cada caminho (11/11/2026) ===');
       const S = comP({ atividades: [{ tipo: 'servico', receita: 1000000 }], folha: 400000, regimeAtual: 'presumido', objetivo: 'presumido_real', lucroContabil: 900000 });
       const m = missao(rodarC(S, { ...ORI, lucroContabil: { fonte: 'digitado' } }, { ...base, contabil: ctb }), 'contabil');
       return /Só fecha se a folha ou outra despesa do sistema não entrou na contabilidade\./.test(m.texto) && !/estoque/.test(m.texto) && /: a folha e as despesas entraram\?/.test(m.perguntar.sinais); })());
+    // (c) o contrário (12/11/2026): o resultado da contabilidade abaixo do que as notas e a folha explicam — custo ou despesa
+    // que só ela tem. O comércio de R$ 1 milhão com R$ 500 mil de compras: pelas notas, lucro de R$ 353.925 no Real (o ICMS
+    // de R$ 110.000 — 17% das vendas menos 12% das compras — e o PIS/Cofins de R$ 36.075 — 9,25% de R$ 830.000 menos 9,25%
+    // de R$ 440.000). Com prejuízo de R$ 100.000 na DRE (R$ 105.780 no Real: a troca dos tributos de hoje, R$ 140.295,
+    // pelos do Real, R$ 146.075), a contabilidade tem R$ 459.705 além das notas, 46% da receita — e é isso que põe o Real
+    // na frente: pelas notas o lucro passaria do empate (R$ 95.000: os R$ 22.800 de IRPJ e CSLL do Presumido ÷ 24%)
+    const semNota = lc => missao(rodarC({ ...G, ...lc, lucroDe: '2025-10', lucroAte: '2026-09' }, oAlto, cx(null)), 'contabil');
+    const cPrej = semNota({ lucroContabil: -100000 });
+    ok('o custo que só a contabilidade tem: a confirmação diz os dois resultados, quanto ela tem além das notas e que é isso que põe o Real na frente',
+      / Pela contabilidade, o resultado no Real é prejuízo de R\$\s105\.780 nos 12 meses; pelas notas e pela folha do sistema \(a receita menos as compras, as despesas com nota, a folha e os tributos\), seria lucro de R\$\s353\.925\. A contabilidade tem R\$\s459\.705 de custo ou despesa além das notas e da folha \(46% da receita\)\. É isso que põe o Real na frente: sem ele, o lucro chegaria ao empate \(R\$\s95\.000\) e o Presumido ganharia\. Pergunte o que é: a depreciação, os juros, o ajuste do estoque, lançamento de outro período\./.test(cPrej.texto)
+      && /a contabilidade tem R\$\s459\.705 de custo ou despesa além das notas e da folha do sistema \(46% da receita dos 12 meses\): o que é \(a depreciação, os juros, o ajuste do estoque, lançamento de outro período\)\?$/.test(cPrej.perguntar.sinais), cPrej.texto);
+    // as compras acima da receita (R$ 1,4 milhão): pelas notas já é prejuízo de R$ 402.000 (o ICMS de R$ 2.000 e o PIS/Cofins
+    // zerado pelo crédito); com prejuízo de R$ 800.000 na DRE (R$ 769.705 no Real), R$ 367.705 além das notas, 37% da receita.
+    // O Real ganha dos dois jeitos: o alerta sai pelo tamanho, sem a frase do "põe na frente"
+    const cGrande = semNota({ compras: 1400000, lucroContabil: -800000 });
+    ok('o prejuízo maior do que as notas explicam, com o Real na frente dos dois jeitos: o alerta pelo tamanho, sem a frase da virada',
+      / Pela contabilidade, o resultado no Real é prejuízo de R\$\s769\.705 nos 12 meses; pelas notas e pela folha do sistema \([^)]+\), seria prejuízo de R\$\s402\.000\. A contabilidade tem R\$\s367\.705 de custo ou despesa além das notas e da folha \(37% da receita\)\. Pergunte o que é: /.test(cGrande.texto)
+      && !/põe o Real na frente/.test(cGrande.texto), cGrande.texto);
+    // o que é normal não avisa: R$ 300.000 de lucro na DRE (R$ 294.220 no Real) contra R$ 353.925 pelas notas — R$ 59.705
+    // além, 6% da receita, e o Presumido ganha dos dois jeitos
+    ok('o custo sem nota dentro do normal (6% da receita), sem virar o resultado: nenhum alerta', !/além das notas e da folha/.test(semNota({ lucroContabil: 300000 }).texto) && !/Pela contabilidade/.test(semNota({ lucroContabil: 300000 }).texto));
+    // pouco custo sem nota, mas é ele que vira: com R$ 750.000 de compras, R$ 154.275 pelas notas (o ICMS de R$ 80.000 e o
+    // PIS/Cofins de R$ 15.725); R$ 60.000 na DRE dão R$ 74.570 no Real (a troca: R$ 110.295 − R$ 95.725) — R$ 79.705 além,
+    // 8% da receita, e o lucro cai abaixo do empate de R$ 95.000
+    const cVira = semNota({ compras: 750000, lucroContabil: 60000 });
+    ok('pouco custo sem nota (8% da receita), mas é ele que põe o Real na frente: avisa', / Pela contabilidade, o resultado no Real é lucro de R\$\s74\.570 nos 12 meses; [^.]+, seria lucro de R\$\s154\.275\. A contabilidade tem R\$\s79\.705 de custo ou despesa além das notas e da folha \(8% da receita\)\. É isso que põe o Real na frente: sem ele, o lucro chegaria ao empate \(R\$\s95\.000\) e o Presumido ganharia\./.test(cVira.texto), cVira.texto);
+    ok('o mesmo custo sem nota com o Real atrás dos dois jeitos (R$ 200.000 na DRE): nenhum alerta', !/além das notas e da folha/.test(semNota({ compras: 750000, lucroContabil: 200000 }).texto));
     ok('os alertas, soltos: sem o lucro e sem mês atípico, nenhum; a lista tem o texto da missão e o curto da pergunta', alertasDoResultado({ L: { atipicos: [] }, comparacao: null, entrada: G }).length === 0 && alertasDoResultado().length === 0
       && alertasDoResultado({ L: { atipicos: [{ competencia: '2025-12', resultado: 90000, receita: 100 }, { competencia: '2026-01', resultado: -5, receita: 0 }] } })[0].curto === 'o resultado de dez/25 (lucro de R$\u00a090.000) e jan/26 (prejuízo de R$\u00a05) passam da receita do mês');
   }

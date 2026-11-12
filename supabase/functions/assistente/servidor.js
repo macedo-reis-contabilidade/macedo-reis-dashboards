@@ -17,6 +17,7 @@
 
 import { montarSistema, preambulo, marcaOutroDia } from './prompt.js';
 import { DEFINICOES, criarFerramentas, descreverEtapa } from './ferramentas.js';
+import { LIMITE_DO_TEXTO } from './comparativo.js';
 import { criarDrive } from './drive.js';
 import { criarChamador, responder } from '../reforma-chat/agente.js';
 import { lerEventos } from '../../../assets/js/eventos-sse.js';
@@ -25,6 +26,9 @@ import { SOCIOS, nomePorEmail } from '../../../assets/js/equipe.js';
 export const DOMINIO = '@macedoereis.com.br';
 export const LIMITE_DIA = 80;
 export const SIMULTANEAS = 2;   // perguntas da mesma pessoa rodando ao mesmo tempo
+// o tamanho da saída das ferramentas que devolvem um documento só (as outras ficam nos 14 mil do laço): o estudo do
+// comparativo tributário, que cortado chegava ao modelo sem os prazos, os avisos e as instruções da resposta
+export const LIMITES_DE_SAIDA = { comparativo: LIMITE_DO_TEXTO };
 const MAX_CORPO = 200000;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const SETORES = ['dp', 'fiscal', 'contabil', 'financeiro', 'comercial', 'societario', 'irpf', 'gestao', 'clientes', 'geral'];
@@ -240,7 +244,7 @@ export function criarServidor({ env, fetch: f = globalThis.fetch, agora = () => 
       const mensagem = preambulo({ hoje, hora: horaBR(agora()), quem, tela, empresa, ficha, estudo }) + pergunta;
       // a pergunta anterior de outro dia leva a data em que foi feita (a aba pode ter ficado aberta de um dia pro outro)
       const anteriores = historico.map(h => ({ pergunta: marcaOutroDia(h.em, hoje) + h.pergunta, resposta: h.resposta }));
-      res = await responder({ chamar: chamarModelo, sistema, definicoes: DEFINICOES, ferramentas, historico: anteriores, mensagem, aoEtapa, prazoMs, descrever: descreverEtapa });
+      res = await responder({ chamar: chamarModelo, sistema, definicoes: DEFINICOES, ferramentas, historico: anteriores, mensagem, aoEtapa, prazoMs, descrever: descreverEtapa, limites: LIMITES_DE_SAIDA });
     } catch (e) { erro = e || new Error('erro'); }
     const detalhe = erro ? String((erro && erro.message) || erro).slice(0, 1000) : null;
     const aviso = erro ? mensagemDeErro(erro) : null;

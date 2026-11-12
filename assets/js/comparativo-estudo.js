@@ -12,7 +12,9 @@
 // a folha ou a escrita fiscal que não entraram, a conta transitória com saldo, o caixa negativo), pra confirmação de quem
 // cuida da contabilidade. E, com a versão 5 da ponte do Domínio (11/11/2026), o resultado da contabilidade mês a mês
 // (resultadoPonte): o lucro do Real entra sozinho até onde o Controle das contabilidades dá a contabilidade como feita, e a
-// venda com alíquota zero de PIS/Cofins sai do CST das notas. Testado por tests/comparativo-estudo.test.mjs.
+// venda com alíquota zero de PIS/Cofins sai do CST das notas. Em 12/11/2026: sem o CST em toda a venda, a alíquota zero
+// pela apuração do PIS/Cofins do Domínio (a marca `apuracao` da origem), e quanto o lucro teria de andar pra decisão virar
+// entre o Presumido e o Real, contra as compras (viradaDoLucro). Testado por tests/comparativo-estudo.test.mjs.
 // ============================================================
 
 import { comparar, testarPremissas, REGIMES, ROTULO_REGIME, TIPOS, OBJETIVOS, regimesDoObjetivo } from './comparativo-motor.js';
@@ -281,14 +283,15 @@ export async function carregarEstudo({ ler, cliente, cadastroDe = null, hoje = n
     const oLucro = est.origens.lucroContabil;
     if (num(est.entrada.lucroContabil) == null && !(oLucro && oLucro.fonte === 'confirmado')
       && aplicarLucroDaPonte(est.entrada, est.origens, lucroDaPonte(est.serie, contabil, resultado))) est.pelaPonte.push('lucro');
-    // A venda com alíquota zero de PIS/Cofins e a revenda monofásica medidas no CST das notas: entram onde o estudo ainda
+    // A venda com alíquota zero de PIS/Cofins e a revenda monofásica medidas no CST das notas — ou, sem o CST, a alíquota
+    // zero que a apuração do PIS/Cofins do Domínio mostra (a marca `apuracao`, 12/11/2026): entram onde o estudo ainda
     // está no padrão (ninguém digitou nem conferiu) e a atividade segue a mesma
     est.entrada.atividades.forEach((a, i) => {
       const aSis = sis.entrada.atividades[i];
       if (!aSis || aSis.tipo !== a.tipo) return;
       ['pctAliqZero', 'pctMonofasico'].forEach(campo => {
         const k = 'atividades.' + i + '.' + campo, antes = est.origens[k], hoje = sis.origens[k];
-        if (!hoje || !hoje.cst || (antes && antes.fonte !== 'padrao')) return;
+        if (!hoje || !(hoje.cst || hoje.apuracao) || (antes && antes.fonte !== 'padrao')) return;
         if (campo === 'pctMonofasico' && !antes && (Number(a[campo]) || 0) > 0) return;   // o que o estudo já tinha, sem origem, fica
         a[campo] = aSis[campo]; est.origens[k] = hoje;
         if (!est.pelaPonte.includes('piscofins')) est.pelaPonte.push('piscofins');
@@ -349,6 +352,38 @@ export function situacaoComGrupo(serie, grupo, grupoSeries) {
 }
 // o que muda o resultado: o lucro em que o Real empata e as premissas no padrão — [{ txt, alerta }] (alerta: a premissa
 // que vira o resultado)
+// Quanto o lucro do Real teria de andar pra decisão virar entre o Presumido e o Real, no ano da decisão. Do lado em que o
+// Real ganha (o lucro abaixo do empate), é o que teria de deixar de ser custo: estoque que ficou no fim do período,
+// investimento (vai pro ativo) ou lançamento de outro ano — comparado com as compras dos 12 meses, que são o teto do que
+// pode ter ficado em estoque. Até ESTOQUE_PLAUSIVEL das compras (um trimestre delas), a linha sai em alerta: é estoque
+// que uma empresa forma num ano. Do lado em que o Presumido ganha, é o custo ou a despesa que faltaria lançar.
+// Só quando a decisão é entre os dois (o mais barato e o segundo são o Presumido e o Real).
+// Volta { txt, alerta, rotulo } ou null (sem o empate, ou com o Simples entre os dois primeiros)
+export const ESTOQUE_PLAUSIVEL = 0.25;
+export function viradaDoLucro(c) {
+  const d = c && c.decisao, ep = d && d.real && d.real.empate ? d.real.empate.presumido : null;
+  const rDec = d && c.anos ? c.anos.find(r => r.ano === d.ano) : null;
+  if (!ep || ep.nunca || !rDec || !rDec.presumido.disponivel || !rDec.real.disponivel) return null;
+  const entreOsDois = g => g === 'presumido' || g === 'real';
+  if (!entreOsDois(d.melhor) || !entreOsDois(d.segundo)) return null;
+  const dist = ep.lucro - d.real.lucro, compras = Number(c.entrada && c.entrada.compras) || 0, receita = Number(rDec.receita) || 0;
+  if (Math.abs(dist) < 0.005) return null;
+  if (dist > 0) {
+    // o Real ganha: quanto teria de sair do custo
+    const base = 'Pra o Presumido ficar mais barato que o Real em ' + d.ano + ', o lucro do Real teria de subir ' + brl(dist) + ': é o quanto '
+      + (d.real.informado ? 'do custo e da despesa que a contabilidade lançou teria de ser estoque que ficou no fim do período, investimento (que vai pro ativo) ou lançamento de outro ano.'
+        : 'das compras e das despesas com nota, que a estimativa conta inteiras como custo, teria de ser estoque que ficou no fim do período ou investimento (que vai pro ativo).');
+    if (!(compras > 0)) return { txt: base, alerta: false };
+    if (dist > compras) return { txt: base + ' Passa de todas as compras dos 12 meses (' + brl(compras) + '): só com estoque o resultado não vira.', alerta: false };
+    const parte = dist / compras, perto = parte <= ESTOQUE_PLAUSIVEL;
+    return { txt: base + ' São ' + pct(parte * 100, 0) + '% das compras dos 12 meses (' + brl(compras) + ')'
+      + (perto ? ': se o estoque cresceu isso no período e as compras foram direto pro custo, o resultado vira — confirme como o custo das vendas é lançado.' : '.'),
+      alerta: perto, rotulo: perto ? 'pode virar pelo estoque' : null };
+  }
+  // o Presumido ganha: quanto de custo ou despesa faltaria lançar
+  return { txt: 'Pra o Real ficar mais barato que o Presumido em ' + d.ano + ', o lucro teria de cair ' + brl(-dist) + (receita > 0 ? ' (' + pct(-dist / receita * 100) + '% da receita)' : '')
+    + ': custo ou despesa do período que ainda falte ' + (d.real.informado ? 'lançar na contabilidade' : 'na conta') + ' (o custo das vendas, a depreciação, a folha, os juros).', alerta: false };
+}
 export function oQueMuda(c, testes) {
   const muda = [];
   const d = c && c.decisao;
@@ -361,6 +396,10 @@ export function oQueMuda(c, testes) {
     const deOnde = d.real.informado ? ', pela contabilidade' : '';
     const lucroTxt = d.real.lucro < 0 ? 'a conta deu prejuízo de ' + brl(-d.real.lucro) + deOnde : 'a conta usou lucro de ' + brl(d.real.lucro) + (d.real.margem != null ? ' (' + pct(d.real.margem * 100) + '% da receita)' : '') + deOnde;
     if (ep) muda.push({ txt: ep.nunca ? 'Nem com lucro zero o Real fica abaixo do Presumido em ' + d.ano + '.' : 'O Real empata com o Presumido em ' + d.ano + ' com lucro de ' + brl(ep.lucro) + ' antes do IR (' + pct(ep.margem * 100) + '% da receita) — abaixo disso, o Real é mais barato; ' + lucroTxt + '.', alerta: false });
+    // quanto o lucro teria de andar pra decisão virar entre os dois (12/11/2026, a primeira empresa do Comparativo: o Real
+    // ganhava por um prejuízo grande, e a pergunta era quanto dele teria de ser estoque pra isso mudar)
+    const vira = viradaDoLucro(c);
+    if (vira) muda.push(vira);
     if (es && rDec && rDec.simples && rDec.simples.disponivel) muda.push({ txt: es.nunca ? 'Nem com lucro zero o Real fica abaixo do Simples em ' + d.ano + '.' : 'O Real empata com o Simples em ' + d.ano + ' com lucro de ' + brl(es.lucro) + ' (' + pct(es.margem * 100) + '% da receita).', alerta: false });
   }
   const mudam = (testes || []).filter(t => t.muda), naoMudam = (testes || []).filter(t => !t.muda);

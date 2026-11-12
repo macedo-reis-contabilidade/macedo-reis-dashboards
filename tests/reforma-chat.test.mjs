@@ -11,7 +11,7 @@ import { fileURLToPath } from 'node:url';
 import { normalizar, radical, tokens, secoesDe, criarIndice, buscar, lerMaterial } from '../supabase/functions/reforma-chat/busca.js';
 import { montarSistema, preambulo, INSTRUCOES } from '../supabase/functions/reforma-chat/prompt.js';
 import { DEFINICOES, criarFerramentas, aplicarAlteracoes, acharCaso, situacaoDoCaso, descreverEtapa } from '../supabase/functions/reforma-chat/ferramentas.js';
-import { responder, criarChamador, comCache, fontesDaResposta, erroDoChat, MAX_TOKENS, RECADO_ULTIMA } from '../supabase/functions/reforma-chat/agente.js';
+import { responder, criarChamador, comCache, fontesDaResposta, erroDoChat, MAX_TOKENS, RECADO_ULTIMA, LIMITE_SAIDA } from '../supabase/functions/reforma-chat/agente.js';
 import { criarServidor, limparTela, limparHistorico, hojeBR, LIMITE_DIA, SIMULTANEAS, mensagemDeErro } from '../supabase/functions/reforma-chat/servidor.js';
 import { linhaDaBase, categoriasDaBase, comLinhaDaBase, semLinhaDaBase, diaDaLeitura } from '../supabase/functions/reforma-chat/procedencia.js';
 import { simular, aliquotas2027, entradaComAliquotas } from '../assets/js/rt-motor.js';
@@ -205,6 +205,18 @@ chk('comCache não mexe nas mensagens originais', (() => { const m = [{ role: 'u
     sistema: sis, definicoes: DEFINICOES, ferramentas: { listar_casos: async () => longa }, mensagem: 'x' });
   chk('saída longa de ferramenta: cortada com a dica da própria ferramenta', /…\(cortado: a saída passou de 14 mil caracteres — use filtro, busca ou a página seguinte \(pagina\)\)$/.test(res5vista) && res5vista.length < 14200);
   chk('resposta que bateu no máximo de tokens: marcada como cortada', res5.cortada === true && res5.texto === 'Começo da resposta');
+  // 12/11/2026: quem chama pode dar outro tamanho à saída de uma ferramenta (o assistente do escritório dá ao estudo do
+  // comparativo, que é um documento só); as outras, e o valor que não é um inteiro positivo, ficam nos 14 mil
+  const vistaCom = async (limites, nome = 'listar_casos') => { let v = null, n = 0;
+    await responder({ chamar: async c => { if (++n === 2) v = c.messages.at(-1).content[0].content; return n === 1 ? { stop_reason: 'tool_use', content: [{ type: 'tool_use', id: 'z', name: nome, input: {} }], usage: {} } : { stop_reason: 'end_turn', content: [{ type: 'text', text: 'Ok.' }], usage: {} }; },
+      sistema: sis, definicoes: DEFINICOES, ferramentas: { [nome]: async () => longa }, mensagem: 'x', limites });
+    return v; };
+  chk('o limite da saída por ferramenta: a que tem limite maior chega inteira; acima dele, cortada no limite dela', LIMITE_SAIDA === 14000 && (await vistaCom({ listar_casos: 30000 })) === longa
+    && /^x{16000}\n…\(cortado: a saída passou de 16 mil caracteres — use filtro, busca ou a página seguinte \(pagina\)\)$/.test(await vistaCom({ listar_casos: 16000 })));
+  const curtas = [];
+  for (const l of [{ outra: 30000 }, { listar_casos: 0 }, { listar_casos: -5 }, { listar_casos: '30000' }, { listar_casos: 1.5 }, { listar_casos: true }, {}, 'listar_casos', null, undefined]) curtas.push((await vistaCom(l)).length);
+  chk('o limite de outra ferramenta, o que não é inteiro positivo e o nome herdado não mudam os 14 mil', curtas.length === 10 && curtas.every(n => n > 14000 && n < 14200)
+    && (await vistaCom(Object.create({ toString: 30000 }), 'toString')).length < 14200, JSON.stringify(curtas));
   // 28/10/2026: o Sonnet 5.5 pensa antes de responder e o pensamento conta no max_tokens — com 2500, a conta do Diego saía
   // cortada ou vazia. O pedido vai com folga (MAX_TOKENS), e a resposta que acaba só no pensamento pede pra dividir a pergunta
   let pedidoVisto = null;

@@ -62,12 +62,19 @@ export function comCache(msgs) {
 // ============================================================
 // responder({ chamar, sistema, definicoes, ferramentas, historico, mensagem, aoEtapa, descrever }) →
 //   { texto, etapas, uso: { entrada, saida, cacheLeitura, cacheEscrita }, modelo, rodadas, cortada, final? }
+// limites: { nome da ferramenta: caracteres } — o tamanho da saída dela, no lugar dos 14 mil (LIMITE_SAIDA)
 // historico: [{ pergunta, resposta }] das perguntas anteriores da conversa (só o texto)
 // a ferramenta devolve texto (o modelo lê) ou { final: true, texto, cortada?, comoTexto? } (a resposta da pergunta, sem
 // outra rodada, quando é a única ferramenta pedida na rodada; pedida junto com outras, o modelo lê o comoTexto — ou o texto)
 // ============================================================
 // o que fazer quando a saída de uma ferramenta passa do tamanho
 const DICA_CORTE = { ler_material: 'leia a seção seguinte com ler_material', buscar_base: 'refine a busca', listar_casos: 'use filtro, busca ou a página seguinte (pagina)' };
+// O tamanho da saída de uma ferramenta, em caracteres: 14 mil. Quem chama pode dar outro a uma ferramenta em `limites`
+// ({ nome: caracteres }) — a que devolve um documento só, sem página seguinte nem busca pra afinar (12/11/2026: o estudo
+// do comparativo tributário passava dos 14 mil e chegava ao modelo sem o fim — os prazos, os avisos da conta e as
+// instruções da resposta).
+export const LIMITE_SAIDA = 14000;
+const limiteDe = (limites, nome) => { const v = limites && typeof limites === 'object' && Object.hasOwn(limites, nome) ? limites[nome] : null; return typeof v === 'number' && Number.isInteger(v) && v > 0 ? v : LIMITE_SAIDA; };
 
 // O limite de saída de cada chamada. O Sonnet 5.5 pensa antes de responder (o pensamento adaptativo vem ligado quando o
 // pedido não diz nada, no esforço alto) e o pensamento conta no max_tokens, mesmo sem aparecer na resposta. Com 2500, as
@@ -84,7 +91,7 @@ export const RECADO_ULTIMA = 'Acabaram as consultas desta pergunta (o limite de 
   + 'o que você conferiu e o que deu. Se não deu pra concluir, diga o que faltou e como afinar a pergunta (uma empresa, um mês). Não diga que vai consultar mais.';
 
 export async function responder({ chamar, sistema, definicoes, ferramentas, historico = [], mensagem, aoEtapa = () => {},
-  maxRodadas = 6, prazoMs = 70000, agora = () => Date.now(), maxTokens = MAX_TOKENS, descrever = nome => String(nome) }) {
+  maxRodadas = 6, prazoMs = 70000, agora = () => Date.now(), maxTokens = MAX_TOKENS, descrever = nome => String(nome), limites = null }) {
   const inicio = agora();
   const ate = inicio + prazoMs + 30000;   // a chamada que começa perto do prazo ainda tem 30 s pra terminar
   const msgs = [];
@@ -138,7 +145,8 @@ export async function responder({ chamar, sistema, definicoes, ferramentas, hist
         return { texto: texto || 'Não consegui montar a resposta. Tente perguntar de outro jeito.', etapas, uso, modelo, rodadas: rodada, cortada: !!saida.cortada, final: true };
       }
       saida = String(saida && typeof saida === 'object' ? (saida.comoTexto || saida.texto || '') : saida);
-      if (saida.length > 14000) saida = saida.slice(0, 14000) + '\n…(cortado: a saída passou de 14 mil caracteres' + (DICA_CORTE[b.name] ? ' — ' + DICA_CORTE[b.name] : '') + ')';
+      const max = limiteDe(limites, b.name);
+      if (saida.length > max) saida = saida.slice(0, max) + '\n…(cortado: a saída passou de ' + Math.round(max / 1000) + ' mil caracteres' + (DICA_CORTE[b.name] ? ' — ' + DICA_CORTE[b.name] : '') + ')';
       etapas.push({ ferramenta: b.name, entrada, descricao: desc, caracteres: saida.length, erro });
       resultados.push({ type: 'tool_result', tool_use_id: b.id, content: saida, ...(erro ? { is_error: true } : {}) });
     }

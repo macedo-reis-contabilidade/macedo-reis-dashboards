@@ -10,10 +10,11 @@ import { posix } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { TABELAS, OPS, DEFINICOES, filtroUrl, montarConsulta, criarFerramentas, descreverEtapa, normalizarBusca, textoDoDominio, mesAntes, textoDaContabilidade } from '../supabase/functions/assistente/ferramentas.js';
 import { montarSistema, preambulo, dicionario, INSTRUCOES, marcaOutroDia } from '../supabase/functions/assistente/prompt.js';
-import { criarServidor, limparContexto, limparPagina, limparHistorico, diaBR, LIMITE_DIA } from '../supabase/functions/assistente/servidor.js';
-import { responder, erroDoChat } from '../supabase/functions/reforma-chat/agente.js';
+import { criarServidor, limparContexto, limparPagina, limparHistorico, diaBR, LIMITE_DIA, LIMITES_DE_SAIDA } from '../supabase/functions/assistente/servidor.js';
+import { responder, erroDoChat, LIMITE_SAIDA } from '../supabase/functions/reforma-chat/agente.js';
 import { criarDrive, filtrarArquivos, palavrasDe, pastaDaUrl } from '../supabase/functions/assistente/drive.js';
-import { resumoDoResultado } from '../supabase/functions/assistente/comparativo.js';
+import { resumoDoResultado, textoDoComparativo, estudoDaPergunta, LIMITE_DO_TEXTO } from '../supabase/functions/assistente/comparativo.js';
+import { contaDoEstudo } from '../assets/js/comparativo-estudo.js';
 
 const raiz = fileURLToPath(new URL('..', import.meta.url));
 let falhas = 0;
@@ -1140,6 +1141,43 @@ console.log('O comparativo tributário (a mesma conta da tela, com o "e se"):');
       && !/ainda sem o resultado da contabilidade/.test(t5), (t5.match(/\] O lucro da contabilidade: [^\n]{0,200}/) || [''])[0]);
     chk('a venda com alíquota zero pelo CST das notas: 60%, com a origem, e a missão do PIS/Cofins cumprida pela ponte', /vendas com alíquota zero de PIS\/Cofins 60% \[Domínio, pela ponte: 60% das vendas de mercadoria com alíquota zero de PIS\/Cofins nas notas de out\/25 a set\/26\]/.test(t5)
       && /\[cumprida: veio do Domínio pela ponte\] O PIS\/Cofins das vendas: /.test(t5), (t5.match(/vendas com alíquota zero[^;\n]*/) || [''])[0]);
+    // 12/11/2026 (a primeira empresa do Comparativo): o CST das notas em 60% da venda, e a apuração do PIS/Cofins do Domínio
+    // sem nada na base cheia e com 0,365% da receita sem o ICMS recolhidos desde abril de 2026 — a alíquota zero entra
+    // pela apuração; e o prejuízo de R$ 20.000 por mês na contabilidade, bem além do que as notas explicam
+    const ap = { linhas: Object.fromEntries(Array.from({ length: 12 }, (_, i) => [mes(9 + i), { pc_tributada: 20000, pc_aliquota_zero: 10000, pc_outras: 20000, icms_saidas: 5000, icms_st_saidas: 0, ipi_saidas: 0,
+      base_pis_cofins: 0, pis_apurado: 0, cofins_apurada: 0, creditos_pis_cofins: 0, pis_cofins_a_recolher: mes(9 + i) >= '2026-04' ? 164.25 : 0, resultado_antes_ir: -20000 }])) };
+    const { t: ta, pedidos: pa } = await texto(ap);
+    chk('a leitura do Domínio pede a apuração do PIS/Cofins e o ICMS das saídas', pa.some(u => /dominio_mensal\?/.test(u) && /pis_cofins_a_recolher/.test(u) && /base_pis_cofins/.test(u) && /icms_saidas/.test(u)));
+    chk('sem o CST em toda a venda, a alíquota zero vem da apuração do PIS/Cofins do Domínio, e a missão fica cumprida pela ponte', /vendas com alíquota zero de PIS\/Cofins 100% \[Domínio, pela ponte: pela apuração do PIS\/Cofins de out\/25 a set\/26, a venda é de alíquota zero \(ou isenta\) e recolhe 10% da alíquota desde abril de 2026 \(0,37% da receita sem o ICMS\)\] \(fora da Cesta Básica Nacional: pagam 10% da alíquota desde abril de 2026/.test(ta)
+      && /\[cumprida: veio do Domínio pela ponte\] O PIS\/Cofins das vendas: /.test(ta), (ta.match(/vendas com alíquota zero[^;\n]*/) || [''])[0]);
+    // o empate: R$ 57.000 (os R$ 13.680 de IRPJ e CSLL do Presumido ÷ 24%); o prejuízo de R$ 256.400,33 no Real de 2027
+    // (os R$ 240.000 da DRE levada aos 12 meses, com a troca dos tributos): faltam R$ 313.400,33, 87% dos R$ 360.000 de compras
+    chk('o que muda o resultado: quanto do custo teria de ser estoque pra o Presumido passar, contra as compras', /\n- Pra o Presumido ficar mais barato que o Real em 2027, o lucro do Real teria de subir R\$\s?313\.400,33: é o quanto do custo e da despesa que a contabilidade lançou teria de ser estoque que ficou no fim do período, investimento \(que vai pro ativo\) ou lançamento de outro ano\. São 87% das compras dos 12 meses \(R\$\s?360\.000,00\)\.\n/.test(ta)
+      && /com lucro de R\$\s?57\.000,00 antes do IR \(9,5% da receita\) — abaixo disso, o Real é mais barato; a conta deu prejuízo de R\$\s?256\.400,33, pela contabilidade\./.test(ta),
+      (ta.match(/\n- Pra o Presumido ficar[^\n]*/) || [''])[0]);
+    chk('a confirmação da contabilidade diz o custo que só ela tem, além das notas e da folha', /A contabilidade tem R\$\s?[\d.]+ de custo ou despesa além das notas e da folha \(\d+% da receita\)\./.test(ta) && /Pergunte o que é: a depreciação, os juros, o ajuste do estoque, lançamento de outro período\./.test(ta),
+      (ta.match(/Pela contabilidade, o resultado no Real[^\n]{0,300}/) || [''])[0]);
+    // o tamanho: o estudo é um documento só e passa dos 14 mil das outras ferramentas — o laço dá a ele o limite dele, e o
+    // fim (os prazos, os avisos e as instruções da resposta) chega inteiro
+    chk('o limite do texto do comparativo é o que o servidor passa ao laço, acima dos 14 mil das outras ferramentas', LIMITE_DO_TEXTO === 30000 && LIMITES_DE_SAIDA.comparativo === LIMITE_DO_TEXTO && LIMITE_SAIDA === 14000
+      && /limites: LIMITES_DE_SAIDA/.test(readFileSync(raiz + 'supabase/functions/assistente/servidor.js', 'utf8')));
+    chk('o estudo de verdade passa dos 14 mil caracteres e cabe no limite dele, com o fim inteiro', ta.length > LIMITE_SAIDA && ta.length < LIMITE_DO_TEXTO && /\nPRAZOS PRA DECIDIR\n/.test(ta) && /\nAVISOS DA CONTA\n/.test(ta) && /\nNa resposta: [^\n]+ Mudar o estudo é na tela Comparativo tributário\.$/.test(ta), ta.length);
+    const visto = async limites => { let v = null; let n = 0;
+      await responder({ chamar: async c => { if (++n === 2) v = c.messages.at(-1).content[0].content; return n === 1 ? { stop_reason: 'tool_use', content: [{ type: 'tool_use', id: 'c1', name: 'comparativo', input: {} }], usage: {} } : { stop_reason: 'end_turn', content: [{ type: 'text', text: 'Ok.' }], usage: {} }; },
+        sistema: 's', definicoes: DEFINICOES, ferramentas: { comparativo: async () => ta }, mensagem: 'x', ...(limites ? { limites } : {}) });
+      return v; };
+    chk('pelo laço: com o limite do servidor o estudo chega inteiro ao modelo; sem ele, cortado nos 14 mil (como era)', (await visto(LIMITES_DE_SAIDA)) === ta && /…\(cortado: a saída passou de 14 mil caracteres\)$/.test(await visto(null)) && (await visto(null)).length < 14100
+      && /…\(cortado: a saída passou de 15 mil caracteres\)$/.test(await visto({ comparativo: 15000 })) && (await visto({ comparativo: 'x' })).length < 14100 && (await visto({ outra: 99999 })).length < 14100);
+    // o estudo que passasse do limite perde só as linhas de onde buscar cada informação: o fim segue inteiro
+    {
+      const b = bancoFalso({ extras: v5(ap) });
+      const r = await estudoDaPergunta({ banco: b.banco, termo: null, contexto: { cliente_id: ID_I }, acharEmpresa: async () => ({ id: ID_I }) });
+      const conta = contaDoEstudo({ ...r.estudo, aliq2027: { cbs: 11.3, cbs_aplicada: 11.2, ibs: 0.1 }, hoje: '2026-11-12' });
+      const inteiro = textoDoComparativo({ estudo: r.estudo, conta }), curto = textoDoComparativo({ estudo: r.estudo, conta, limite: inteiro.length - 1 });
+      chk('acima do limite, saem as linhas "Fonte:" (com o aviso de onde ver) e o resto fica igual', inteiro === ta && /\n   - Fonte: /.test(inteiro) && !/\n   - Fonte: /.test(curto) && curto.length < inteiro.length
+        && /\n\(Pelo tamanho do estudo, ficou de fora onde buscar cada informação: a tela mostra em "O que usar nesta fase"\.\)\nPróximo passo: /.test(curto)
+        && curto.split('\n').filter(l => !/^\(Pelo tamanho/.test(l)).join('\n') === inteiro.split('\n').filter(l => !/^   - Fonte: /.test(l)).join('\n'), [inteiro.length, curto.length]);
+    }
     // o estudo gravado com o lucro digitado: o Domínio aparece pra comparar, com o botão da tela
     const digitado = [{ id: 'eeee1111-2222-4333-8444-555566667777', cliente_id: ID_I, nome: null, atualizado_em: '2026-11-11T23:00:00Z', atualizado_por: 'fiscal@macedoereis.com.br',
       entrada: { v: 1, entrada: { atividades: [{ tipo: 'industria', receita: 600000 }], compras: 360000, proLabore: 19452, regimeAtual: 'presumido', objetivo: 'presumido_real', lucroContabil: 40000, lucroDe: '2025-10', lucroAte: '2026-07', lucroReceita: 500000 },

@@ -4,12 +4,13 @@
 // o cadastro, o caso da Reforma (os relatórios do Domínio e as notas que já foram lidos lá), o Fator R, o PGDAS que a
 // ponte da Receita traz, o Domínio pela ponte (05/11/2026: a receita, as compras e a folha dos meses fechados; 11/11/2026,
 // a versão 5: o resultado da contabilidade mês a mês — o lucro do Real até onde ela está feita, lucroDaPonte — e a venda
-// pela situação tributária do PIS/Cofins, pisCofinsDaPonte) e os relatórios do Domínio soltos na tela — e diz de onde veio
+// pela situação tributária do PIS/Cofins, pisCofinsDaPonte; 12/11/2026: sem o CST em toda a venda, a alíquota zero pela
+// apuração do PIS/Cofins que o Domínio fez, apuracaoPisCofins) e os relatórios do Domínio soltos na tela — e diz de onde veio
 // cada número (`origens`), como a procedência da Reforma: o que não veio de lugar nenhum é "padrão — confira". Testado por
 // tests/comparativo-dados.test.mjs.
 // ============================================================
 
-import { TIPOS, ROTULO_REGIME, ehObjetivo, rotuloDoTipo } from './comparativo-motor.js';
+import { TIPOS, ROTULO_REGIME, ehObjetivo, rotuloDoTipo, PIS_CUM, COFINS_CUM, LC224_ALIQ_ZERO, LC224_MES_PISCOFINS } from './comparativo-motor.js';
 import { digitosCnae } from './dominio-relatorios.js';
 import { diaUtil, somaDias, fmtData } from './rescisao-datas.js';
 
@@ -219,9 +220,12 @@ const periodo = s => s.n === 12 ? rotuloComp(s.de) + ' a ' + rotuloComp(s.ate) :
 // tributada, 04 monofásica, 05 substituição tributária, 06 alíquota zero, 07 isenta, 08 sem incidência, 09 suspensa, as
 // outras e a sem CST (no Simples o item não tem o CST: a venda cai toda em pc_sem_cst)
 export const CAMPOS_PISCOFINS = ['pc_tributada', 'pc_monofasica', 'pc_st', 'pc_aliquota_zero', 'pc_isenta', 'pc_sem_incidencia', 'pc_suspensa', 'pc_outras', 'pc_sem_cst'];
+// a apuração do PIS e da Cofins que o Domínio fez no mês (a base da alíquota cheia, o débito, o crédito do não cumulativo
+// e o saldo a recolher) e o que sai da base (o ICMS, o ICMS-ST e o IPI destacados nas saídas): apuracaoPisCofins
+export const CAMPOS_APURACAO = ['base_pis_cofins', 'pis_apurado', 'cofins_apurada', 'creditos_pis_cofins', 'pis_cofins_a_recolher', 'icms_saidas', 'icms_st_saidas', 'ipi_saidas'];
 export const CAMPOS_PONTE = ['receita_bruta', 'receita_mercadorias', 'receita_servicos', 'receita_simples', 'receita_st', 'receita_monofasica', 'receita_exportacao',
   'receita_anexo_1', 'receita_anexo_2', 'receita_anexo_3', 'receita_anexo_4', 'receita_anexo_5', 'compras', 'servicos_tomados', 'ativo_e_consumo',
-  'salarios', 'decimo_terceiro', 'pro_labore_valor', 'base_inss', 'inss_rat', 'inss_terceiros', ...CAMPOS_PISCOFINS];
+  'salarios', 'decimo_terceiro', 'pro_labore_valor', 'base_inss', 'inss_rat', 'inss_terceiros', ...CAMPOS_PISCOFINS, ...CAMPOS_APURACAO];
 export function mesesDaPonte(linhas) {
   const por = new Map();
   (linhas || []).forEach(l => {
@@ -296,6 +300,46 @@ export function pisCofinsDaPonte(meses) {
     fora: s('pc_sem_incidencia') + s('pc_suspensa'), mercadorias: s('receita_mercadorias') };
 }
 export const cstVale = pc => !!pc && pc.total > 0 && pc.classificada / pc.total >= CST_MINIMO;
+
+// O PIS/Cofins das vendas pela apuração do Domínio (12/11/2026, a primeira empresa do Comparativo: as notas dela tinham o
+// CST em pouco mais da metade da venda, a conta ficou no padrão — toda a venda a 3,65% — e a apuração que o próprio
+// escritório fez no Domínio mostrava quase nada a recolher). Sem o CST, a apuração do mês diz duas coisas, só no
+// cumulativo (o Presumido: sem crédito): quanto da receita entrou na base da alíquota cheia (a base ÷ a receita sem o
+// ICMS, o ICMS-ST e o IPI destacados) e quanto se recolheu além do débito dessa base — desde abril de 2026, a alíquota
+// zero e a isenção de fora da Cesta Básica Nacional pagam 10% da alíquota (LC 224/2025, art. 4º: 0,365% no cumulativo).
+// meses: os da janela da receita. Usa os que têm a apuração lida e receita. Volta null sem eles, ou { n, de, ate, receita,
+// liquida (a receita sem o ICMS, o ST e o IPI), cobertura (a parte da receita da janela nos meses com apuração), cheia (a
+// parte na base cheia), nPos (os meses de abril de 2026 em diante), taxaPos e taxaPre (o recolhido além do débito ÷ a
+// receita líquida, depois e antes de abril), conclui }. conclui só nos dois casos limpos — 'paga': a base cheia é a venda
+// toda e nada além dela; 'zero_lc224': nada na base cheia, nada recolhido antes de abril de 2026 e, depois, perto de
+// 0,365% da receita líquida. O resto (parte da venda fora da base, a base maior que a receita — o regime de caixa —, o
+// não cumulativo, poucos meses) não conclui: a conta segue no padrão, com o que a apuração mostra dito na origem.
+export const MES_LC224 = '2026-' + String(LC224_MES_PISCOFINS + 1).padStart(2, '0');   // abril de 2026
+const LC224_NO_CUMULATIVO = (PIS_CUM + COFINS_CUM) * LC224_ALIQ_ZERO;   // 10% de 3,65%
+export const APURACAO_COBERTURA = 0.5, APURACAO_MESES = 3;
+export function apuracaoPisCofins(meses) {
+  const janela = (meses || []).filter(m => num(receitaDaPonte(m)) > 0);
+  const com = janela.filter(m => m.pis_cofins_a_recolher != null).slice(-12);
+  if (!com.length) return null;
+  const liq = m => Math.max(0, num(receitaDaPonte(m)) - num(m.icms_saidas) - num(m.icms_st_saidas) - num(m.ipi_saidas));
+  const deb = m => num(m.pis_apurado) + num(m.cofins_apurada);
+  const alem = m => Math.max(0, num(m.pis_cofins_a_recolher) - deb(m));
+  const soma = (l, f) => l.reduce((t, m) => t + f(m), 0);
+  const receita = soma(com, m => num(receitaDaPonte(m))), liquida = soma(com, liq);
+  if (!(liquida > 0)) return null;
+  const pos = com.filter(m => m.competencia >= MES_LC224), pre = com.filter(m => m.competencia < MES_LC224);
+  const bPos = soma(pos, liq), bPre = soma(pre, liq);
+  const out = { n: com.length, de: com[0].competencia, ate: com[com.length - 1].competencia, receita, liquida,
+    cobertura: receita / soma(janela, m => num(receitaDaPonte(m))), cheia: soma(com, m => num(m.base_pis_cofins)) / liquida,
+    creditos: soma(com, m => num(m.creditos_pis_cofins)), nPos: pos.length, taxaPos: bPos > 0 ? soma(pos, alem) / bPos : null,
+    taxaPre: bPre > 0 ? soma(pre, alem) / bPre : null, conclui: null };
+  if (out.creditos > 0.005 || out.n < APURACAO_MESES || out.cobertura < APURACAO_COBERTURA) return out;
+  const semAlem = t => t == null || t <= 0.0002;
+  if (out.cheia >= 0.97 && out.cheia <= 1.03 && semAlem(out.taxaPos) && semAlem(out.taxaPre)) out.conclui = 'paga';
+  else if (out.cheia <= 0.03 && semAlem(out.taxaPre) && out.nPos >= APURACAO_MESES && out.taxaPos != null
+    && out.taxaPos >= 0.75 * LC224_NO_CUMULATIVO && out.taxaPos <= 1.25 * LC224_NO_CUMULATIVO) out.conclui = 'zero_lc224';
+  return out;
+}
 
 // as linhas de receita a partir do total e da divisão mercadoria × serviço
 function linhas(receita, mercadorias, servicos, tipoMerc, tipoServ) {
@@ -560,9 +604,27 @@ export function entradaDoSistema({ cliente = null, caso = null, fatorR = [], pgd
       const pf = pc.fora / pc.total * 100;
       if (pf >= 0.5) notas.push('As notas têm ' + pct1(pf) + '% das vendas sem incidência ou com suspensão de PIS/Cofins (CST 08 e 09: a exportação, a venda com suspensão): o comparativo não separa essas vendas e conta o PIS/Cofins nelas — confira.');
     } else if (regimeHoje === 'presumido' || regimeHoje === 'real') {
-      // a ponte leu as notas e a maior parte da venda não tem o CST do PIS/Cofins (ou vem como "outras"): segue a conferir
+      // a ponte leu as notas e a maior parte da venda não tem o CST do PIS/Cofins (ou vem como "outras"). No Presumido, a
+      // apuração do PIS/Cofins que o Domínio fez decide os dois casos limpos (apuracaoPisCofins): toda a venda na base
+      // cheia, ou a alíquota zero que paga 10% desde abril de 2026. Fora deles, segue a conferir, com o que ela mostra
       const antes = origens[p + '.pctAliqZero'];
-      origens[p + '.pctAliqZero'] = origem('padrao', 'padrão: nenhuma — confira (só ' + pct1(pc.classificada / pc.total * 100) + '% das vendas têm o CST do PIS/Cofins nas notas do Domínio)', antes && antes.dica);
+      const ap = regimeHoje === 'presumido' ? apuracaoPisCofins(sPonte ? sPonte.janela : mp) : null;
+      const naApuracao = ap ? 'pela apuração do PIS/Cofins de ' + periodoCurto(ap) : '';
+      const taxa = v => (v * 100).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + '%';
+      if (ap && ap.conclui === 'zero_lc224') {
+        am.pctAliqZero = Math.max(0, 100 - num(am.pctMonofasico)); am.aliqZeroCesta = false;
+        origens[p + '.pctAliqZero'] = { ...origem('ponte', 'Domínio, pela ponte: ' + naApuracao + ', a venda é de alíquota zero (ou isenta) e recolhe 10% da alíquota desde abril de 2026 (' + taxa(ap.taxaPos) + ' da receita sem o ICMS)',
+          'as notas não têm o CST do PIS/Cofins em toda a venda; pela apuração que o escritório fez no Domínio, nada entrou na base da alíquota cheia (3,65%) e o recolhido desde abril de 2026 dá perto de 0,365% da receita sem o ICMS — os 10% da alíquota que a LC 224/2025 (art. 4º) cobra da alíquota zero e da isenção de fora da Cesta Básica Nacional. Se os produtos são da Cesta Básica Nacional (LC 214, Anexos I e XV), marque na atividade: seguem com zero'), apuracao: true };
+      } else if (ap && ap.conclui === 'paga') {
+        am.pctAliqZero = 0;
+        origens[p + '.pctAliqZero'] = { ...origem('ponte', 'Domínio, pela ponte: ' + naApuracao + ', toda a venda entrou na base do PIS/Cofins (nenhuma com alíquota zero)',
+          'as notas não têm o CST do PIS/Cofins em toda a venda; pela apuração que o escritório fez no Domínio, a base da alíquota cheia (3,65%) é a receita inteira, sem o ICMS destacado'), apuracao: true };
+      } else {
+        const daApuracao = ap && ap.n >= APURACAO_MESES && !(ap.creditos > 0.005) ? '; ' + naApuracao + ', ' + pct1(Math.min(ap.cheia, 9.99) * 100) + '% da receita sem o ICMS entrou na base cheia'
+          + (ap.cheia > 1.03 ? ' (a base passa da receita: regime de caixa ou meses apurados juntos)' : '')
+          + (ap.taxaPos != null && ap.taxaPos > 0.0002 ? ' e o recolhido além dela desde abril de 2026 foi de ' + taxa(ap.taxaPos) : '') : '';
+        origens[p + '.pctAliqZero'] = origem('padrao', 'padrão: nenhuma — confira (só ' + pct1(pc.classificada / pc.total * 100) + '% das vendas têm o CST do PIS/Cofins nas notas do Domínio' + daApuracao + ')', antes && antes.dica);
+      }
     }
   }
 

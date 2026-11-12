@@ -1043,6 +1043,60 @@ def main():
         ok(valor(qv) == '30.000,00' and qv.locator(ML + ' [data-usar-ponte]').count() == 0, '"Atualizar pelo Domínio" põe o número de hoje e a missão fecha de novo')
         qv.close()
 
+        print('16. O PIS/Cofins pela apuração do Domínio, quanto falta pro resultado virar e o custo que só a contabilidade tem')
+        # 12/11/2026, a primeira empresa do Comparativo: as notas com o CST em 60% da venda, a apuração do PIS/Cofins do
+        # Domínio sem nada na base cheia e com 0,365% da receita sem o ICMS recolhidos desde abril de 2026 (R$ 164,25 por
+        # mês), e o prejuízo de R$ 20.000 por mês na contabilidade
+        PZ, OZ = '#f_atividades_0_pctAliqZero', '.ct-orig[data-orig="atividades.0.pctAliqZero"]'
+        meses16 = ['2025-10', '2025-11', '2025-12'] + ['2026-%02d' % m for m in range(1, 10)]
+        def linhas16(extra=None):
+            return { c: { 'pc_tributada': 20000, 'pc_aliquota_zero': 10000, 'pc_outras': 20000, 'icms_saidas': 5000, 'icms_st_saidas': 0, 'ipi_saidas': 0, 'base_pis_cofins': 0, 'pis_apurado': 0, 'cofins_apurada': 0,
+                         'creditos_pis_cofins': 0, 'pis_cofins_a_recolher': 164.25 if c >= '2026-04' else 0, 'resultado_antes_ir': -20000, **(extra or {}) } for c in meses16 }
+        qa = abrir_v5({ 'linhas': linhas16() })
+        oz = texto(qa, OZ)
+        ok(qa.input_value(PZ) == '100' and qa.get_attribute(OZ, 'data-fonte') == 'ponte'
+           and oz == 'Domínio, pela ponte: pela apuração do PIS/Cofins de out/25 a set/26, a venda é de alíquota zero (ou isenta) e recolhe 10% da alíquota desde abril de 2026 (0,37% da receita sem o ICMS)',
+           f'sem o CST em toda a venda, a alíquota zero vem da apuração do PIS/Cofins do Domínio: {qa.input_value(PZ)}% ({oz[:70]}…)')
+        ok(not qa.is_checked('#f_atividades_0_aliqZeroCesta'), 'a marca da Cesta Básica Nacional segue desmarcada: quem diz é a equipe')
+        # a missão da confirmação: o custo que só a contabilidade tem
+        mc = texto(qa, '#fase .ct-m[data-id="contabil"]')
+        ok('A contabilidade tem R$' in mc and 'de custo ou despesa além das notas e da folha' in mc and 'Pergunte o que é: a depreciação, os juros, o ajuste do estoque, lançamento de outro período.' in mc
+           and 'Pela contabilidade, o resultado no Real é prejuízo de R$' in mc, f'a confirmação diz o custo que só a contabilidade tem ({mc[mc.find("Pela contabilidade"):][:150]}…)')
+        # o que muda o resultado: quanto do custo teria de ser estoque, contra as compras (R$ 313.400,33, 87% dos R$ 360.000)
+        mu = [t.replace('\xa0', ' ') for t in qa.locator('#resultado .ct-bloco li').all_inner_texts()]
+        virada = [t for t in mu if t.startswith('Pra o Presumido ficar mais barato que o Real em 2027')]
+        ok(len(virada) == 1 and 'o lucro do Real teria de subir R$ 313.400,33' in virada[0] and virada[0].endswith('São 87% das compras dos 12 meses (R$ 360.000,00).'),
+           f'o que muda o resultado: quanto do custo teria de ser estoque pra virar ({virada[0][-70:] if virada else mu})')
+        ok(qa.locator('#resultado .ct-bloco li.ct-muda', has_text='Pra o Presumido ficar mais barato').count() == 0, 'longe de um quarto das compras, a linha sai sem o amarelo')
+        # a missão do PIS/Cofins vem cumprida pela ponte, e a conta de 2026 do Presumido não cobra os 3,65% de tudo
+        qa.click('#trilha button[data-fase="2"]')
+        mp = texto(qa, '#fase .ct-m[data-id="piscofins"]')
+        ok(qa.get_attribute('#fase .ct-m[data-id="piscofins"]', 'data-estado') == 'feita' and 'veio do Domínio pela ponte' in mp and 'em 2026, R$ 1.363 no Presumido' in mp, f'a missão do PIS/Cofins vem cumprida pela ponte ({mp[:120]}…)')
+        qa.wait_for_function("() => (window.__mockDb.comparativos || []).some(r => r.cliente_id === 'c7' && r.entrada.entrada.atividades[0].pctAliqZero === 100 && r.entrada.origens['atividades.0.pctAliqZero'].apuracao === true)", timeout=6000)
+        ok(True, 'o estudo grava a alíquota zero com a origem da apuração')
+        qa.close()
+        # perto do empate: o prejuízo pequeno, e a linha sai em amarelo (até um quarto das compras)
+        qp = abrir_v5({ 'linhas': linhas16({ 'resultado_antes_ir': 2000 }) })
+        perto = qp.locator('#resultado .ct-bloco li.ct-muda', has_text='Pra o Presumido ficar mais barato')
+        ok(perto.count() == 1 and 'se o estoque cresceu isso no período e as compras foram direto pro custo, o resultado vira' in perto.inner_text(), 'perto do empate, a linha sai em amarelo e manda confirmar como o custo das vendas é lançado')
+        qp.close()
+        # a base cheia na venda toda: zero medido pela apuração
+        qc = abrir_v5({ 'linhas': linhas16({ 'base_pis_cofins': 45000, 'pis_apurado': 292.5, 'cofins_apurada': 1350, 'pis_cofins_a_recolher': 1642.5 }) })
+        ok(qc.input_value(PZ) == '0' and qc.get_attribute(OZ, 'data-fonte') == 'ponte' and 'toda a venda entrou na base do PIS/Cofins (nenhuma com alíquota zero)' in texto(qc, OZ), 'com a base cheia na venda toda, o zero vem medido pela apuração')
+        qc.close()
+        # parte da venda fora da base: segue a conferir, e a origem diz o que a apuração mostra
+        qn = abrir_v5({ 'linhas': linhas16({ 'base_pis_cofins': 40500, 'pis_apurado': 263.25, 'cofins_apurada': 1215, 'pis_cofins_a_recolher': 1478.25 }) })
+        ok(qn.get_attribute(OZ, 'data-fonte') == 'padrao' and texto(qn, OZ) == 'padrão: nenhuma — confira (só 60% das vendas têm o CST do PIS/Cofins nas notas do Domínio; pela apuração do PIS/Cofins de out/25 a set/26, 90% da receita sem o ICMS entrou na base cheia)',
+           f'sem conclusão, segue a conferir com o que a apuração mostra ({texto(qn, OZ)[-80:]})')
+        qn.close()
+        # o estudo gravado com a alíquota zero no padrão ganha a da apuração; o digitado fica
+        qg2 = abrir_v5({ 'linhas': linhas16(), 'estudo': { 'origens': { 'atividades.0.pctAliqZero': { 'fonte': 'padrao', 'texto': 'padrão: nenhuma — confira' } } } }, gravado=True)
+        ok(qg2.input_value(PZ) == '100' and qg2.get_attribute(OZ, 'data-fonte') == 'ponte', 'o estudo gravado com a alíquota zero no padrão abre com a da apuração')
+        qg2.close()
+        qg3 = abrir_v5({ 'linhas': linhas16(), 'estudo': { 'entrada': { 'atividades': [{ 'tipo': 'industria', 'receita': 600000, 'pctAliqZero': 40 }] }, 'origens': { 'atividades.0.pctAliqZero': { 'fonte': 'digitado', 'texto': 'digitado' } } } }, gravado=True)
+        ok(qg3.input_value(PZ) == '40' and qg3.get_attribute(OZ, 'data-fonte') == 'digitado', 'a alíquota zero que a equipe digitou fica como está')
+        qg3.close()
+
         ok(not erros, 'nenhum erro de JavaScript' + ('' if not erros else ': ' + ' | '.join(erros[:3])))
         b.close()
     srv.shutdown()
