@@ -130,6 +130,9 @@ const UNICOS = { rotinas_modelo: [['setor', 'nome']] };
 function q(table){
   const rows = DATA[table] || (DATA[table] = []);
   const self = { _head:false };
+  // a leitura que falha (tests/harness/transicao-saida.py): window.__mockErroTabela = { tabela: 'mensagem' } faz toda
+  // consulta dessa tabela voltar com o erro, como o banco de verdade quando a regra de acesso recusa
+  if (window.__mockErroTabela && window.__mockErroTabela[table]) self._err = { message: String(window.__mockErroTabela[table]) };
   const passa = r => (self._f||[]).every(([k,col,v,v2]) => { const x = r[col]; if (k==='in') return v.includes(x); if (k==='eq') return x===v; if (k==='neq') return x!==v; if (k==='is') return x==v; if (k==='not') return !(x==v2); if (x==null) return false; if (k==='lt') return x<v; if (k==='lte') return x<=v; if (k==='gt') return x>v; if (k==='gte') return x>=v; return true; });
   // executa a consulta montada: insert já feito, update/delete aplicados aqui (uma vez só)
   const executar = () => {

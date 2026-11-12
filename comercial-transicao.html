@@ -9,30 +9,62 @@
   <script type="module" src="assets/js/auth-guard.js"></script>
   <style>
     .tr-cards { display:grid; grid-template-columns:repeat(auto-fill, minmax(280px, 1fr)); gap:14px; }
-    .tr-card { background:var(--fill-1); border:1px solid var(--fill-3); border-radius:14px; padding:14px 16px; cursor:pointer; transition:border-color .15s; }
+    .tr-card { background:var(--fill-1); border:1px solid var(--fill-3); border-left:3px solid var(--tipo, var(--fill-3)); border-radius:14px; padding:14px 16px; cursor:pointer; transition:border-color .15s; }
+    .tr-card:focus-visible { outline:2px solid var(--tipo, var(--accent)); outline-offset:2px; }
     .tr-card:hover { border-color:rgba(138,174,200,.5); }
     .tr-card h3 { margin:0 0 2px; font-size:15px; color:var(--text); }
     .tr-card .mm { font-size:11.5px; color:var(--text-dim); }
     .tr-card .mini { height:7px; background:var(--fill-2); border-radius:999px; margin-top:10px; overflow:hidden; }
-    .tr-card .mini i { display:block; height:100%; background:linear-gradient(90deg,var(--brand-dark),var(--accent)); }
+    .tr-card .mini i { display:block; height:100%; background:linear-gradient(90deg,var(--brand-dark),var(--tipo, var(--accent))); }
     .tr-card.concluida { opacity:.55; }
     .tr-chip { display:inline-block; padding:0 8px; border-radius:999px; font-size:10.5px; border:1px solid var(--fill-3); color:var(--text-2); margin-right:5px; }
-    .tr-chip.tipo { color:var(--accent); border-color:rgba(82,180,198,.4); }
+    .tr-chip.tipo { color:var(--tipo, var(--accent)); border-color:var(--tipo-borda, rgba(82,180,198,.4)); background:var(--tipo-fundo, transparent); }
+    .tr-prazo.alerta, #detPrev.alerta { color:var(--warn); }
+    /* a cor de cada tipo (12/11/2026): verde a entrada, ciano o CNPJ novo, laranja a saída — o cartão, o chip, a barra e a ficha */
+    .tipo-entrada { --tipo:var(--ok); --tipo-fundo:rgba(63,176,122,.10); --tipo-borda:rgba(63,176,122,.42); }
+    .tipo-cnpj_novo { --tipo:var(--accent); --tipo-fundo:rgba(82,180,198,.10); --tipo-borda:rgba(82,180,198,.42); }
+    .tipo-saida { --tipo:var(--orange); --tipo-fundo:rgba(251,146,60,.10); --tipo-borda:rgba(251,146,60,.45); }
+    /* a lista em seções: saindo, chegando e concluídas */
+    .tr-secao-bloco + .tr-secao-bloco, .tr-secao-bloco + .tr-secao-conc { margin-top:26px; }
+    .tr-secao { display:flex; align-items:baseline; gap:10px; margin:0 0 10px; }
+    .tr-secao b { font-size:12.5px; color:var(--brand-light); text-transform:uppercase; letter-spacing:.05em; }
+    .tr-secao span { font-size:12px; color:var(--text-dim); }
+    .tr-secao-conc > summary { cursor:pointer; list-style:none; }
+    .tr-secao-conc > summary::-webkit-details-marker { display:none; }
+    .tr-secao-conc > summary b::before { content:'›'; display:inline-block; margin-right:6px; transition:transform .15s; }
+    .tr-secao-conc[open] > summary b::before { transform:rotate(90deg); }
 
-    .tr-topo { display:flex; gap:20px; align-items:flex-start; flex-wrap:wrap; background:var(--fill-1); border:1px solid var(--fill-3); border-radius:16px; padding:16px 20px; margin-bottom:20px; }
+    .tr-topo { display:flex; gap:20px; align-items:flex-start; flex-wrap:wrap; background:var(--fill-1); border:1px solid var(--fill-3); border-left:4px solid var(--tipo, var(--fill-3)); border-radius:16px; padding:16px 20px; margin-bottom:20px; }
     .tr-topo h2 { margin:0; font-size:19px; }
     .tr-topo .mm { color:var(--text-dim); font-size:12.5px; margin-top:3px; }
     .tr-dias { margin-left:auto; text-align:right; }
-    .tr-dias b { font-size:22px; color:var(--accent); display:block; }
+    .tr-dias b { font-size:22px; color:var(--tipo, var(--accent)); display:block; }
     .tr-prog { flex-basis:100%; }
     .tr-prog .barra { height:9px; background:var(--fill-2); border-radius:999px; overflow:hidden; }
-    .tr-prog .fill { height:100%; background:linear-gradient(90deg,var(--brand-dark),var(--accent)); border-radius:999px; transition:width .3s; }
+    .tr-prog .fill { height:100%; background:linear-gradient(90deg,var(--brand-dark),var(--tipo, var(--accent))); border-radius:999px; transition:width .3s; }
     .tr-prog small { color:var(--text-dim); font-size:11.5px; }
 
     .raia { display:grid; grid-template-columns:150px 1fr; gap:14px; margin-bottom:14px; }
     .raia-rotulo { background:rgba(91,130,166,.1); border:1px solid rgba(138,174,200,.25); border-radius:12px; padding:12px; align-self:start; }
     .raia-rotulo b { display:block; font-size:12.5px; color:var(--brand-light); text-transform:uppercase; letter-spacing:.05em; }
     .raia-rotulo button { margin-top:8px; }
+    .raia-rotulo small { display:block; font-size:11.5px; color:var(--text-dim); margin-top:4px; line-height:1.4; }
+    .raia-rotulo .raia-conta { display:inline-block; margin-top:6px; font-size:11px; padding:0 8px; border-radius:999px; color:var(--tipo, var(--accent)); border:1px solid var(--tipo-borda, var(--fill-3)); }
+    /* a saída: as etapas no lugar dos setores, na cor dela */
+    .tipo-saida .raia-rotulo { background:var(--tipo-fundo); border-color:var(--tipo-borda); }
+    .tipo-saida .raia-rotulo b { color:var(--tipo); }
+    /* Encerrar no escritório: o que ainda está ligado pras empresas que saem (só leitura, com a tela de cada um) */
+    .enc { flex-basis:100%; display:grid; gap:8px; }
+    .enc-item { display:flex; gap:10px; align-items:flex-start; background:var(--fill-1); border:1px solid var(--fill-3); border-radius:12px; padding:10px 12px; font-size:12.5px; line-height:1.5; color:var(--text-2); }
+    .enc-item.ligado { background:var(--tipo-fundo); border-color:var(--tipo-borda); }
+    .enc-item b { color:var(--text); font-weight:600; }
+    .enc-marca { font-weight:700; min-width:14px; text-align:center; }
+    .enc-item.ligado .enc-marca { color:var(--tipo); }
+    .enc-item.ok .enc-marca { color:var(--ok); }
+    .enc-item.duvida .enc-marca { color:var(--warn); }
+    .enc-txt { flex:1; min-width:0; }
+    .enc-item .btn { white-space:nowrap; flex-shrink:0; }
+    @media (max-width:640px) { .raia { grid-template-columns:1fr; } .enc-item { flex-wrap:wrap; } .enc-txt { flex-basis:calc(100% - 24px); } .enc-item .btn { margin-left:24px; } }
     .raia-cards { display:flex; gap:10px; flex-wrap:wrap; }
     .tcard { background:var(--fill-1); border:1px solid var(--fill-3); border-radius:12px; padding:10px 12px; width:256px; cursor:pointer; }
     .tcard:hover { border-color:rgba(138,174,200,.45); }
@@ -102,7 +134,7 @@
           <div class="aviso">As tarefas geradas aqui aparecem na Agenda de cada responsável automaticamente.</div>
           <button class="btn" id="btnNova">+ Nova transição</button>
         </div>
-        <div class="tr-cards" id="lista"></div>
+        <div id="lista"></div>
         <div class="aviso" id="listaVazia" style="display:none; margin-top:20px;">Nenhuma transição ainda — clique em "+ Nova transição" pra inaugurar.</div>
       </section>
 
@@ -143,7 +175,7 @@
           <option value="saida">Saída (vai pra outro escritório)</option>
         </select></label>
       <div class="duas">
-        <label class="campo"><span>Início</span><input type="date" id="nvInicio"></label>
+        <label class="campo"><span id="nvInicioRot">Início</span><input type="date" id="nvInicio"></label>
         <label class="campo"><span id="nvFuncRot">Terá funcionários?</span>
           <select id="nvFunc"><option value="">—</option><option value="true">Sim</option><option value="false">Não</option></select></label>
       </div>
@@ -152,9 +184,9 @@
         <div class="emp-sug" id="nvEmpSug" style="display:none;"></div>
         <div class="emp-chips" id="nvEmpChips"></div>
       </label>
-      <label class="campo"><span>Contato</span><input id="nvContato" placeholder="telefone / e-mail de referência"></label>
+      <label class="campo"><span id="nvContatoRot">Contato</span><input id="nvContato" placeholder="telefone / e-mail de referência"></label>
       <label class="campo"><span>Observações</span><textarea id="nvObs" rows="2"></textarea></label>
-      <div class="aviso">Ao criar, o kit do tipo escolhido gera as tarefas com prazos relativos ao início — e daí em diante tudo é editável: nome, prazo, responsável, status.</div>
+      <div class="aviso" id="nvDica">Ao criar, o kit do tipo escolhido gera as tarefas com prazos relativos ao início — e daí em diante tudo é editável: nome, prazo, responsável, status.</div>
       <div class="ov-acoes">
         <button class="btn btn-ghost" id="nvCancelar">Cancelar</button>
         <button class="btn" id="nvCriar">Criar transição</button>
@@ -169,18 +201,19 @@
       <h3>Editar transição</h3>
       <label class="campo"><span>Título</span><input id="edtTitulo"></label>
       <div class="duas">
-        <label class="campo"><span>Início</span><input type="date" id="edtInicio"></label>
-        <label class="campo"><span id="edtFuncRot">Terá funcionários?</span>
-          <select id="edtFunc"><option value="">—</option><option value="true">Sim</option><option value="false">Não</option></select></label>
+        <label class="campo"><span id="edtInicioRot">Início</span><input type="date" id="edtInicio"></label>
+        <label class="campo"><span id="edtFimRot">Previsão de conclusão</span><input type="date" id="edtFim"></label>
       </div>
+      <label class="campo"><span id="edtFuncRot">Terá funcionários?</span>
+        <select id="edtFunc"><option value="">—</option><option value="true">Sim</option><option value="false">Não</option></select></label>
       <label class="campo"><span>Empresas vinculadas (do cadastro de clientes)</span>
         <input id="edtEmpBusca" placeholder="digite pra buscar no cadastro…" autocomplete="off">
         <div class="emp-sug" id="edtEmpSug" style="display:none;"></div>
         <div class="emp-chips" id="edtEmpChips"></div>
       </label>
-      <label class="campo"><span>Contato</span><input id="edtContato"></label>
+      <label class="campo"><span id="edtContatoRot">Contato</span><input id="edtContato"></label>
       <label class="campo"><span>Observações</span><textarea id="edtObs" rows="2"></textarea></label>
-      <div class="aviso">Mudar o início recalcula o "dia X de 90", mas não re-data as tarefas já geradas — elas seguem editáveis uma a uma.</div>
+      <div class="aviso">Mudar o início ou o fim muda a contagem da transição, mas não o prazo das tarefas já geradas — elas seguem editáveis uma a uma.</div>
       <div class="ov-acoes">
         <button class="btn btn-ghost" id="edtCancelar">Cancelar</button>
         <button class="btn" id="edtSalvar">Salvar</button>
@@ -227,8 +260,13 @@
             <option value="bloqueada">Bloqueada (depende de outra)</option>
             <option value="concluida">Concluída</option>
           </select></label>
-        <label class="campo"><span>Fase</span><input id="edFase" list="dlFases"></label>
+        <label class="campo"><span>Setor</span>
+          <select id="edSetor">
+            <option value="societario">Societário</option><option value="fiscal">Fiscal</option><option value="dp">DP</option>
+            <option value="contabil">Contábil</option><option value="financeiro">Financeiro</option><option value="comercial">Comercial</option>
+          </select></label>
       </div>
+      <label class="campo"><span>Fase</span><input id="edFase" list="dlFases"></label>
       <label class="campo"><span>Situação (anotação livre — ex.: "solicitado 18/07, reiterado 25/07")</span><textarea id="edSituacao" rows="2"></textarea></label>
       <label class="campo"><span>Descrição (linhas com ☐ viram a lista abaixo)</span><textarea id="edDescricao" rows="3"></textarea></label>
       <div id="edChecklist" hidden></div>
@@ -242,24 +280,27 @@
 
   <datalist id="dlEquipe"><option>Thalia</option><option>Vitória</option><option>Adaini</option><option>Samuel</option><option>Diego</option><option>Edna</option></datalist>
   <datalist id="dlFases"><option>Fechamento e boas-vindas</option><option>Documentos e escritório anterior</option><option>Cadastros e sistemas</option><option>Primeiras entregas</option><option>Acompanhamento</option></datalist>
+  <datalist id="dlFasesSaida"><option>Formalizar a saída</option><option>Entregar ao novo escritório</option><option>Encerrar no escritório</option></datalist>
 
   <script type="module">
     import { supabase, getCurrentUser, signOut } from './assets/js/supabase.js';
-    import { hojeLocal, dataLocal } from './assets/js/utils.js';   // dia no fuso local (toISOString é UTC)
+    import { hojeLocal } from './assets/js/utils.js';   // dia no fuso local (toISOString é UTC)
     import { tarefasDoKit, tarefasQueFaltam, rotuloFuncionarios } from './assets/js/transicao-kit.js';
     import { montarChecklist, rotuloDoProgresso } from './assets/js/checklist.js';
     import { concluirTarefas } from './assets/js/tarefas-acoes.js';
     import { datasPadrao, mensagemDoPedido, rotuloDoDia, avisoDaData } from './assets/js/transicao-pedido.js';
+    // os tipos (12/11/2026): a cor de cada um, a contagem, as etapas da saída e o que ainda está ligado no escritório
+    import { TIPOS, rotuloDoTipo, classeDoTipo, previsaoDoTipo, prazoDaTransicao, ETAPAS_SAIDA, etapaDaSaida, faseDaSaida, encerramentoDaSaida, secoesDaLista } from './assets/js/transicao-tipos.js';
     const escHtml = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));   // texto do banco nunca vira HTML (o nome que veio do formulário público, por exemplo)
 
     const SETORES = [['societario','Societário'],['fiscal','Fiscal'],['dp','DP'],['contabil','Contábil'],['financeiro','Financeiro'],['comercial','Comercial']];
-    const TIPO_LABEL = { entrada:'Entrada', cnpj_novo:'CNPJ novo', saida:'Saída' };
     const fmtData = d => d ? new Date(d + 'T12:00:00').toLocaleDateString('pt-BR') : '—';
     const hojeISO = () => hojeLocal();   // dia no fuso local (toISOString é UTC: depois das 21h já era amanhã)
 
     let transicoes = [], clientes = [], atual = null, tarefasAtual = [], empresasAtual = [];
     let empSelecionadas = [];
     let tarefaEd = null;
+    let encItens = null;   // o que ainda está ligado no escritório (saída): null = conferindo
     let usuarioEmail = null;
 
     (async () => {
@@ -295,20 +336,32 @@
         });
       }
       const el = document.getElementById('lista');
-      el.innerHTML = transicoes.map(t => {
+      // a lista em seções (12/11/2026): saindo, chegando e concluídas, a mais urgente primeiro, e cada cartão na cor do tipo
+      const cartao = t => {
         const p = progresso[t.id] || { total: 0, feitas: 0 };
         const pct = p.total ? Math.round(p.feitas / p.total * 100) : 0;
-        const dia = Math.max(1, Math.floor((new Date(hojeISO()) - new Date(t.inicio)) / 864e5) + 1);
+        const pr = prazoDaTransicao(t, hojeISO());
         const emp = (t.transicao_empresas || []).length;
-        return `<div class="tr-card ${t.status === 'concluida' ? 'concluida' : ''}" data-id="${t.id}">
+        return `<div class="tr-card ${classeDoTipo(t.tipo)} ${t.status === 'concluida' ? 'concluida' : ''}" data-id="${escHtml(t.id)}" role="button" tabindex="0">
           <h3>${escHtml(t.titulo)}</h3>
-          <div class="mm"><span class="tr-chip tipo">${TIPO_LABEL[t.tipo] || t.tipo}</span><span class="tr-chip">${emp} empresa${emp === 1 ? '' : 's'}</span> ${t.status === 'concluida' ? '🏁 concluída' : `dia ${dia} de 90`}</div>
+          <div class="mm"><span class="tr-chip tipo">${escHtml(rotuloDoTipo(t.tipo))}</span><span class="tr-chip">${emp} empresa${emp === 1 ? '' : 's'}</span></div>
+          <div class="mm tr-prazo${pr.alerta ? ' alerta' : ''}" style="margin-top:6px;">${escHtml(pr.cartao)}</div>
           <div class="mini"><i style="width:${pct}%"></i></div>
           <div class="mm" style="margin-top:4px;">${p.feitas} de ${p.total} tarefas · ${pct}%</div>
         </div>`;
+      };
+      el.innerHTML = secoesDaLista(transicoes, hojeISO()).map(sec => {
+        const titulo = `<b>${sec.rotulo}</b><span>${sec.itens.length}${sec.dica ? ' · ' + sec.dica : ''}</span>`;
+        const grade = `<div class="tr-cards">${sec.itens.map(cartao).join('')}</div>`;
+        return sec.chave === 'concluidas'
+          ? `<details class="tr-secao-conc"><summary class="tr-secao">${titulo}</summary>${grade}</details>`
+          : `<section class="tr-secao-bloco" data-secao="${sec.chave}"><div class="tr-secao">${titulo}</div>${grade}</section>`;
       }).join('');
       document.getElementById('listaVazia').style.display = transicoes.length ? 'none' : 'block';
-      el.querySelectorAll('.tr-card').forEach(c => c.addEventListener('click', () => abrirDetalhe(c.dataset.id)));
+      el.querySelectorAll('.tr-card').forEach(c => {
+        c.addEventListener('click', () => abrirDetalhe(c.dataset.id));
+        c.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); abrirDetalhe(c.dataset.id); } });
+      });
     }
 
     // ---------- nova transição ----------
@@ -317,15 +370,26 @@
       empSelecionadas = [];
       ['nvTitulo','nvContato','nvObs','nvEmpBusca'].forEach(id => document.getElementById(id).value = '');
       document.getElementById('nvTipo').value = 'entrada';
-      document.getElementById('nvFuncRot').textContent = rotuloFuncionarios('entrada');
+      rotulosDaNova('entrada');
       document.getElementById('nvFunc').value = '';
       document.getElementById('nvInicio').value = hojeISO();
       renderEmpChips();
       ovNova.classList.add('aberto');
     });
     document.getElementById('nvCancelar').addEventListener('click', () => ovNova.classList.remove('aberto'));
-    // na saída a empresa ainda é cliente: "Tem funcionários?"; na entrada e no CNPJ novo, "Terá"
-    document.getElementById('nvTipo').addEventListener('change', e => { document.getElementById('nvFuncRot').textContent = rotuloFuncionarios(e.target.value); });
+    // na saída a empresa ainda é cliente: "Tem funcionários?"; na entrada e no CNPJ novo, "Terá". E a saída conta o aviso
+    // prévio (o início é o dia em que o cliente avisou) e o contato é quem recebe os documentos
+    const DICA_NOVA = 'Ao criar, o kit do tipo escolhido gera as tarefas com prazos relativos ao início — e daí em diante tudo é editável: nome, prazo, responsável, status.';
+    function rotulosDaNova(tipo){
+      const saida = tipo === 'saida';
+      document.getElementById('nvFuncRot').textContent = rotuloFuncionarios(tipo);
+      document.getElementById('nvInicioRot').textContent = saida ? 'Início do aviso (o dia em que o cliente avisou)' : 'Início';
+      document.getElementById('nvContatoRot').textContent = saida ? 'Quem recebe os documentos (o novo escritório)' : 'Contato';
+      document.getElementById('nvDica').textContent = saida
+        ? 'Ao criar, o kit da saída gera as tarefas em três etapas: formalizar a saída, entregar ao novo escritório e encerrar no escritório. O fim do aviso fica ' + TIPOS.saida.dias + ' dias depois do início (o contrato padrão) e muda no ✎ Editar.'
+        : DICA_NOVA;
+    }
+    document.getElementById('nvTipo').addEventListener('change', e => rotulosDaNova(e.target.value));
 
     const empBusca = document.getElementById('nvEmpBusca');
     const empSug = document.getElementById('nvEmpSug');
@@ -355,7 +419,7 @@
       const inicio = document.getElementById('nvInicio').value || hojeISO();
       const tipo = document.getElementById('nvTipo').value;
       const funcV = document.getElementById('nvFunc').value;
-      const prev = dataLocal(new Date(new Date(inicio + 'T12:00:00').getTime() + 90 * 864e5));
+      const prev = previsaoDoTipo(tipo, inicio);   // entrada e CNPJ novo, 90 dias; saída, os 30 do aviso prévio
       const { data: tr, error } = await supabase.from('transicoes').insert({
         titulo, tipo,
         inicio, previsao_fim: prev,
@@ -369,6 +433,7 @@
       // documentos do DP (do escritório anterior, na entrada; pro novo escritório, na saída) viram uma tarefa só, com a lista
       const { data: kit } = await supabase.from('transicao_kit').select('*').eq('tipo', tipo).eq('ativo', true).order('ordem');
       const doKit = tarefasDoKit(kit, { inicio, teraFuncionarios: funcV === '' ? null : funcV === 'true', transicaoId: tr.id, clienteId: null });
+      if (tipo === 'saida') doKit.forEach(x => { x.fase = faseDaSaida(x); });   // a etapa da saída, no lugar da fase da entrada
       if (doKit.length) await supabase.from('tarefas').insert(doKit);
       ovNova.classList.remove('aberto');
       abrirDetalhe(tr.id);
@@ -385,17 +450,70 @@
       tarefasAtual = ts || [];
       document.getElementById('painelLista').style.display = 'none';
       document.getElementById('painelDetalhe').style.display = 'block';
+      encItens = null;
       renderDetalhe();
+      carregarEncerramento();
+    }
+
+    // Encerrar no escritório (12/11/2026): o que ainda está ligado pras empresas da saída — só leitura; cada coisa se
+    // desliga na tela dela (assets/js/transicao-tipos.js, encerramentoDaSaida). A lista que não deu pra ler sai "não conferi".
+    async function carregarEncerramento(){
+      const t = atual;
+      const ids = empresasAtual.map(e => e.cliente_id).filter(Boolean);
+      if (!t || t.tipo !== 'saida') { encItens = []; return; }
+      if (!ids.length) { encItens = []; renderDetalhe(); return; }
+      const ler = async q => { try { const { data, error } = await q; return error ? null : (data || []); } catch (e) { return null; } };
+      const [carteira, cadastro, cobrancas, vinculos, recorrentes, tarefas, alvaras, certificados] = await Promise.all([
+        ler(supabase.from('carteira_info').select('cliente_id, saida, motivo_saida').in('cliente_id', ids)),
+        ler(supabase.from('clientes').select('id, status').in('id', ids)),
+        ler(supabase.from('cobrancas_config').select('cliente_id, ativo, valor_base').in('cliente_id', ids)),
+        ler(supabase.from('cliente_obrigacoes').select('cliente_id, ativo, obrigacao_id').in('cliente_id', ids).eq('ativo', true)),
+        ler(supabase.from('tarefas_recorrentes').select('cliente_id, ativo, setor, titulo, data_fim').in('cliente_id', ids).eq('ativo', true)),
+        ler(supabase.from('tarefas').select('id, cliente_id, status, prazo, titulo, transicao_id').in('cliente_id', ids).neq('status', 'concluida')),
+        ler(supabase.from('alvaras').select('cliente_id, tipo, vencimento').in('cliente_id', ids)),
+        ler(supabase.from('certificados_digitais').select('cliente_id, acompanhar, titular, validade').in('cliente_id', ids).eq('acompanhar', true))
+      ]);
+      let obrigacoes = vinculos;
+      if (vinculos && vinculos.length) {
+        const nomes = await ler(supabase.from('obrigacoes_fiscais').select('id, nome').in('id', [...new Set(vinculos.map(v => v.obrigacao_id).filter(Boolean))]));
+        obrigacoes = vinculos.map(v => ({ ...v, nome: ((nomes || []).find(o => o.id === v.obrigacao_id) || {}).nome || null }));
+      }
+      if (atual !== t) return;   // abriu outra transição no meio
+      encItens = encerramentoDaSaida({
+        empresas: empresasAtual.filter(e => e.cliente_id).map(e => ({ id: e.cliente_id, nome: e.clientes?.nome_principal || 'empresa' })),
+        carteira, clientes: cadastro, cobrancas, obrigacoes, recorrentes, tarefas, alvaras, certificados,
+        fim: prazoDaTransicao(t, hojeISO()).fim, transicaoId: t.id
+      });
+      renderDetalhe();
+    }
+    function htmlDoEncerramento(){
+      if (encItens === null) return '<div class="enc"><span class="aviso">Conferindo o que ainda está ligado no escritório…</span></div>';
+      if (!encItens.length) return '<div class="enc"><span class="aviso">Vincule as empresas no ✎ Editar pra ver o que ainda está ligado no escritório pra elas.</span></div>';
+      const abertos = encItens.filter(i => i.ligado !== false), desligados = encItens.filter(i => i.ligado === false);
+      const linha = i => `<div class="enc-item ${i.ligado === true ? 'ligado' : 'duvida'}" data-enc="${escHtml(i.chave)}">
+          <span class="enc-marca" aria-hidden="true">${i.ligado === true ? '●' : '?'}</span>
+          <div class="enc-txt"><b>${escHtml(i.rotulo)}.</b> ${escHtml(i.texto)}</div>
+          <a class="btn btn-ghost btn-sm" href="${escHtml(i.link)}" target="_blank" rel="noopener">${escHtml(i.rotuloLink)} ↗</a>
+        </div>`;
+      // o que já está desligado vai numa linha só, com o texto de cada um no título (passar o mouse)
+      const ok = desligados.length ? `<div class="enc-item ok" data-enc="desligado">
+          <span class="enc-marca" aria-hidden="true">✓</span>
+          <div class="enc-txt"><b>${abertos.length ? 'Já desligado' : 'Tudo desligado no escritório'}.</b> ${desligados.map(i => `<span title="${escHtml(i.texto)}">${escHtml(i.rotulo)}</span>`).reduce((a, x, k, l) => a + (k === 0 ? '' : k === l.length - 1 ? ' e ' : ', ') + x, '')}.</div>
+        </div>` : '';
+      return '<div class="enc">' + abertos.map(linha).join('') + ok + '</div>';
     }
 
     function renderDetalhe(){
       const t = atual;
+      const saida = t.tipo === 'saida';
+      document.getElementById('painelDetalhe').className = classeDoTipo(t.tipo);   // a cor do tipo na ficha
       document.getElementById('detTitulo').textContent = t.titulo;
-      const dia = Math.max(1, Math.floor((new Date(hojeISO()) - new Date(t.inicio)) / 864e5) + 1);
-      document.getElementById('detMeta').innerHTML = `<span class="tr-chip tipo">${TIPO_LABEL[t.tipo] || t.tipo}</span> início ${fmtData(t.inicio)}${t.tera_funcionarios === true ? (t.tipo === 'saida' ? ' · com funcionários' : ' · terá funcionários') : t.tera_funcionarios === false ? ' · sem funcionários' : ''}${t.contato ? ' · ' + escHtml(t.contato) : ''}`;
+      const pr = prazoDaTransicao(t, hojeISO());
+      document.getElementById('detMeta').innerHTML = `<span class="tr-chip tipo">${escHtml(rotuloDoTipo(t.tipo))}</span> ${saida ? 'aviso desde' : 'início'} ${fmtData(t.inicio)}${t.tera_funcionarios === true ? (saida ? ' · com funcionários' : ' · terá funcionários') : t.tera_funcionarios === false ? ' · sem funcionários' : ''}${t.contato ? (saida ? ' · documentos pra: ' : ' · ') + escHtml(t.contato) : ''}`;
       document.getElementById('detEmpresas').innerHTML = empresasAtual.map(e => `<span class="emp-chip">${escHtml(e.clientes?.nome_principal || '?')}${e.clientes?.cidade ? ` · ${escHtml(e.clientes.cidade)}` : ''}</span>`).join('') || '<span class="aviso">nenhuma empresa vinculada ainda — use o ✎ Editar quando o cadastro existir</span>';
-      document.getElementById('detDias').innerHTML = t.status === 'concluida' ? '🏁' : `Dia ${Math.min(dia, 999)} <span style="color:var(--text-dim);font-size:13px;">de 90</span>`;
-      document.getElementById('detPrev').textContent = t.status === 'concluida' ? `concluída em ${fmtData((t.concluida_em || '').slice(0, 10))}` : `previsão de conclusão: ${fmtData(t.previsao_fim)}`;
+      document.getElementById('detDias').innerHTML = escHtml(pr.grande) + (pr.pequeno ? ` <span style="color:var(--text-dim);font-size:13px;">${escHtml(pr.pequeno)}</span>` : '');
+      document.getElementById('detPrev').textContent = pr.linha;
+      document.getElementById('detPrev').classList.toggle('alerta', pr.alerta);
 
       const total = tarefasAtual.length;
       const feitas = tarefasAtual.filter(x => x.status === 'concluida').length;
@@ -406,39 +524,65 @@
       document.getElementById('detResumo').textContent = `${feitas} de ${total} tarefas concluídas · ${pct}%` + (aguard ? ` — ${aguard} aguardando terceiro` : '') + (atras ? ` — ${atras} atrasada${atras > 1 ? 's' : ''}` : '');
 
       const bc = document.getElementById('btnConcluir');
-      bc.textContent = t.status === 'concluida' ? '↩ Reabrir transição' : '🏁 Concluir transição';
+      bc.textContent = t.status === 'concluida' ? (saida ? '↩ Reabrir a saída' : '↩ Reabrir transição') : (saida ? '🏁 Concluir a saída' : '🏁 Concluir transição');
       // o card de documentos e a mensagem pro cliente: só na entrada (quem vem de outro escritório)
       document.getElementById('btnPedirDocs').style.display = t.tipo === 'entrada' ? '' : 'none';
 
       const raias = document.getElementById('raias');
-      raias.innerHTML = SETORES.map(([chave, rotulo]) => {
-        const doSetor = tarefasAtual.filter(x => x.setor === chave);
-        if (!doSetor.length && !['societario','fiscal','dp','contabil','comercial'].includes(chave)) return '';
-        const cards = doSetor.map(x => {
-          const atrasada = x.status !== 'concluida' && x.prazo && x.prazo < hojeISO();
-          const cls = x.status === 'concluida' ? 'concluida' : x.status === 'aguardando' ? 'aguardando' : x.status === 'bloqueada' ? 'bloqueada' : x.status === 'em_andamento' ? 'andamento' : '';
-          const tag = x.status === 'aguardando' ? '<span class="st-tag ag">⏳ aguardando terceiro</span>'
-            : x.status === 'bloqueada' ? '<span class="st-tag bl">🔗 bloqueada</span>'
-            : x.status === 'em_andamento' ? '<span class="st-tag an">em andamento</span>'
-            : x.status === 'concluida' ? `<span class="st-tag">✓ ${fmtData(x.concluida_em ? x.concluida_em.slice(0, 10) : x.prazo)}</span>` : '';
-          return `<div class="tcard ${cls} ${atrasada ? 'atrasada' : ''}" data-tid="${x.id}">
-            <div class="tt">${escHtml(x.titulo)}</div>
-            <div class="mm">${atrasada ? '<span class="st-tag at">⚠ atrasada</span>' : ''}${tag}${x.prazo && x.status !== 'concluida' ? `<span class="st-tag">prazo ${fmtData(x.prazo)}</span>` : ''}${x.responsavel ? `<span class="st-tag">${escHtml(x.responsavel)}</span>` : ''}${rotuloDoProgresso(x.descricao) ? `<span class="st-tag" title="Itens da lista feitos">${rotuloDoProgresso(x.descricao)}</span>` : ''}</div>
-            ${x.situacao ? `<div class="sit">${escHtml(x.situacao)}</div>` : ''}
+      // o cartão da tarefa; na saída, com o setor (as raias são as etapas, não os setores)
+      const cardDaTarefa = x => {
+        const atrasada = x.status !== 'concluida' && x.prazo && x.prazo < hojeISO();
+        const cls = x.status === 'concluida' ? 'concluida' : x.status === 'aguardando' ? 'aguardando' : x.status === 'bloqueada' ? 'bloqueada' : x.status === 'em_andamento' ? 'andamento' : '';
+        const tag = x.status === 'aguardando' ? '<span class="st-tag ag">⏳ aguardando terceiro</span>'
+          : x.status === 'bloqueada' ? '<span class="st-tag bl">🔗 bloqueada</span>'
+          : x.status === 'em_andamento' ? '<span class="st-tag an">em andamento</span>'
+          : x.status === 'concluida' ? `<span class="st-tag">✓ ${fmtData(x.concluida_em ? x.concluida_em.slice(0, 10) : x.prazo)}</span>` : '';
+        const setor = saida ? `<span class="st-tag">${escHtml(SETORES.find(z => z[0] === x.setor)?.[1] || x.setor || 'sem setor')}</span>` : '';
+        return `<div class="tcard ${cls} ${atrasada ? 'atrasada' : ''}" data-tid="${escHtml(x.id)}">
+          <div class="tt">${escHtml(x.titulo)}</div>
+          <div class="mm">${atrasada ? '<span class="st-tag at">⚠ atrasada</span>' : ''}${tag}${x.prazo && x.status !== 'concluida' ? `<span class="st-tag">prazo ${fmtData(x.prazo)}</span>` : ''}${setor}${x.responsavel ? `<span class="st-tag">${escHtml(x.responsavel)}</span>` : ''}${rotuloDoProgresso(x.descricao) ? `<span class="st-tag" title="Itens da lista feitos">${rotuloDoProgresso(x.descricao)}</span>` : ''}</div>
+          ${x.situacao ? `<div class="sit">${escHtml(x.situacao)}</div>` : ''}
+        </div>`;
+      };
+      if (saida) {
+        // a saída em três etapas (12/11/2026): formalizar, entregar ao novo escritório e encerrar no escritório
+        const ligados = (encItens || []).filter(i => i.ligado === true).length;
+        raias.innerHTML = ETAPAS_SAIDA.map(et => {
+          const daEtapa = tarefasAtual.filter(x => etapaDaSaida(x) === et.chave);
+          const extra = et.chave === 'encerrar' ? htmlDoEncerramento() : '';
+          const conta = et.chave === 'encerrar' && encItens && encItens.length ? `<span class="raia-conta">${ligados ? ligados + (ligados === 1 ? ' coisa ligada' : ' coisas ligadas') : 'nada ligado'}</span>` : '';
+          return `<div class="raia" data-etapa="${et.chave}">
+            <div class="raia-rotulo"><b>${et.rotulo}</b><small>${et.dica}</small>${conta}<button class="btn btn-ghost btn-sm" data-add="${et.chave}">+ tarefa</button></div>
+            <div class="raia-cards">${extra}${daEtapa.map(cardDaTarefa).join('') || (extra ? '' : '<span class="aviso">sem tarefas nesta etapa</span>')}</div>
           </div>`;
         }).join('');
-        return `<div class="raia">
-          <div class="raia-rotulo"><b>${rotulo}</b><button class="btn btn-ghost btn-sm" data-add="${chave}">+ tarefa</button></div>
-          <div class="raia-cards">${cards || '<span class="aviso">sem tarefas neste setor</span>'}</div>
-        </div>`;
-      }).join('');
+      } else {
+        raias.innerHTML = SETORES.map(([chave, rotulo]) => {
+          const doSetor = tarefasAtual.filter(x => x.setor === chave);
+          if (!doSetor.length && !['societario','fiscal','dp','contabil','comercial'].includes(chave)) return '';
+          return `<div class="raia">
+            <div class="raia-rotulo"><b>${rotulo}</b><button class="btn btn-ghost btn-sm" data-add="${chave}">+ tarefa</button></div>
+            <div class="raia-cards">${doSetor.map(cardDaTarefa).join('') || '<span class="aviso">sem tarefas neste setor</span>'}</div>
+          </div>`;
+        }).join('');
+      }
       raias.querySelectorAll('[data-tid]').forEach(c => c.addEventListener('click', () => abrirTarefa(c.dataset.tid)));
       raias.querySelectorAll('[data-add]').forEach(b => b.addEventListener('click', () => novaTarefa(b.dataset.add)));
     }
 
     document.getElementById('btnConcluir').addEventListener('click', async () => {
       const fechar = atual.status !== 'concluida';
-      if (fechar && !confirm('Concluir esta transição? O cliente vira ativo no cadastro e entra na carteira de clientes.')) return;
+      const saida = atual.tipo === 'saida';
+      if (fechar) {
+        // a saída não mexe no cadastro nem na Carteira: a geração dos boletos pula quem tem data de saída, então a saída
+        // entra na Carteira depois do boleto do último mês, e o quadro "Encerrar no escritório" leva a cada tela
+        const ligados = (encItens || []).filter(i => i.ligado === true).map(i => i.rotulo.toLowerCase());
+        const msg = !saida ? 'Concluir esta transição? O cliente vira ativo no cadastro e entra na carteira de clientes.'
+          : 'Concluir esta saída?' + (ligados.length
+            ? '\n\nAinda está ligado no escritório: ' + ligados.join(', ') + '. Concluir não desliga nada: isso se faz em cada tela (o quadro "Encerrar no escritório" leva até elas).'
+            : '\n\nNada mais ligado no escritório pra estas empresas.');
+        if (!confirm(msg)) return;
+      }
       const { error } = await supabase.from('transicoes').update({
         status: fechar ? 'concluida' : 'em_andamento',
         concluida_em: fechar ? new Date().toISOString() : null
@@ -448,7 +592,7 @@
       if (fechar) {
         try {
           const ids = (empresasAtual || []).map(e => e.cliente_id).filter(Boolean);
-          if (ids.length) {
+          if (ids.length && !saida) {
             await supabase.from('clientes').update({ status: 'ativo' }).in('id', ids).eq('status', 'em_transicao');
             if (atual.tipo !== 'saida') {
               const { data: cls } = await supabase.from('clientes').select('id, tipo_pessoa, regime_tributario, cnae_principal').in('id', ids);
@@ -483,7 +627,7 @@
           }
         } catch (e) { console.warn('Ponte carteira falhou (conclusão mantida):', e); }
       }
-      m.style.color = 'var(--ok)'; m.textContent = fechar ? '🏁 Transição concluída — cliente ativo e na carteira!' : 'Transição reaberta.';
+      m.style.color = 'var(--ok)'; m.textContent = !fechar ? 'Transição reaberta.' : saida ? '🏁 Saída concluída.' : '🏁 Transição concluída — cliente ativo e na carteira!';
       atual.status = fechar ? 'concluida' : 'em_andamento';
       atual.concluida_em = fechar ? new Date().toISOString() : null;
       renderDetalhe();
@@ -532,6 +676,11 @@
     document.getElementById('btnEditar').addEventListener('click', () => {
       document.getElementById('edtTitulo').value = atual.titulo || '';
       document.getElementById('edtInicio').value = atual.inicio || '';
+      const saidaEd = atual.tipo === 'saida';
+      document.getElementById('edtInicioRot').textContent = saidaEd ? 'Início do aviso' : 'Início';
+      document.getElementById('edtFimRot').textContent = saidaEd ? 'Fim do aviso' : 'Previsão de conclusão';
+      document.getElementById('edtFim').value = prazoDaTransicao(atual, hojeISO()).fim;
+      document.getElementById('edtContatoRot').textContent = saidaEd ? 'Quem recebe os documentos (o novo escritório)' : 'Contato';
       document.getElementById('edtFuncRot').textContent = rotuloFuncionarios(atual.tipo);
       document.getElementById('edtFunc').value = atual.tera_funcionarios === true ? 'true' : atual.tera_funcionarios === false ? 'false' : '';
       document.getElementById('edtContato').value = atual.contato || '';
@@ -566,9 +715,13 @@
     }
     document.getElementById('edtSalvar').addEventListener('click', async () => {
       const funcV = document.getElementById('edtFunc').value;
+      const inicioNovo = document.getElementById('edtInicio').value || atual.inicio;
+      const fimNovo = document.getElementById('edtFim').value || atual.previsao_fim || null;
+      if (fimNovo && inicioNovo && fimNovo < inicioNovo) { alert((atual.tipo === 'saida' ? 'O fim do aviso' : 'A previsão de conclusão') + ' não pode vir antes do início.'); return; }
       const campos = {
         titulo: document.getElementById('edtTitulo').value.trim() || atual.titulo,
-        inicio: document.getElementById('edtInicio').value || atual.inicio,
+        inicio: inicioNovo,
+        previsao_fim: fimNovo,
         tera_funcionarios: funcV === '' ? null : funcV === 'true',
         contato: document.getElementById('edtContato').value.trim() || null,
         observacao: document.getElementById('edtObs').value.trim() || null
@@ -583,6 +736,7 @@
         const clis = [...new Set(tarefasAtual.map(x => x.cliente_id).filter(Boolean))];
         const falta = tarefasQueFaltam(kit, tarefasAtual, { teraFuncionarios: campos.tera_funcionarios, inicio: campos.inicio, hoje: hojeISO(),
           transicaoId: atual.id, clienteId: clis.length === 1 ? clis[0] : null });
+        if (atual.tipo === 'saida') falta.novas.forEach(x => { x.fase = faseDaSaida(x); });
         let erroKit = null;
         if (falta.novas.length) { const { error: e1 } = await supabase.from('tarefas').insert(falta.novas); erroKit = erroKit || e1; }
         for (const a of falta.atualizar) { const { error: e2 } = await supabase.from('tarefas').update({ descricao: a.descricao }).eq('id', a.id); erroKit = erroKit || e2; }
@@ -614,6 +768,8 @@
       document.getElementById('edResp').value = tarefaEd.responsavel || '';
       document.getElementById('edPrazo').value = tarefaEd.prazo || '';
       document.getElementById('edStatus').value = ['pendente','em_andamento','aguardando','bloqueada','concluida'].includes(tarefaEd.status) ? tarefaEd.status : 'pendente';
+      document.getElementById('edSetor').value = SETORES.some(z => z[0] === tarefaEd.setor) ? tarefaEd.setor : 'societario';
+      document.getElementById('edFase').setAttribute('list', atual && atual.tipo === 'saida' ? 'dlFasesSaida' : 'dlFases');
       document.getElementById('edFase').value = tarefaEd.fase || '';
       document.getElementById('edSituacao').value = tarefaEd.situacao || '';
       document.getElementById('edDescricao').value = tarefaEd.descricao || '';
@@ -628,10 +784,14 @@
       } });
       ovTarefa.classList.add('aberto');
     }
-    async function novaTarefa(setor){
+    // o "+ tarefa" da raia: na entrada, a raia é o setor; na saída, a etapa (a tarefa nasce com a fase dela e o setor
+    // padrão da etapa, que a janela da tarefa troca)
+    async function novaTarefa(chave){
+      const etapa = atual.tipo === 'saida' ? ETAPAS_SAIDA.find(e => e.chave === chave) : null;
       const { data, error } = await supabase.from('tarefas').insert({
-        setor, tipo: 'tarefa', titulo: 'Nova tarefa', status: 'pendente',
+        setor: etapa ? etapa.setor : chave, tipo: 'tarefa', titulo: 'Nova tarefa', status: 'pendente',
         origem: 'transicao', transicao_id: atual.id, cliente_id: null,
+        fase: etapa ? etapa.rotulo : null,
         prazo: hojeISO()
       }).select('*').single();
       if (error) { alert('Erro: ' + error.message); return; }
@@ -646,6 +806,7 @@
         titulo: document.getElementById('edTitulo').value.trim() || 'Sem título',
         responsavel: document.getElementById('edResp').value.trim() || null,
         prazo: document.getElementById('edPrazo').value || null,
+        setor: document.getElementById('edSetor').value || tarefaEd.setor,
         status,
         fase: document.getElementById('edFase').value.trim() || null,
         situacao: document.getElementById('edSituacao').value.trim() || null,
