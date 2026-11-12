@@ -9,7 +9,7 @@ import { posix } from 'node:path';
 import { createHash } from 'node:crypto';
 import { validarPacote, empresasDaCarteira, documento, hojeEmBrasilia, sha256Hex, iguais, LIMITES } from '../supabase/functions/ponte/receita.js';
 import { criarServidor } from '../supabase/functions/ponte/servidor.js';
-import { validarPacoteDominio, LIMITES_DOMINIO, BLOCOS_DA_VERSAO } from '../supabase/functions/ponte/dominio.js';
+import { validarPacoteDominio, LIMITES_DOMINIO, BLOCOS_DA_VERSAO, BLOCOS_DOMINIO, BLOCOS_DA_5 } from '../supabase/functions/ponte/dominio.js';
 import { validarPacoteNotas, empresasAutorizadas, destinosDaConfig, dvDaChave, pareceCpf, semCpf, LIMITES_NOTAS, SEM_DESTINO, SEM_AUTORIZACAO, DESTINO_FORA } from '../supabase/functions/ponte/notas.js';
 
 let falhas = 0;
@@ -255,7 +255,7 @@ chk('a folha em reais vazia: 0 na empresa ativa, null na inativa (como a folha)'
     && r2.pacote.mensal.every(l => l.receita_bruta === null && l.compras === null && l.salarios === null), r2);
 }
 chk('na versão 1, bloco novo no faltou recusa o pacote (ela não tem esse bloco)', !!recusaD(p => { p.faltou = [{ bloco: 'compras', motivo: 'x' }]; }, 'faltou[0].bloco'));
-chk('versão 5 recusa o pacote', !!recusaD(p => { p.versao = 5; }, 'versao'));
+chk('versão 6 recusa o pacote', !!recusaD(p => { p.versao = 6; }, 'versao'));
 {
   const p = DOMINIO2();
   p.mensal.push({ codigo: 12, competencia: '2026-09', meses_rbt12: 2.5 });
@@ -412,19 +412,145 @@ chk('na versão 3, a jornada no faltou recusa o pacote (ela não tem esse bloco)
     && r2.recusadas.some(x => x.campo === 'jornadas[11].categoria') && r2.recusadas.some(x => x.campo === 'jornadas[16].horas_semana'), r2);
 }
 chk('a jornada que não é lista recusa o pacote', !!recusaD(p => { Object.assign(p, DOMINIO4()); p.jornadas = {}; }, 'jornadas'));
+
+console.log('O pacote do Domínio, versão 5 (11/11/2026: o que o Comparativo tributário apura pelas notas e pela contabilidade):');
+// a versão 5: a 10 (ativa) em 2026-10 com as vendas pelo CFOP, o ICMS, o ISS, o PIS/Cofins com a apuração, a presunção com
+// a apuração do trimestre e o resultado (prejuízo); nada em 2026-11; a 11 (inativa) sem nada; a 12 só com as notas
+function DOMINIO5() {
+  const p = DOMINIO4();
+  p.versao = 5;
+  Object.assign(p.mensal.find(x => x.codigo === 10 && x.competencia === '2026-10'), {
+    venda_producao: 0, venda_revenda: 80711.504, venda_combustivel: 0, industrializacao_encomenda: 0, transporte: 0, transporte_357: 0,
+    energia_comunicacao: 0, outras_saidas: 0, saidas_no_estado: 70711.5, saidas_outro_estado: 10000, saidas_exterior: 0,
+    base_icms_saidas: 50000, icms_saidas: 8500, icms_st_saidas: 0, ipi_saidas: 0,
+    base_icms_compras: 45000, icms_compras: 5400, ipi_compras: 112.35, icms_despesas: 216,
+    serv_anexo_iv: 0, base_iss: 0, iss_devido: 0, iss_retido: 0,
+    pc_tributada: 60000, pc_monofasica: 0, pc_st: 0, pc_aliquota_zero: 20711.5, pc_isenta: 0, pc_sem_incidencia: 0, pc_suspensa: 0,
+    pc_outras: 0, pc_sem_cst: 0, base_pis_cofins: 60000, pis_apurado: 390, cofins_apurada: 1800, creditos_pis_cofins: 0, pis_cofins_a_recolher: 2190,
+    receita_irpj_1_6: 0, receita_irpj_8: 80211.5, receita_irpj_16: 0, receita_irpj_32: 0, receita_irpj_outros: 0,
+    receita_csll_12: 80211.5, receita_csll_32: 0, receita_csll_outros: 0, apuracao_trimestral: 1, demais_receitas: 0,
+    base_irpj: 19250.76, irpj_apurado: 2887.61, base_csll: 28876.14, csll_apurada: 2598.85,
+    resultado_antes_ir: -4321.994, irpj_csll_lancados: 0, receitas_financeiras: 35.4, lanc_resultado: 391,
+    cliente: 'FULANO COMPRADOR', conta: 'LUCROS DO SOCIO'
+  });
+  return p;
+}
+const v5 = validarPacoteDominio(DOMINIO5());
+chk('o pacote da versão 5 passa, com a versão no que vai pro banco', v5.ok && v5.pacote.versao === 5, v5);
+const p5 = v5.ok && v5.pacote;
+const lin5 = (c, m) => p5.mensal.find(l => l.codigo === c && l.competencia === m);
+chk('os seis blocos da versão 5 lidos vão pro banco, com os de antes e as fotos',
+  p5 && BLOCOS_DA_5.every(b => p5.blocos_ok[b] === true) && p5.blocos_ok.saldos === true && p5.blocos_ok.jornadas === true
+  && BLOCOS_DA_5.join(',') === 'saidas_cfop,entradas_icms,servicos_iss,piscofins,presumido,resultado', p5 && p5.blocos_ok);
+chk('os 55 campos novos: 15 das vendas, 4 das entradas, 4 dos serviços, 14 do PIS/Cofins, 14 da presunção e 4 do resultado',
+  BLOCOS_DA_5.map(b => BLOCOS_DOMINIO[b].length).join(',') === '15,4,4,14,14,4' && p5 && Object.keys(lin5(10, '2026-10')).length === 2 + 59 + 55);
+chk('as vendas pelo CFOP, o ICMS, o PIS/Cofins e a presunção chegam, com centavos; o campo a mais (o cliente, a conta) fica de fora',
+  p5 && lin5(10, '2026-10').venda_revenda === 80711.5 && lin5(10, '2026-10').saidas_outro_estado === 10000 && lin5(10, '2026-10').icms_saidas === 8500
+  && lin5(10, '2026-10').ipi_compras === 112.35 && lin5(10, '2026-10').pc_aliquota_zero === 20711.5 && lin5(10, '2026-10').cofins_apurada === 1800
+  && lin5(10, '2026-10').receita_irpj_8 === 80211.5 && lin5(10, '2026-10').csll_apurada === 2598.85
+  && !('cliente' in lin5(10, '2026-10')) && !('conta' in lin5(10, '2026-10')));
+chk('o resultado negativo (prejuízo) entra como veio, com centavos; a contagem dos lançamentos, inteira',
+  p5 && lin5(10, '2026-10').resultado_antes_ir === -4321.99 && lin5(10, '2026-10').lanc_resultado === 391 && lin5(10, '2026-10').receitas_financeiras === 35.4);
+chk('a apuração por trimestre: o 1 da ponte sai verdadeiro (e o 0, falso)',
+  p5 && lin5(10, '2026-10').apuracao_trimestral === true
+  && (() => { const p = DOMINIO5(); p.mensal.find(x => x.codigo === 10 && x.competencia === '2026-10').apuracao_trimestral = 0;
+    const r2 = validarPacoteDominio(p); return r2.ok && r2.pacote.mensal.find(l => l.codigo === 10 && l.competencia === '2026-10').apuracao_trimestral === false; })());
+chk('sem nota no mês: as vendas, as entradas, os serviços, as pc_ e as receita_ por presunção = 0 em toda empresa (também na inativa)',
+  p5 && [lin5(10, '2026-11'), lin5(11, '2026-10'), lin5(12, '2026-11')].every(l => l.venda_revenda === 0 && l.saidas_exterior === 0 && l.icms_saidas === 0
+    && l.icms_compras === 0 && l.icms_despesas === 0 && l.iss_devido === 0 && l.serv_anexo_iv === 0 && l.pc_tributada === 0 && l.pc_sem_cst === 0
+    && l.receita_irpj_8 === 0 && l.receita_csll_outros === 0));
+chk('o que é da apuração (do PIS/Cofins, do IRPJ e da CSLL) segue null em quem não apura — nunca um 0 inventado',
+  p5 && [lin5(10, '2026-11'), lin5(11, '2026-10'), lin5(12, '2026-10')].every(l => l.base_pis_cofins === null && l.pis_apurado === null && l.cofins_apurada === null
+    && l.creditos_pis_cofins === null && l.pis_cofins_a_recolher === null && l.apuracao_trimestral === null && l.demais_receitas === null
+    && l.base_irpj === null && l.irpj_apurado === null && l.base_csll === null && l.csll_apurada === null));
+chk('sem lançamento em conta de resultado: a contagem é 0 (a contabilidade do mês não foi feita) e o resultado segue null — nunca lucro zero',
+  p5 && [lin5(10, '2026-11'), lin5(11, '2026-10'), lin5(12, '2026-10')].every(l => l.lanc_resultado === 0 && l.resultado_antes_ir === null
+    && l.irpj_csll_lancados === null && l.receitas_financeiras === null));
+{
+  const p = DOMINIO5(); p.faltou = [{ bloco: 'resultado', motivo: 'erro na consulta' }, { bloco: 'piscofins', motivo: 'consulta a conferir' }];
+  const r2 = validarPacoteDominio(p);
+  chk('bloco da versão 5 no faltou: só ele sai null e fica falso pro banco (o banco não troca o que tinha); os outros entram',
+    r2.ok && r2.pacote.blocos_ok.resultado === false && r2.pacote.blocos_ok.piscofins === false && r2.pacote.blocos_ok.presumido === true
+    && r2.pacote.blocos_ok.saidas_cfop === true && r2.pacote.mensal.every(l => l.lanc_resultado === null && l.resultado_antes_ir === null && l.pc_tributada === null)
+    && r2.pacote.mensal.find(l => l.codigo === 10 && l.competencia === '2026-10').receita_irpj_8 === 80211.5
+    && r2.pacote.mensal.find(l => l.codigo === 10 && l.competencia === '2026-11').venda_revenda === 0, r2);
+}
+{
+  const p = DOMINIO5(); p.versao = 4;
+  const r2 = validarPacoteDominio(p);
+  chk('a versão 4 (a ponte de antes): os seis blocos novos não foram lidos — saem null e falsos pro banco, mesmo que venham; os dela entram',
+    r2.ok && r2.pacote.versao === 4 && BLOCOS_DA_5.every(b => r2.pacote.blocos_ok[b] === false) && r2.pacote.blocos_ok.saldos === true
+    && r2.pacote.blocos_ok.jornadas === true && r2.pacote.jornadas.length === 5
+    && r2.pacote.mensal.every(l => BLOCOS_DA_5.every(b => BLOCOS_DOMINIO[b].every(c => l[c] === null)))
+    && r2.pacote.mensal.find(l => l.codigo === 10 && l.competencia === '2026-10').lanc_fiscal === 340, r2);
+  const p3v = DOMINIO5(); p3v.versao = 3;
+  const r3 = validarPacoteDominio(p3v);
+  chk('e a versão 3 também: nem os blocos da 5 nem a jornada',
+    r3.ok && BLOCOS_DA_5.every(b => r3.pacote.blocos_ok[b] === false) && r3.pacote.blocos_ok.jornadas === false && r3.pacote.blocos_ok.saldos === true
+    && BLOCOS_DA_VERSAO[3].length === 11 && BLOCOS_DA_VERSAO[4].length === 12 && BLOCOS_DA_VERSAO[5].length === 18, r3.ok ? r3.pacote.blocos_ok : r3);
+}
+chk('na versão 4, bloco da versão 5 no faltou recusa o pacote (ela não tem esse bloco)', !!recusaD(p => { Object.assign(p, DOMINIO4()); p.faltou = [{ bloco: 'resultado', motivo: 'x' }]; }, 'faltou[0].bloco'));
+chk('o faltou com os 18 blocos da versão 5 cabe (o limite é ' + LIMITES_DOMINIO.faltou + ')',
+  (() => { const p = DOMINIO5(); p.faltou = BLOCOS_DA_VERSAO[5].map(b => ({ bloco: b, motivo: 'consulta a conferir' })); const r2 = validarPacoteDominio(p);
+    return r2.ok && Object.values(r2.pacote.blocos_ok).every(x => x === false); })());
+{
+  const p = DOMINIO5();
+  p.mensal.push({ codigo: 12, competencia: '2026-09', apuracao_trimestral: 'S' });
+  p.mensal.push({ codigo: 12, competencia: '2026-08', lanc_resultado: -1 });
+  p.mensal.push({ codigo: 12, competencia: '2026-07', lanc_resultado: 2.5 });
+  p.mensal.push({ codigo: 12, competencia: '2026-06', pc_tributada: '10' });
+  p.mensal.push({ codigo: 12, competencia: '2026-05', resultado_antes_ir: -1e14 });
+  p.mensal.push({ codigo: 12, competencia: '2026-04', apuracao_trimestral: 2 });
+  const r2 = validarPacoteDominio(p);
+  // 7 = as 6 daqui e a linha da empresa 99 que o pacote de base já traz
+  chk('a linha com valor fora do contrato num bloco da versão 5 fica de fora sozinha (o sim ou não em texto ou 2, a contagem negativa ou quebrada, o valor em texto ou absurdo)',
+    r2.ok && r2.linhas_recusadas === 7 && r2.recusadas.filter(x => /apuracao_trimestral/.test(x.campo)).length === 2
+    && r2.recusadas.filter(x => /lanc_resultado/.test(x.campo)).length === 2 && r2.recusadas.some(x => /pc_tributada/.test(x.campo))
+    && r2.recusadas.some(x => /resultado_antes_ir/.test(x.campo)), r2);
+}
+{
+  // a linha compacta, como a ponte 0.5.0 manda: só o código, a competência e os campos com valor
+  const p = DOMINIO5();
+  p.mensal = p.mensal.map(l => Object.fromEntries(Object.entries(l).filter(([k, v]) => v != null)));
+  p.mensal.push({ codigo: 12, competencia: '2026-09', venda_revenda: 1500.5, lanc_resultado: 3, resultado_antes_ir: 210.1 });
+  p.mensal.push({ codigo: 12, competencia: '2026-08' });
+  const r2 = validarPacoteDominio(p);
+  const cheio = validarPacoteDominio(DOMINIO5());
+  const a = r2.ok && r2.pacote.mensal.find(l => l.codigo === 12 && l.competencia === '2026-09'), b = r2.ok && r2.pacote.mensal.find(l => l.codigo === 12 && l.competencia === '2026-08');
+  chk('a linha compacta (sem os campos em branco) é lida igual à por extenso: o campo que falta é null, e o vazio do bloco lido vira 0',
+    r2.ok && r2.linhas_recusadas === 1 && JSON.stringify(r2.pacote.mensal.slice(0, cheio.pacote.mensal.length)) === JSON.stringify(cheio.pacote.mensal)
+    && a.venda_revenda === 1500.5 && a.venda_producao === 0 && a.lanc_resultado === 3 && a.resultado_antes_ir === 210.1 && a.pis_apurado === null && a.notas_saida === 0
+    && Object.keys(b).length === 116 && b.lanc_resultado === 0 && b.resultado_antes_ir === null && b.venda_revenda === 0 && b.funcionarios_ativos === 0, r2.ok ? { a, b } : r2);
+}
 {
   // os dois lados do contrato juntos: o pacote que a ponte do PC monta (ponte/pacote.py, com o Domínio de mentira e os
   // 14 meses da tarefa) passa aqui inteiro, sem nenhuma linha nem item recusado
   const raiz = fileURLToPath(new URL('..', import.meta.url));
   const py = process.platform === 'win32' ? 'py' : 'python3';
-  const args = (process.platform === 'win32' ? ['-3'] : []).concat(['-c', 'import sys, json; sys.dont_write_bytecode = True; sys.path.insert(0, sys.argv[1]); from ponte import pacote; from ponte.fonte_falsa import FonteFalsa; print(json.dumps(pacote.montar(FonteFalsa(), 14, lambda m, n="info": None)))', raiz]);
-  const doPc = JSON.parse(execFileSync(py, args, { encoding: 'utf8' }));
+  // (o --saida é por extenso; o que a ponte manda é o compacto, pacote.corpo — os dois têm que dar no mesmo)
+  const args = (process.platform === 'win32' ? ['-3'] : []).concat(['-c', 'import sys, json; sys.dont_write_bytecode = True; sys.path.insert(0, sys.argv[1]); from ponte import pacote; from ponte.fonte_falsa import FonteFalsa; p = pacote.montar(FonteFalsa(), 14, lambda m, n="info": None); print(json.dumps({"extenso": p, "compacto": pacote.corpo(p).decode("utf-8")}))', raiz]);
+  const saidaPc = JSON.parse(execFileSync(py, args, { encoding: 'utf8' }));
+  const doPc = saidaPc.extenso, compacto = JSON.parse(saidaPc.compacto);
   const vp = validarPacoteDominio(doPc);
   chk('o pacote da ponte do PC (a versão ' + doPc.versao + ', 14 meses do Domínio de mentira) passa inteiro: nenhuma linha nem item recusado',
     vp.ok && vp.pacote.versao === doPc.versao && vp.linhas_recusadas === 0 && vp.pacote.mensal.length === doPc.mensal.length
     && vp.pacote.andamento.length === doPc.andamento.length && vp.pacote.encerramento.length === doPc.encerramento.length
     && vp.pacote.jornadas.length === (doPc.jornadas || []).length
     && BLOCOS_DA_VERSAO[doPc.versao].every(b => vp.pacote.blocos_ok[b] === true), vp.ok ? { recusadas: vp.recusadas, blocos_ok: vp.pacote.blocos_ok } : vp);
+  const vc = validarPacoteDominio(compacto);
+  chk('a ponte do PC manda a versão 5, na forma compacta: toda empresa e mês com a sua linha, nenhum campo em branco nela, e bem menor que o por extenso',
+    doPc.versao === 5 && compacto.versao === 5 && compacto.mensal.length === doPc.mensal.length
+    && compacto.mensal.every(l => Object.values(l).every(v => v != null) && 'codigo' in l && 'competencia' in l)
+    && compacto.mensal.some(l => Object.keys(l).length === 2) && saidaPc.compacto.length < JSON.stringify(doPc).length * 0.6,
+    { extenso: JSON.stringify(doPc).length, compacto: saidaPc.compacto.length });
+  chk('e o compacto, conferido aqui, dá o mesmo pacote que o por extenso (o que vai pro banco não muda)',
+    vc.ok && vp.ok && vc.linhas_recusadas === 0 && JSON.stringify(vc.pacote) === JSON.stringify(vp.pacote), vc.ok ? vc.recusadas : vc);
+  const l104 = vp.ok && vp.pacote.mensal.filter(l => l.codigo === 104).pop(), l101 = vp.ok && vp.pacote.mensal.filter(l => l.codigo === 101).pop();
+  chk('do Domínio de mentira: a 104 (do Presumido) com a apuração do trimestre e sem resultado (0 lançamentos, o resultado null); a 101 (do Simples) com o lucro e sem apuração',
+    l104 && l104.apuracao_trimestral === true && l104.base_irpj === 17280 && l104.pis_apurado === 117 && l104.iss_devido === 540 && l104.lanc_resultado === 0
+    && l104.resultado_antes_ir === null && l104.venda_revenda === 0
+    && l101.apuracao_trimestral === null && l101.base_irpj === null && l101.lanc_resultado > 0 && l101.resultado_antes_ir > 0 && l101.pc_sem_cst > 0
+    && vp.pacote.mensal.some(l => l.codigo === 102 && l.resultado_antes_ir === -420.15), { l104, l101 });
 }
 
 console.log('A porta de entrada:');
@@ -504,6 +630,20 @@ r = await pedir(db, DOMINIO2());
 chk('o pacote do Domínio da versão 2 também vai pro banco, com os blocos novos',
   r.status === 200 && r.corpo.gravado === true && db.chamadas.length === 1 && db.chamadas[0].args.p.versao === 2
   && db.chamadas[0].args.p.blocos_ok.faturamento === true && db.chamadas[0].args.p.mensal.some(l => l.receita_bruta === 80211.5), r);
+db = fakeDb();
+r = await pedir(db, DOMINIO5());
+{
+  const g = db.chamadas[0] && db.chamadas[0].args.p, l10 = g && g.mensal.find(l => l.codigo === 10 && l.competencia === '2026-10'), l11 = g && g.mensal.find(l => l.codigo === 11);
+  chk('o pacote do Domínio da versão 5 vai pro banco com os seis blocos novos marcados e os valores (o prejuízo, a apuração por trimestre)',
+    r.status === 200 && r.corpo.gravado === true && db.chamadas.filter(c => c.nome === 'dominio_gravar').length === 1 && g.versao === 5
+    && BLOCOS_DA_5.every(b => g.blocos_ok[b] === true) && l10.resultado_antes_ir === -4321.99 && l10.apuracao_trimestral === true && l10.pc_aliquota_zero === 20711.5, r);
+  chk('a linha vai pro banco só com os campos que têm valor (o banco lê o que falta como null): o 0 fica, o null não vai',
+    g && g.mensal.every(l => Object.values(l).every(v => v != null)) && l11.venda_revenda === 0 && l11.lanc_resultado === 0
+    && !('resultado_antes_ir' in l11) && !('pis_apurado' in l11) && !('funcionarios_ativos' in l11) && 'codigo' in l11 && 'competencia' in l11
+    && Object.keys(l10).length > Object.keys(l11).length, g && { l11 });
+}
+r = await pedir(fakeDb(), { ...DOMINIO5(), versao: 6 });
+chk('a versão 6 do pacote do Domínio recusa (422): esta função lê até a 5', r.status === 422 && /da 1 à 5/.test(r.corpo.erro), r);
 r = await pedir(fakeDb(), { ...BOM(), versao: 2 });
 chk('a versão 2 é só do pacote do Domínio: a da Receita recusa (422)', r.status === 422 && /Versão do pacote/.test(r.corpo.erro), r);
 r = await pedir(fakeDb(), { versao: 2, ping: true });

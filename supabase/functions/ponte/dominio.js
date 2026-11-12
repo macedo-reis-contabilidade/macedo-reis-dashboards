@@ -25,10 +25,22 @@
 // empresa e grupo de jornada (decisão do Samuel: quantos, as horas e a soma dos salários de cada grupo; nome e CPF
 // ficam no PC). Montada de novo só com os campos do contrato (o nome ou o CPF que viesse fica de fora); o grupo fora do
 // contrato fica de fora sozinho. Quem grava é a dominio_gravar_jornadas, depois das partes (servidor.js).
+// A versão 5 (11/11/2026, o Comparativo tributário): seis blocos do mês com o que o Domínio já diz das notas e da
+// contabilidade — as vendas pelo CFOP com o ICMS, o ICMS-ST e o IPI (saidas_cfop), o ICMS e o IPI das entradas
+// (entradas_icms), o ISS das notas de serviço (servicos_iss), a venda pela situação tributária do PIS/Cofins e a apuração
+// deles (piscofins), a receita pelo percentual de presunção e a apuração do IRPJ e da CSLL que o Domínio fez (presumido)
+// e o resultado da contabilidade antes do IRPJ e da CSLL (resultado). O vazio do bloco lido inteiro: nas vendas, nas
+// entradas e nos serviços, 0 em toda empresa (sem nota no mês); no piscofins e no presumido, 0 só no que vem das notas
+// (as nove pc_ e as oito receita_) — o que é da apuração segue null na empresa que não apura; no resultado, só o
+// lanc_resultado vira 0 (nenhum lançamento em conta de resultado = a contabilidade do mês não foi feita, e o resultado
+// segue null: nunca um lucro zero inventado). O apuracao_trimestral vem 1 ou 0 da ponte e sai verdadeiro ou falso.
+// As versões 3 e 4 seguem aceitas, com os blocos delas: os da 5 vão com a marca falsa, e o banco não mexe neles.
+// A ponte manda a linha do mês só com os campos que têm valor (o pacote por extenso passaria dos 16 MB): o campo que
+// falta é lido como null, e toda empresa e mês seguem com a sua linha.
 // Sem import: testes no node em tests/ponte-funcao.test.mjs.
 // ============================================================
 
-export const LIMITES_DOMINIO = { empresas: 5000, mensal: 60000, andamento: 5000, encerramento: 20000, jornadas: 20000, anos: 5, faltou: 20, meses: 36, recusadas: 50 };
+export const LIMITES_DOMINIO = { empresas: 5000, mensal: 60000, andamento: 5000, encerramento: 20000, jornadas: 20000, anos: 5, faltou: 30, meses: 36, recusadas: 50 };
 export const BLOCOS_DOMINIO = {
   folha: ['funcionarios_ativos', 'admissoes', 'desligamentos', 'afastados', 'pro_labore'],
   fiscal: ['notas_saida', 'valor_saidas', 'notas_entrada', 'valor_entradas'],
@@ -43,8 +55,23 @@ export const BLOCOS_DOMINIO = {
   // a versão 3 (05/11/2026)
   origens: ['lanc_normais', 'lanc_extrato', 'lanc_fiscal', 'lanc_folha', 'lanc_apuracao', 'lanc_outros', 'incluido_ate'],
   cruzamentos: ['receita_lancada', 'folha_lancada', 'encargos_lancados'],
-  saldos: ['caixa_negativo', 'contra_natureza', 'sem_natureza', 'transitorias', 'transitorias_valor']
+  saldos: ['caixa_negativo', 'contra_natureza', 'sem_natureza', 'transitorias', 'transitorias_valor'],
+  // a versão 5 (11/11/2026): o que o Comparativo tributário apura pelas notas e pela contabilidade
+  saidas_cfop: ['venda_producao', 'venda_revenda', 'venda_combustivel', 'industrializacao_encomenda', 'transporte',
+    'transporte_357', 'energia_comunicacao', 'outras_saidas', 'saidas_no_estado', 'saidas_outro_estado', 'saidas_exterior',
+    'base_icms_saidas', 'icms_saidas', 'icms_st_saidas', 'ipi_saidas'],
+  entradas_icms: ['base_icms_compras', 'icms_compras', 'ipi_compras', 'icms_despesas'],
+  servicos_iss: ['serv_anexo_iv', 'base_iss', 'iss_devido', 'iss_retido'],
+  piscofins: ['pc_tributada', 'pc_monofasica', 'pc_st', 'pc_aliquota_zero', 'pc_isenta', 'pc_sem_incidencia', 'pc_suspensa',
+    'pc_outras', 'pc_sem_cst', 'base_pis_cofins', 'pis_apurado', 'cofins_apurada', 'creditos_pis_cofins', 'pis_cofins_a_recolher'],
+  presumido: ['receita_irpj_1_6', 'receita_irpj_8', 'receita_irpj_16', 'receita_irpj_32', 'receita_irpj_outros',
+    'receita_csll_12', 'receita_csll_32', 'receita_csll_outros', 'apuracao_trimestral', 'demais_receitas', 'base_irpj',
+    'irpj_apurado', 'base_csll', 'csll_apurada'],
+  resultado: ['resultado_antes_ir', 'irpj_csll_lancados', 'receitas_financeiras', 'lanc_resultado']
 };
+// os blocos do mês de cada leva (a versão que os trouxe): a versão antiga segue com os dela
+const BLOCOS_ATE_A_3 = ['folha', 'fiscal', 'contabil', 'faturamento', 'compras', 'folha_valores', 'origens', 'cruzamentos', 'saldos'];
+export const BLOCOS_DA_5 = ['saidas_cfop', 'entradas_icms', 'servicos_iss', 'piscofins', 'presumido', 'resultado'];
 // as listas fora do mês (a versão 3): a foto do dia e o encerramento de cada ano
 export const CAMPOS_ANDAMENTO = ['banco_contas', 'banco_ate', 'banco_ultimo', 'banco_ultimo_geral', 'caixa_ate',
   'caixa_contador_ate', 'extrato_contas', 'extrato_ate', 'extrato_pendentes', 'conciliadas', 'conciliado_ate', 'fechamento_em'];
@@ -59,23 +86,34 @@ const BLOCOS_FOTO = ['andamento', 'encerramento', 'jornadas'];
 export const BLOCOS_DA_VERSAO = {
   1: ['folha', 'fiscal', 'contabil'],
   2: ['folha', 'fiscal', 'contabil', 'faturamento', 'compras', 'folha_valores'],
-  3: [...Object.keys(BLOCOS_DOMINIO), 'andamento', 'encerramento'],
-  4: [...Object.keys(BLOCOS_DOMINIO), 'andamento', 'encerramento', 'jornadas']
+  3: [...BLOCOS_ATE_A_3, 'andamento', 'encerramento'],
+  4: [...BLOCOS_ATE_A_3, 'andamento', 'encerramento', 'jornadas'],
+  5: [...BLOCOS_ATE_A_3, ...BLOCOS_DA_5, 'andamento', 'encerramento', 'jornadas']
 };
 const VERSOES = Object.keys(BLOCOS_DA_VERSAO).map(Number);
 const TODOS_OS_BLOCOS = [...Object.keys(BLOCOS_DOMINIO), ...BLOCOS_FOTO];
 const INTEIROS = new Set(['funcionarios_ativos', 'admissoes', 'desligamentos', 'afastados', 'pro_labore', 'notas_saida', 'notas_entrada', 'lancamentos', 'meses_rbt12',
   'lanc_normais', 'lanc_extrato', 'lanc_fiscal', 'lanc_folha', 'lanc_apuracao', 'lanc_outros',
   'caixa_negativo', 'contra_natureza', 'sem_natureza', 'transitorias',
-  'banco_contas', 'extrato_contas', 'extrato_pendentes', 'conciliadas', 'zeramentos', 'lancados_depois', 'lancamentos_do_ano']);
+  'banco_contas', 'extrato_contas', 'extrato_pendentes', 'conciliadas', 'zeramentos', 'lancados_depois', 'lancamentos_do_ano',
+  'lanc_resultado']);
+// o sim ou não que a ponte manda como 1 ou 0 (a apuração do IRPJ e da CSLL por trimestre)
+const SIM_NAO = new Set(['apuracao_trimestral']);
 const VALORES = new Set(['valor_saidas', 'valor_entradas', 'receita_lancada', 'folha_lancada', 'encargos_lancados', 'transitorias_valor',
-  ...['faturamento', 'compras', 'folha_valores'].flatMap(b => BLOCOS_DOMINIO[b]).filter(c => c !== 'meses_rbt12')]);
+  ...['faturamento', 'compras', 'folha_valores', ...BLOCOS_DA_5].flatMap(b => BLOCOS_DOMINIO[b])
+    .filter(c => c !== 'meses_rbt12' && !INTEIROS.has(c) && !SIM_NAO.has(c))]);
 // o vazio de um bloco lido inteiro: o que vira 0 em toda empresa (o resto do bloco segue null)
 const ZERO_EM_TODA = {
   fiscal: BLOCOS_DOMINIO.fiscal, contabil: ['lancamentos'],
   faturamento: ['receita_bruta', 'receita_mercadorias', 'receita_servicos', 'devolucoes'], compras: BLOCOS_DOMINIO.compras,
   origens: BLOCOS_DOMINIO.origens.filter(c => c !== 'incluido_ate'), cruzamentos: BLOCOS_DOMINIO.cruzamentos,
-  saldos: BLOCOS_DOMINIO.saldos
+  saldos: BLOCOS_DOMINIO.saldos,
+  // a versão 5: sem nota no mês, zero; o que é da apuração (do PIS/Cofins, do IRPJ e da CSLL) segue null em quem não
+  // apura; sem lançamento em conta de resultado, a contagem é zero e o resultado segue null
+  saidas_cfop: BLOCOS_DOMINIO.saidas_cfop, entradas_icms: BLOCOS_DOMINIO.entradas_icms, servicos_iss: BLOCOS_DOMINIO.servicos_iss,
+  piscofins: BLOCOS_DOMINIO.piscofins.filter(c => c.startsWith('pc_')),
+  presumido: BLOCOS_DOMINIO.presumido.filter(c => c.startsWith('receita_')),
+  resultado: ['lanc_resultado']
 };
 // … e o que vira 0 só na empresa ativa no Domínio (a inativa sem folha: o Domínio não diz)
 const ZERO_NA_ATIVA = { folha: BLOCOS_DOMINIO.folha, folha_valores: BLOCOS_DOMINIO.folha_valores };
@@ -122,6 +160,12 @@ const valorDe = (v, campo) => {
   if (typeof v !== 'number' || !Number.isFinite(v) || Math.abs(v) > 1e13) recusar(campo, 'valor que não é um número de dinheiro');
   return Math.round(v * 100) / 100;
 };
+const simNaoDe = (v, campo) => {
+  if (v == null) return null;
+  if (v === true || v === 1) return true;
+  if (v === false || v === 0) return false;
+  return recusar(campo, 'tem que ser 1, 0, verdadeiro ou falso');
+};
 const lista = (v, max, campo) => {
   if (!Array.isArray(v)) recusar(campo, 'tem que ser uma lista');
   if (v.length > max) recusar(campo, 'lista longa demais (até ' + max + ')');
@@ -162,6 +206,7 @@ function linhaDoMes(l, onde, ateMes, blocos, dadosAte) {
         if (c === 'meses_rbt12' && saida[c] != null && saida[c] > 12) recusar(onde + '.' + c, 'meses do RBT12 acima de 12');
       }
       else if (VALORES.has(c)) saida[c] = valorDe(v, onde + '.' + c);
+      else if (SIM_NAO.has(c)) saida[c] = simNaoDe(v, onde + '.' + c);
       else if (c === 'ultimo_lancamento') {
         const d = dataDe(v, onde + '.' + c);
         if (d && d.slice(0, 7) !== competencia) recusar(onde + '.' + c, 'último lançamento fora do mês da linha');

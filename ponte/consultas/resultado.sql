@@ -1,6 +1,6 @@
--- comparativo_resultado.sql (rascunho da fila de 11/11/2026, o Comparativo tributário; a ponte NÃO lê esta pasta): por
--- empresa, o resultado da contabilidade no mês antes do IRPJ e da CSLL (o lucro que o Lucro Real tributa). Os dois
--- parâmetros são o primeiro e o último dia do mês.
+-- resultado.sql (versão 5 do pacote, 11/11/2026: o Comparativo tributário; escrita e conferida no Domínio pela fila de
+-- 11/11, o rascunho comparativo_resultado.sql): por empresa, o resultado da contabilidade no mês antes do IRPJ e da CSLL
+-- (o lucro que o Lucro Real tributa). Os dois parâmetros são o primeiro e o último dia do mês.
 -- Tabelas: bethadba.ctlancto ("Lancamentos Contabeis": cdeb_lan e ccre_lan, as contas do plano da CODI_EMP_PLANO;
 -- vlor_lan; data_lan; orig_lan, fora o 2, o zeramento), bethadba.ctcontas ("Contas Contabeis - Cadastro": clas_cta e
 -- tipo_cta; a descrição, nome_cta, SÓ nos filtros — nunca sai daqui) e bethadba.ctnatureza_conta (a natureza do grupo 3

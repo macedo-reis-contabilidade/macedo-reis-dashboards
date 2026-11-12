@@ -125,11 +125,15 @@ def _nome(pacote):
     return f'{compacto[:8]}-{compacto[8:14]}-{pacote["rodada"]["id"][:8]}.json'
 
 
-def guardar(pasta, pacote):
+def guardar(pasta, pacote, corpo=None):
+    """Guarda o pacote pra rodada seguinte mandar. `corpo`, quando vem, são os bytes que iam no POST (o pacote do
+    Domínio vai compacto): o pendente é mandado como está no arquivo."""
     pasta.mkdir(parents=True, exist_ok=True)
     destino = pasta / _nome(pacote)
     tmp = destino.with_suffix('.tmp')
-    tmp.write_text(json.dumps(pacote, ensure_ascii=False), encoding='utf-8')
+    if corpo is None:
+        corpo = json.dumps(pacote, ensure_ascii=False).encode('utf-8')
+    tmp.write_bytes(corpo)
     os.replace(tmp, destino)
     return destino
 

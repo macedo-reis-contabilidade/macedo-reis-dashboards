@@ -1,6 +1,6 @@
-"""Monta o pacote — o contrato com o sistema (versão 4, desde 09/11/2026).
+"""Monta o pacote — o contrato com o sistema (versão 5, desde 11/11/2026).
 
-    { "versao": 4,
+    { "versao": 5,
       "rodada":   { id, inicio, fim, dados_ate, maquina, ponte },
       "empresas": [ { codigo, documento, nome, ativa } ],
       "mensal":   [ { codigo, competencia 'AAAA-MM', funcionarios_ativos, admissoes, desligamentos, afastados,
@@ -16,7 +16,19 @@
                       + origens: lanc_normais, lanc_extrato, lanc_fiscal, lanc_folha, lanc_apuracao, lanc_outros,
                         incluido_ate
                       + cruzamentos: receita_lancada, folha_lancada, encargos_lancados
-                      + saldos: caixa_negativo, contra_natureza, sem_natureza, transitorias, transitorias_valor } ],
+                      + saldos: caixa_negativo, contra_natureza, sem_natureza, transitorias, transitorias_valor
+                      + saidas_cfop: venda_producao, venda_revenda, venda_combustivel, industrializacao_encomenda,
+                        transporte, transporte_357, energia_comunicacao, outras_saidas, saidas_no_estado,
+                        saidas_outro_estado, saidas_exterior, base_icms_saidas, icms_saidas, icms_st_saidas, ipi_saidas
+                      + entradas_icms: base_icms_compras, icms_compras, ipi_compras, icms_despesas
+                      + servicos_iss: serv_anexo_iv, base_iss, iss_devido, iss_retido
+                      + piscofins: pc_tributada, pc_monofasica, pc_st, pc_aliquota_zero, pc_isenta, pc_sem_incidencia,
+                        pc_suspensa, pc_outras, pc_sem_cst, base_pis_cofins, pis_apurado, cofins_apurada,
+                        creditos_pis_cofins, pis_cofins_a_recolher
+                      + presumido: receita_irpj_1_6, receita_irpj_8, receita_irpj_16, receita_irpj_32,
+                        receita_irpj_outros, receita_csll_12, receita_csll_32, receita_csll_outros,
+                        apuracao_trimestral (1 ou 0), demais_receitas, base_irpj, irpj_apurado, base_csll, csll_apurada
+                      + resultado: resultado_antes_ir, irpj_csll_lancados, receitas_financeiras, lanc_resultado } ],
       "andamento":    [ { codigo, banco_contas, banco_ate, banco_ultimo, banco_ultimo_geral, caixa_ate,
                           caixa_contador_ate, extrato_contas, extrato_ate, extrato_pendentes, conciliadas,
                           conciliado_ate, fechamento_em } ],                 (a foto do dia)
@@ -30,8 +42,14 @@
 
 A versão 1 (até 04/11/2026) não tinha o faturamento, as compras e a folha em reais; a 2 (05/11/2026), o andamento das
 contabilidades (origens, cruzamentos, saldos, andamento e encerramento); a 3 (05/11/2026), as jornadas (o fim da escala
-6x1, 09/11/2026). A versão diz ao sistema quais blocos foram lidos: o que uma versão antiga não tem, ele não mexe no
-que já tinha.
+6x1, 09/11/2026); a 4 (09/11/2026), o que o Comparativo tributário apura pelas notas e pela contabilidade (saidas_cfop,
+entradas_icms, servicos_iss, piscofins, presumido e resultado, 11/11/2026). A versão diz ao sistema quais blocos foram
+lidos: o que uma versão antiga não tem, ele não mexe no que já tinha.
+
+O pacote vai pro sistema (e pros pendentes) na forma compacta — compactar() e corpo(), abaixo: cada linha do `mensal` só
+com o código, a competência e os campos que têm valor (o que falta, o sistema lê como null) e o JSON sem espaços. Com os
+blocos da versão 5, o pacote por extenso dos 14 meses passaria dos 16 MB que a função do sistema aceita. O --saida
+segue por extenso, com todos os campos.
 
 Regras:
   - Só esses campos saem. O que a fonte devolver a mais é descartado aqui (a trava do dado pessoal).
@@ -48,6 +66,7 @@ Regras:
     cópia do dia anterior, e a ponte usava ontem); as horas, com o fuso do PC.
 """
 import datetime
+import json
 import re
 import socket
 import uuid
@@ -58,7 +77,7 @@ from .fonte import (ANOS_ENCERRAMENTO, BLOCOS, CAMPOS_ANDAMENTO, CAMPOS_DATA, CA
                     CAMPOS_JORNADAS, CAMPOS_MES, CAMPOS_SO_GRUPO_GRANDE, GRUPO_MINIMO_JORNADA, CAMPOS_NUMERO, CAMPOS_SEMANA, CAMPOS_VALOR, GRUPO_JORNADAS,
                     ConsultaAConferir, teto_art8)
 
-VERSAO_PACOTE = 4
+VERSAO_PACOTE = 5
 ORDEM_MENSAL = ('codigo', 'competencia') + tuple(c for b in BLOCOS for c in CAMPOS_MES[b])
 
 
@@ -387,6 +406,21 @@ def montar(fonte, meses, registro, inicio=None, dados_ate=None):
         'jornadas': jornadas,
         'faltou': faltou,
     }
+
+
+def compactar(pacote):
+    """O pacote como vai pro sistema: o mesmo, com cada linha do `mensal` só com o código, a competência e os campos
+    que têm valor — o campo que falta, o sistema lê como null. Toda empresa e todo mês seguem com a sua linha (é por
+    ela que o sistema põe o 0 do bloco lido inteiro na empresa sem movimento)."""
+    saida = dict(pacote)
+    saida['mensal'] = [{c: v for c, v in l.items() if v is not None or c in ('codigo', 'competencia')}
+                       for l in pacote['mensal']]
+    return saida
+
+
+def corpo(pacote):
+    """Os bytes que vão no POST e nos pendentes: o pacote compacto, em JSON sem espaços."""
+    return json.dumps(compactar(pacote), ensure_ascii=False, separators=(',', ':')).encode('utf-8')
 
 
 def resumo(pacote):

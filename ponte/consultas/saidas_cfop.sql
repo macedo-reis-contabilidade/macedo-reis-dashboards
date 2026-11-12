@@ -1,6 +1,6 @@
--- comparativo_saidas.sql (rascunho da fila de 11/11/2026, o Comparativo tributário; a ponte NÃO lê esta pasta): por
--- empresa, as vendas do mês pelo CFOP, o ICMS destacado, o ICMS-ST e o IPI. Os dois parâmetros são o primeiro e o
--- último dia do mês.
+-- saidas_cfop.sql (versão 5 do pacote, 11/11/2026: o Comparativo tributário; escrita e conferida no Domínio pela fila de
+-- 11/11, o rascunho comparativo_saidas.sql): por empresa, as vendas do mês pelo CFOP, o ICMS destacado, o ICMS-ST e o
+-- IPI. Os dois parâmetros são o primeiro e o último dia do mês.
 -- Tabelas: bethadba.efsaidas ("Notas Fiscais de Saida", uma linha por segmento: codi_nat "Natureza" = o CFOP de 4
 -- dígitos, 5101 a 7949 em 09/2026; vcon_sai "Valor contabil"; IPI_SAI "Valor IPI"; ICMS_ST_SAI "Valor ICMS ST"),
 -- bethadba.efimpsai ("Notas Fiscais de Saida - Impostos": codi_imp 1 = ICMS na bethadba.geimposto; bcal_isa "Base de

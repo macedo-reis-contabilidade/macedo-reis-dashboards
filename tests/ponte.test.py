@@ -25,6 +25,11 @@ Empresas, chaves e senhas são todas inventadas.
      contrato; o nome e o CPF que a fonte devolver ficam no PC; a semana fora do formato vira null; o grupo sem
      empregado não vai; dois com o mesmo grupo (não veio contada) ou a consulta com erro tiram o bloco inteiro; o
      salário do art. 8º do ano vai no 2º parâmetro, e o ano sem valor usa o mais recente, com aviso
+  +  a versão 5 (11/11/2026: o que o Comparativo tributário apura pelas notas e pela contabilidade): os seis blocos
+     novos (as vendas pelo CFOP, o ICMS das entradas, o ISS, o PIS/Cofins, a presunção e o resultado), o prejuízo
+     negativo, a apuração por trimestre 1 ou 0, o que não tem apuração null; o cliente da nota, o sócio e o nome da
+     conta ficam no PC; e o que vai pro sistema e pros pendentes é o pacote compacto — toda empresa e mês com a sua
+     linha, só com os campos que têm valor (o --saida segue por extenso)
   8. a ligação com o Domínio Web (dominio conexao | tabelas | sql, 29/10/2026), com um banco de mentira: a string de
      conexão montada do que foi digitado (o host:porta colado junto, a senha duas vezes, o que não serve perguntado de
      novo), gravada só no config.ini e testada; a senha nunca na tela nem no log; sem pyodbc, sem driver ou sem janela
@@ -69,12 +74,28 @@ CONTRATO_MENSAL = ['codigo', 'competencia', 'funcionarios_ativos', 'admissoes', 
                    # a versão 3 (05/11/2026): o andamento das contabilidades
                    'lanc_normais', 'lanc_extrato', 'lanc_fiscal', 'lanc_folha', 'lanc_apuracao', 'lanc_outros',
                    'incluido_ate', 'receita_lancada', 'folha_lancada', 'encargos_lancados',
-                   'caixa_negativo', 'contra_natureza', 'sem_natureza', 'transitorias', 'transitorias_valor']
+                   'caixa_negativo', 'contra_natureza', 'sem_natureza', 'transitorias', 'transitorias_valor',
+                   # a versão 5 (11/11/2026): o que o Comparativo tributário apura pelas notas e pela contabilidade
+                   'venda_producao', 'venda_revenda', 'venda_combustivel', 'industrializacao_encomenda', 'transporte',
+                   'transporte_357', 'energia_comunicacao', 'outras_saidas', 'saidas_no_estado', 'saidas_outro_estado',
+                   'saidas_exterior', 'base_icms_saidas', 'icms_saidas', 'icms_st_saidas', 'ipi_saidas',
+                   'base_icms_compras', 'icms_compras', 'ipi_compras', 'icms_despesas',
+                   'serv_anexo_iv', 'base_iss', 'iss_devido', 'iss_retido',
+                   'pc_tributada', 'pc_monofasica', 'pc_st', 'pc_aliquota_zero', 'pc_isenta', 'pc_sem_incidencia',
+                   'pc_suspensa', 'pc_outras', 'pc_sem_cst', 'base_pis_cofins', 'pis_apurado', 'cofins_apurada',
+                   'creditos_pis_cofins', 'pis_cofins_a_recolher',
+                   'receita_irpj_1_6', 'receita_irpj_8', 'receita_irpj_16', 'receita_irpj_32', 'receita_irpj_outros',
+                   'receita_csll_12', 'receita_csll_32', 'receita_csll_outros', 'apuracao_trimestral', 'demais_receitas',
+                   'base_irpj', 'irpj_apurado', 'base_csll', 'csll_apurada',
+                   'resultado_antes_ir', 'irpj_csll_lancados', 'receitas_financeiras', 'lanc_resultado']
 VALORES_V2 = [c for c in CONTRATO_MENSAL[CONTRATO_MENSAL.index('receita_bruta'):CONTRATO_MENSAL.index('lanc_normais')]
               if c != 'meses_rbt12']
 VALORES_V3 = ['receita_lancada', 'folha_lancada', 'encargos_lancados', 'transitorias_valor']
 INTEIROS_V3 = ['lanc_normais', 'lanc_extrato', 'lanc_fiscal', 'lanc_folha', 'lanc_apuracao', 'lanc_outros',
                'caixa_negativo', 'contra_natureza', 'sem_natureza', 'transitorias']
+INTEIROS_V5 = ['apuracao_trimestral', 'lanc_resultado']
+VALORES_V5 = [c for c in CONTRATO_MENSAL[CONTRATO_MENSAL.index('venda_producao'):] if c not in INTEIROS_V5]
+BLOCOS_V5 = ['saidas_cfop', 'entradas_icms', 'servicos_iss', 'piscofins', 'presumido', 'resultado']
 CONTRATO_ANDAMENTO = ['codigo', 'banco_contas', 'banco_ate', 'banco_ultimo', 'banco_ultimo_geral', 'caixa_ate',
                       'caixa_contador_ate', 'extrato_contas', 'extrato_ate', 'extrato_pendentes', 'conciliadas',
                       'conciliado_ate', 'fechamento_em']
@@ -306,9 +327,9 @@ def caso_pacote():
         return
     texto = saida.read_text(encoding='utf-8')
     p = json.loads(texto)
-    ok(p['versao'] == 4 and set(p) == {'versao', 'rodada', 'empresas', 'mensal', 'andamento', 'encerramento', 'jornadas',
+    ok(p['versao'] == 5 and set(p) == {'versao', 'rodada', 'empresas', 'mensal', 'andamento', 'encerramento', 'jornadas',
                                        'faltou'},
-       'versão 4, só as oito chaves do contrato (com as jornadas)')
+       'versão 5, só as oito chaves do contrato (com as jornadas)')
     r = p['rodada']
     ok(set(r) == {'id', 'inicio', 'fim', 'dados_ate', 'maquina', 'ponte'}, 'rodada com id, inicio, fim, dados_ate, maquina, ponte')
     ok(r['dados_ate'] == hoje().isoformat(), f"dados_ate é hoje — o banco do Domínio Web é ao vivo ({r['dados_ate']})")
@@ -316,7 +337,7 @@ def caso_pacote():
     hora_com_fuso = r'\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d[+-]\d\d:\d\d'
     ok(re.fullmatch(hora_com_fuso, r['inicio']) and re.fullmatch(hora_com_fuso, r['fim']) and r['inicio'] <= r['fim'],
        'inicio e fim com o fuso do PC, inicio <= fim')
-    ok(bool(r['maquina']) and r['ponte'] == '0.4.1', 'maquina preenchida, ponte 0.4.1')
+    ok(bool(r['maquina']) and r['ponte'] == '0.5.0', 'maquina preenchida, ponte 0.5.0')
 
     emp = {e['codigo']: e for e in p['empresas']}
     ok(sorted(emp) == [101, 102, 103, 104], 'as 4 empresas inventadas, pelo código')
@@ -330,12 +351,14 @@ def caso_pacote():
     comps = comps_esperadas(3)
     ok(len(p['mensal']) == 12, f"12 linhas mensais = 4 empresas × 3 meses (vieram {len(p['mensal'])})")
     ok(sorted({l['competencia'] for l in p['mensal']}) == comps, f'as 3 competências até o mês de hoje: {", ".join(comps)}')
-    ok(all(list(l) == CONTRATO_MENSAL for l in p['mensal']), 'cada linha mensal com os campos do contrato da fila, nessa ordem')
+    ok(all(list(l) == CONTRATO_MENSAL for l in p['mensal']) and len(CONTRATO_MENSAL) == 2 + 59 + 55,
+       'cada linha mensal com os campos do contrato da fila, nessa ordem (os 59 de antes e os 55 da versão 5) — o --saida é por extenso')
     inteiros = ('funcionarios_ativos', 'admissoes', 'desligamentos', 'afastados', 'pro_labore', 'notas_saida', 'notas_entrada', 'lancamentos',
-                'meses_rbt12', *INTEIROS_V3)
+                'meses_rbt12', *INTEIROS_V3, *INTEIROS_V5)
     ok(all(l[c] is None or type(l[c]) is int for l in p['mensal'] for c in inteiros), 'contagens: inteiro ou null')
-    ok(all(l[c] is None or type(l[c]) is float for l in p['mensal'] for c in ('valor_saidas', 'valor_entradas', *VALORES_V2, *VALORES_V3)),
-       'valores (também o faturamento, as compras e a folha em reais): número com casas (o Decimal do ODBC vira número) ou null')
+    ok(all(l[c] is None or type(l[c]) is float for l in p['mensal']
+           for c in ('valor_saidas', 'valor_entradas', *VALORES_V2, *VALORES_V3, *VALORES_V5)),
+       'valores (também o faturamento, as compras, a folha em reais e os da versão 5): número com casas (o Decimal do ODBC vira número) ou null')
     ok(all(l['ultimo_lancamento'] is None or re.fullmatch(r'\d{4}-\d\d-\d\d', l['ultimo_lancamento']) for l in p['mensal']),
        'ultimo_lancamento: data AAAA-MM-DD ou null')
     ok(all(l['ultimo_lancamento'] is None or l['ultimo_lancamento'] <= r['dados_ate'] for l in p['mensal']),
@@ -393,6 +416,42 @@ def caso_pacote():
        'a 102: o caixa negativo e a transitória; no mês sem nota, sem escrita fiscal e sem cruzamento (null, quem põe o 0 é o sistema)')
     ok(all(linhas[(103, c)]['lanc_normais'] is None and linhas[(103, c)]['caixa_negativo'] is None for c in comps),
        'a 103 segue toda null também nos blocos da versão 3')
+    # a versão 5 (11/11/2026): o que o Comparativo tributário apura pelas notas e pela contabilidade
+    ok(all(linhas[(101, c)]['venda_revenda'] == round(80500 + m(c), 2) and linhas[(101, c)]['saidas_no_estado'] == round(70500 + m(c), 2)
+           and linhas[(101, c)]['saidas_outro_estado'] == 10000.0 and linhas[(101, c)]['venda_producao'] == 0.0
+           and linhas[(101, c)]['icms_saidas'] == 0.0 for c in comps)
+       and all(linhas[(104, c)]['venda_revenda'] is None and linhas[(104, c)]['saidas_no_estado'] is None for c in comps),
+       'as vendas pelo CFOP: a revenda da 101 (a soma dos grupos é a receita de mercadoria antes da devolução) e pra onde foi; '
+       'a 104, que só presta serviço, sem linha (null: quem põe o 0 é o sistema)')
+    ok(all(linhas[(101, c)]['icms_compras'] == 5400.0 and linhas[(101, c)]['ipi_compras'] == 112.35
+           and linhas[(101, c)]['base_icms_compras'] == round(45000 + m(c), 2) and linhas[(101, c)]['icms_despesas'] == 216.0
+           and linhas[(104, c)]['icms_compras'] == 0.0 for c in comps)
+       and all(linhas[(102, c)]['icms_compras'] is None for c in sem_nota) and all(linhas[(102, c)]['icms_compras'] == 252.0 for c in com_nota),
+       'o ICMS e o IPI das entradas: os da 101, o zero de verdade da 104 e a 102 só nos meses com nota')
+    ok(all(linhas[(104, c)]['base_iss'] == 18000.0 and linhas[(104, c)]['iss_devido'] == 540.0 and linhas[(104, c)]['iss_retido'] == 180.0
+           and linhas[(104, c)]['serv_anexo_iv'] == 0.0 and linhas[(101, c)]['iss_devido'] is None for c in comps),
+       'o ISS das notas de serviço da 104 (com o retido); a 101, sem serviço, null')
+    ok(all(linhas[(101, c)]['pc_sem_cst'] == round(80500 + m(c), 2) and linhas[(101, c)]['pc_tributada'] == 0.0
+           and linhas[(101, c)]['pis_apurado'] is None and linhas[(101, c)]['base_pis_cofins'] is None
+           and linhas[(104, c)]['pc_tributada'] == 18000.0 and linhas[(104, c)]['pis_apurado'] == 117.0
+           and linhas[(104, c)]['cofins_apurada'] == 540.0 and linhas[(104, c)]['pis_cofins_a_recolher'] == 657.0 for c in comps),
+       'o PIS/Cofins: a 101 (do Simples) com a venda toda sem CST e sem apuração (null, nunca 0); a 104 tributada, com a apuração')
+    ok(all(linhas[(104, c)]['receita_irpj_32'] == 18000.0 and linhas[(104, c)]['receita_csll_32'] == 18000.0
+           and linhas[(104, c)]['apuracao_trimestral'] == 1 and linhas[(104, c)]['base_irpj'] == 17280.0
+           and linhas[(104, c)]['irpj_apurado'] == 2592.0 and linhas[(104, c)]['csll_apurada'] == 1555.2
+           and linhas[(101, c)]['receita_irpj_outros'] == round(80000 + m(c), 2) and linhas[(101, c)]['apuracao_trimestral'] is None
+           and linhas[(101, c)]['base_irpj'] is None for c in comps),
+       'a presunção: a 104 com o serviço a 32% e a apuração do trimestre (apuracao_trimestral = 1, inteiro); a 101, do Simples, '
+       'com a receita em "outros" e sem apuração')
+    ok(all(linhas[(101, c)]['resultado_antes_ir'] == round(9200 + m(c), 2) and linhas[(101, c)]['lanc_resultado'] == 380 + m(c)
+           and linhas[(101, c)]['receitas_financeiras'] == 35.4 and linhas[(101, c)]['irpj_csll_lancados'] == 0.0
+           and linhas[(104, c)]['resultado_antes_ir'] is None and linhas[(104, c)]['lanc_resultado'] is None for c in comps)
+       and all(linhas[(102, c)]['resultado_antes_ir'] == -420.15 for c in sem_nota)
+       and all(linhas[(102, c)]['resultado_antes_ir'] == 1800.4 for c in com_nota),
+       'o resultado da contabilidade: o lucro da 101, o prejuízo da 102 no mês sem venda (negativo, como veio) e a 104, sem '
+       'contabilidade, null (nunca um lucro zero)')
+    ok(all(linhas[(103, c)][k] is None for c in comps for k in CONTRATO_MENSAL[CONTRATO_MENSAL.index('venda_producao'):]),
+       'a 103 segue toda null também nos seis blocos da versão 5')
     and_ = {a['codigo']: a for a in p['andamento']}
     ok(sorted(and_) == [101, 102, 103] and all(list(a) == CONTRATO_ANDAMENTO for a in p['andamento']),
        'o andamento (a foto do dia): uma linha por empresa que a consulta trouxe, com os campos do contrato, nessa ordem')
@@ -453,7 +512,7 @@ def caso_pacote():
     ok(all(sum(l['empregados'] for l in jor if l['codigo'] == c) == ativos[c] for c in (101, 104)),
        'a soma dos empregados das jornadas bate com os funcionários ativos do mês de hoje (a 101 e a 104)')
     ok('as jornadas de 2 empresa(s) (4 grupo(s)' in out, 'o resumo da tela diz as jornadas')
-    ok(p['faltou'] == [], 'faltou vazio (o Domínio de mentira tem os treze blocos)')
+    ok(p['faltou'] == [], 'faltou vazio (o Domínio de mentira tem os dezenove blocos)')
     ok('4 empresa(s)' in out and '12 linha(s)' in out, 'mostra o resumo na tela')
     ok(pendentes(pasta) == [], '--sem-enviar não deixa nada em pendentes')
 
@@ -466,6 +525,9 @@ def caso_pacote():
        'nem o usuário que lançou, o nome da conta (com o sócio) e o do banco (com a conta corrente) que a versão 3 de mentira devolve')
     ok('000.000.000-00' not in texto and not any('nome' in l or 'cpf' in l for l in p['jornadas']),
        'nem o nome e o CPF da pessoa que as jornadas de mentira devolvem')
+    ok('CLIENTE DA NOTA' not in texto and 'SICRANO' not in texto and 'BELTRANO' not in texto
+       and not any(k in l for l in p['mensal'] for k in ('cliente', 'socio', 'conta')),
+       'nem o cliente da nota, o sócio e o nome da conta (com o lucro distribuído) que a versão 5 de mentira devolve')
     from ponte.fonte_falsa import FonteFalsa
     from ponte import pacote
 
@@ -591,13 +653,20 @@ def caso_a_conferir(sis):
     pc = pacote.montar(fonte, 2, reg, dados_ate=ate)
     fonte.fechar()
     ok(pc['faltou'] == [{'bloco': b, 'motivo': 'consulta a conferir'} for b in ('fiscal', 'faturamento', 'compras', 'folha_valores',
-                                                                                'origens', 'cruzamentos', 'saldos', 'andamento', 'encerramento',
-                                                                                'jornadas')],
-       'o fiscal "A CONFERIR" vai pro faltou (e os blocos das versões 2, 3 e 4, que este caso deixa "A CONFERIR")')
+                                                                                'origens', 'cruzamentos', 'saldos', *BLOCOS_V5,
+                                                                                'andamento', 'encerramento', 'jornadas')],
+       'o fiscal "A CONFERIR" vai pro faltou (e os blocos das versões 2, 3, 4 e 5, que este caso deixa "A CONFERIR")')
     ok(pc['andamento'] == [] and pc['encerramento'] == [] and pc['jornadas'] == [],
        'o andamento, o encerramento e as jornadas a conferir saem como listas vazias')
-    ok(all(l['receita_bruta'] is None and l['compras'] is None and l['salarios'] is None for l in pc['mensal']),
+    ok(all(l['receita_bruta'] is None and l['compras'] is None and l['salarios'] is None and l['lanc_resultado'] is None
+           and l['venda_revenda'] is None and l['pc_tributada'] is None for l in pc['mensal']),
        'e os campos dos blocos a conferir saem null')
+    comp = json.loads(pacote.corpo(pc))
+    ok(len(comp['mensal']) == len(pc['mensal']) and all(set(l) <= {'codigo', 'competencia', 'funcionarios_ativos', 'admissoes',
+                                                                  'desligamentos', 'afastados', 'pro_labore', 'lancamentos',
+                                                                  'ultimo_lancamento'} for l in comp['mensal'])
+       and comp['faltou'] == pc['faltou'] and comp['empresas'] == pc['empresas'],
+       'na forma compacta (a que é mandada), a linha fica só com o que os blocos lidos trouxeram; o faltou e as empresas vão iguais')
     ok(all(l['notas_saida'] is None and l['valor_entradas'] is None for l in pc['mensal']), 'e os campos dele saem null')
     ok(not any(b == 'fiscal' for b, _ in con.executados), 'a consulta a conferir não roda')
     ok(all(l['funcionarios_ativos'] == 3 for l in pc['mensal'] if l['codigo'] == 1) and
@@ -735,7 +804,20 @@ def caso_envio(sis):
     ok(cab.get('apikey') == CHAVE_PUBLICA and cab.get('authorization') == f'Bearer {CHAVE_PUBLICA}',
        'apikey e Authorization: Bearer = a chave pública')
     ok(cab.get('content-type', '').startswith('application/json'), 'Content-Type: application/json')
-    ok(sis.recebidos[-1]['corpo']['versao'] == 4 and len(sis.recebidos[-1]['corpo']['empresas']) == 4, 'o corpo é o pacote')
+    corpo = sis.recebidos[-1]['corpo']
+    ok(corpo['versao'] == 5 and len(corpo['empresas']) == 4, 'o corpo é o pacote (a versão 5)')
+    n_meses = len({l['competencia'] for l in corpo['mensal']})
+    da103 = [l for l in corpo['mensal'] if l['codigo'] == 103]
+    ok(len(corpo['mensal']) == 4 * n_meses and all(v is not None for l in corpo['mensal'] for v in l.values())
+       and all(set(l) == {'codigo', 'competencia'} for l in da103) and len(da103) == n_meses
+       and all(set(l) <= set(CONTRATO_MENSAL) for l in corpo['mensal']),
+       'o pacote vai compacto: toda empresa e mês com a sua linha (a 103, sem nada, só com o código e a competência), '
+       'nenhum campo em branco, só campos do contrato')
+    da104 = [l for l in corpo['mensal'] if l['codigo'] == 104][-1]
+    ok(da104.get('apuracao_trimestral') == 1 and da104.get('base_irpj') == 17280.0 and 'lanc_resultado' not in da104
+       and 'venda_revenda' not in da104 and da104.get('iss_devido') == 540.0,
+       'e leva os blocos da versão 5: a apuração da 104, sem o que ela não tem (o resultado e as vendas de mercadoria)')
+    ok('o pacote vai com' in out and ' MB' in out, 'o log diz o tamanho do pacote mandado')
 
     titulo('4. (continuação)')
     sis.zerar(401)
@@ -766,7 +848,11 @@ def caso_envio(sis):
     cod, out = rodar_dentro(pasta, porta_fechada())
     pend = pendentes(pasta)
     ok(cod == 1 and len(pend) == 1, f'rede fora: guarda em pendentes e sai com 1 (saiu {cod}, {len(pend)} pendente(s))')
-    id_pendente = json.loads(pend[0].read_text(encoding='utf-8'))['rodada']['id'] if pend else None
+    guardado = json.loads(pend[0].read_text(encoding='utf-8')) if pend else {'rodada': {}, 'mensal': [None]}
+    id_pendente = guardado['rodada'].get('id')
+    ok(guardado.get('versao') == 5 and all(v is not None for l in guardado['mensal'] for v in l.values())
+       and ', ' not in pend[0].read_text(encoding='utf-8')[:200],
+       'o pendente é o pacote compacto, como ia no envio (sem campo em branco e sem espaços)')
     sis.zerar()
     cod, out = rodar_dentro(pasta, sis.url)
     ids = [r['corpo']['rodada']['id'] for r in sis.recebidos]

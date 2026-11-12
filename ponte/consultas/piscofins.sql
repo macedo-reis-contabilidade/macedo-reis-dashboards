@@ -1,6 +1,6 @@
--- comparativo_piscofins.sql (rascunho da fila de 11/11/2026, o Comparativo tributário; a ponte NÃO lê esta pasta): por
--- empresa, a venda do mês pela situação tributária (CST) do PIS e a apuração do PIS e da Cofins. Os dois parâmetros são
--- o primeiro e o último dia do mês.
+-- piscofins.sql (versão 5 do pacote, 11/11/2026: o Comparativo tributário; escrita e conferida no Domínio pela fila de
+-- 11/11, o rascunho comparativo_piscofins.sql): por empresa, a venda do mês pela situação tributária (CST) do PIS e a
+-- apuração do PIS e da Cofins. Os dois parâmetros são o primeiro e o último dia do mês.
 -- Tabelas: bethadba.efsaidas e bethadba.efservicos (os segmentos de faturamento: o corte do faturamento.sql, IFAT_ACU =
 -- 'S' na bethadba.EFACUMULADOR_VIGENCIA; fora a cancelada, denegada e inutilizada), bethadba.efmvspro ("Notas Fiscais de
 -- Saida - Produtos", o item: cst_pis_msp "CST do PIS", cst_cofins_msp "CST do COFINS", VALOR_CONTABIL_MSP "Valor contabil

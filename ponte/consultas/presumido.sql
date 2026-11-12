@@ -1,6 +1,6 @@
--- comparativo_presumido.sql (rascunho da fila de 11/11/2026, o Comparativo tributário; a ponte NÃO lê esta pasta): por
--- empresa, a receita do mês pelo percentual de presunção do IRPJ e da CSLL e a apuração que o próprio Domínio fez. Os
--- dois parâmetros são o primeiro e o último dia do mês.
+-- presumido.sql (versão 5 do pacote, 11/11/2026: o Comparativo tributário; escrita e conferida no Domínio pela fila de
+-- 11/11, o rascunho comparativo_presumido.sql): por empresa, a receita do mês pelo percentual de presunção do IRPJ e da
+-- CSLL e a apuração que o próprio Domínio fez. Os dois parâmetros são o primeiro e o último dia do mês.
 -- Tabelas: bethadba.efsaidas, bethadba.efservicos e bethadba.efentradas (o corte do faturamento.sql: os segmentos com
 -- acumulador de faturamento e, com sinal trocado, as entradas com acumulador de devolução; fora a cancelada, denegada e
 -- inutilizada), bethadba.EFACUMULADOR_VIGENCIA_IMPOSTOS ("Acumuladores - Cadastro - Impostos": ALBC_IAC "Aliquota da Base

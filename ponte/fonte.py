@@ -1,4 +1,4 @@
-"""O que a ponte lê do Domínio: treze funções, cada uma devolve uma lista de dicionários.
+"""O que a ponte lê do Domínio: dezenove funções, cada uma devolve uma lista de dicionários.
 
     empresas()     -> codigo (o código da empresa no Domínio, número), documento (sem pontuação), nome, ativa
     folha(mes)     -> por empresa: codigo, funcionarios_ativos, admissoes, desligamentos, afastados,
@@ -21,6 +21,26 @@
                       lançou no mês, pra cruzar com o faturamento e a folha)
     saldos(mes)        -> por empresa: codigo, os saldos estranhos no último dia do mês (caixa_negativo,
                       contra_natureza, sem_natureza, transitorias, transitorias_valor)
+    saidas_cfop(mes)   -> por empresa (desde a versão 5 do pacote, 11/11/2026: o que o Comparativo tributário apura pelas
+                      notas e pela contabilidade): codigo, as vendas do mês pelo CFOP (venda_producao, venda_revenda,
+                      venda_combustivel, industrializacao_encomenda, transporte, transporte_357, energia_comunicacao,
+                      outras_saidas), pra onde foram (saidas_no_estado, saidas_outro_estado, saidas_exterior) e o ICMS,
+                      o ICMS-ST e o IPI destacados (base_icms_saidas, icms_saidas, icms_st_saidas, ipi_saidas)
+    entradas_icms(mes) -> por empresa: codigo, o ICMS e o IPI das compras (base_icms_compras, icms_compras, ipi_compras)
+                      e o ICMS das despesas com nota (icms_despesas)
+    servicos_iss(mes)  -> por empresa: codigo, o serviço com o acumulador no Anexo IV do Simples (serv_anexo_iv) e o ISS
+                      das notas (base_iss, iss_devido, iss_retido)
+    piscofins(mes)     -> por empresa: codigo, a venda pela situação tributária do PIS/Cofins do item (pc_tributada,
+                      pc_monofasica, pc_st, pc_aliquota_zero, pc_isenta, pc_sem_incidencia, pc_suspensa, pc_outras,
+                      pc_sem_cst) e a apuração do mês (base_pis_cofins, pis_apurado, cofins_apurada,
+                      creditos_pis_cofins, pis_cofins_a_recolher)
+    presumido(mes)     -> por empresa: codigo, a receita pelo percentual de presunção do acumulador (receita_irpj_1_6,
+                      _8, _16, _32 e _outros; receita_csll_12, _32 e _outros) e a apuração do IRPJ e da CSLL que o
+                      Domínio fez (apuracao_trimestral — 1 ou 0 —, demais_receitas, base_irpj, irpj_apurado, base_csll,
+                      csll_apurada)
+    resultado(mes)     -> por empresa: codigo, o resultado da contabilidade no mês antes do IRPJ e da CSLL
+                      (resultado_antes_ir, negativo = prejuízo), o IRPJ e a CSLL lançados (irpj_csll_lancados), as
+                      receitas financeiras e quantos lançamentos tocam conta de resultado (lanc_resultado)
     andamento(mes)     -> a foto do dia (uma vez por rodada, com o mês de hoje), por empresa: codigo, até onde o banco,
                       o extrato e o caixa estão lançados e a data do fechamento (CAMPOS_ANDAMENTO)
     encerramento(ano)  -> por empresa, no ano: codigo, o zeramento (CAMPOS_ENCERRAMENTO); a ponte lê os dois anos
@@ -62,8 +82,23 @@ CAMPOS_MES = {
                 'incluido_ate'),
     'cruzamentos': ('receita_lancada', 'folha_lancada', 'encargos_lancados'),
     'saldos': ('caixa_negativo', 'contra_natureza', 'sem_natureza', 'transitorias', 'transitorias_valor'),
+    # desde a versão 5 (11/11/2026): o que o Comparativo tributário apura pelas notas e pela contabilidade — as consultas
+    # que a fila de 11/11 escreveu e conferiu no Domínio (os rascunhos comparativo_*.sql, promovidos)
+    'saidas_cfop': ('venda_producao', 'venda_revenda', 'venda_combustivel', 'industrializacao_encomenda', 'transporte',
+                    'transporte_357', 'energia_comunicacao', 'outras_saidas', 'saidas_no_estado', 'saidas_outro_estado',
+                    'saidas_exterior', 'base_icms_saidas', 'icms_saidas', 'icms_st_saidas', 'ipi_saidas'),
+    'entradas_icms': ('base_icms_compras', 'icms_compras', 'ipi_compras', 'icms_despesas'),
+    'servicos_iss': ('serv_anexo_iv', 'base_iss', 'iss_devido', 'iss_retido'),
+    'piscofins': ('pc_tributada', 'pc_monofasica', 'pc_st', 'pc_aliquota_zero', 'pc_isenta', 'pc_sem_incidencia',
+                  'pc_suspensa', 'pc_outras', 'pc_sem_cst', 'base_pis_cofins', 'pis_apurado', 'cofins_apurada',
+                  'creditos_pis_cofins', 'pis_cofins_a_recolher'),
+    'presumido': ('receita_irpj_1_6', 'receita_irpj_8', 'receita_irpj_16', 'receita_irpj_32', 'receita_irpj_outros',
+                  'receita_csll_12', 'receita_csll_32', 'receita_csll_outros', 'apuracao_trimestral', 'demais_receitas',
+                  'base_irpj', 'irpj_apurado', 'base_csll', 'csll_apurada'),
+    'resultado': ('resultado_antes_ir', 'irpj_csll_lancados', 'receitas_financeiras', 'lanc_resultado'),
 }
 BLOCOS = tuple(CAMPOS_MES)   # a ordem em que a rodada lê: folha, fiscal, contabil, faturamento, compras, folha_valores…
+BLOCOS_V5 = ('saidas_cfop', 'entradas_icms', 'servicos_iss', 'piscofins', 'presumido', 'resultado')
 
 # os blocos que não são do mês (versão 3): a foto do dia, uma vez por rodada, e o encerramento de cada ano
 CAMPOS_ANDAMENTO = ('banco_contas', 'banco_ate', 'banco_ultimo', 'banco_ultimo_geral', 'caixa_ate', 'caixa_contador_ate',
@@ -101,10 +136,13 @@ CAMPOS_INTEIROS = {'funcionarios_ativos', 'admissoes', 'desligamentos', 'afastad
                    'zeramentos', 'lancados_depois', 'lancamentos_do_ano',
                    'jornada', 'tipo', 'tipo_escala', 'min_semana', 'min_maior_dia', 'ciclo_dias', 'ciclo_trabalho',
                    'forma', 'controle', 'categoria', 'unidade', 'empregados', 'compensa_sabado', 'superior',
-                   'superior_teto'}
+                   'superior_teto',
+                   # a versão 5: a apuração por trimestre (1) ou por mês (0) e os lançamentos em conta de resultado
+                   'apuracao_trimestral', 'lanc_resultado'}
 CAMPOS_VALOR = {'valor_saidas', 'valor_entradas', 'receita_lancada', 'folha_lancada', 'encargos_lancados',
                 'transitorias_valor'} | {
-    c for b in ('faturamento', 'compras', 'folha_valores') for c in CAMPOS_MES[b] if c != 'meses_rbt12'}
+    c for b in ('faturamento', 'compras', 'folha_valores') + BLOCOS_V5 for c in CAMPOS_MES[b]
+    if c not in ('meses_rbt12', 'apuracao_trimestral', 'lanc_resultado')}
 CAMPOS_NUMERO = {'horas_semana', 'horas_mes'}   # horas, com até duas casas (não é dinheiro)
 CAMPOS_SEMANA = {'semana'}                      # sete caracteres: T, C, F ou -
 CAMPOS_DATA = {'ultimo_lancamento', 'incluido_ate', 'banco_ate', 'banco_ultimo', 'banco_ultimo_geral', 'caixa_ate',
@@ -121,7 +159,7 @@ class ConsultaAConferir(Exception):
 
 
 class Fonte:
-    """O contrato. Cada fonte implementa as treze funções; fechar() solta o que estiver aberto."""
+    """O contrato. Cada fonte implementa as dezenove funções; fechar() solta o que estiver aberto."""
 
     def empresas(self):
         raise NotImplementedError
@@ -151,6 +189,24 @@ class Fonte:
         raise NotImplementedError
 
     def saldos(self, mes):
+        raise NotImplementedError
+
+    def saidas_cfop(self, mes):
+        raise NotImplementedError
+
+    def entradas_icms(self, mes):
+        raise NotImplementedError
+
+    def servicos_iss(self, mes):
+        raise NotImplementedError
+
+    def piscofins(self, mes):
+        raise NotImplementedError
+
+    def presumido(self, mes):
+        raise NotImplementedError
+
+    def resultado(self, mes):
         raise NotImplementedError
 
     def andamento(self, mes):

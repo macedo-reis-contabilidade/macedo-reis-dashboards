@@ -24,7 +24,11 @@
 //                                                              folha em reais (05/11/2026), ou 3 com o andamento das
 //                                                              contabilidades (também 05/11/2026: os lançamentos por
 //                                                              origem, os cruzamentos, os saldos, a foto do dia e o
-//                                                              encerramento)
+//                                                              encerramento), ou 4 com a jornada dos funcionários
+//                                                              (09/11/2026), ou 5 com o que o Comparativo tributário
+//                                                              apura pelas notas e pela contabilidade (11/11/2026: as
+//                                                              vendas pelo CFOP, o ICMS, o ISS, o PIS/Cofins, a
+//                                                              presunção e o resultado)
 //   { versao: 1, tipo: 'notas', pedir: 'autorizadas' }       → as empresas cujo cliente autorizou mandar as notas de
 //                                                              entrada (compartilhamentos), pelo código do Domínio
 //   { versao: 1, tipo: 'notas', rodada, empresa, notas }     → as notas de uma empresa, conferidas (notas.js) e mandadas
@@ -198,7 +202,10 @@ async function guardarRelatorio(db, drive, r, agora) {
 // A jornada (a versão 4, 09/11/2026) não vai nas partes: depois delas (as empresas já gravadas, que a ligam ao cadastro
 // pelo código), a foto inteira vai pra dominio_gravar_jornadas — só com a lista lida inteira e com algum grupo. Um erro
 // nela não derruba a rodada: os números do mês já foram, e a foto da jornada é do dia (a de amanhã vem de novo).
+// A linha do mês vai pro banco só com os campos que têm valor (11/11/2026, a versão 5: 114 campos por linha): o banco
+// lê o campo que falta como null, igual ao null escrito, e cada parte fica com menos da metade do tamanho.
 export const LINHAS_POR_PARTE = 800;
+const semVazios = l => Object.fromEntries(Object.entries(l).filter(([, v]) => v != null));
 export async function gravarDominio(db, p) {
   const { jornadas = [], ...resto } = p;
   const total = { empresas: 0, ligadas: 0, sem_cadastro: 0, linhas: 0, andamento: 0, encerramento: 0, jornadas: 0 };
@@ -211,7 +218,7 @@ export async function gravarDominio(db, p) {
       andamento: primeira ? (p.andamento || []) : [],
       encerramento: primeira ? (p.encerramento || []) : [],
       blocos_ok: primeira ? p.blocos_ok : { ...p.blocos_ok, andamento: false, encerramento: false },
-      mensal: p.mensal.slice(i * LINHAS_POR_PARTE, (i + 1) * LINHAS_POR_PARTE)
+      mensal: p.mensal.slice(i * LINHAS_POR_PARTE, (i + 1) * LINHAS_POR_PARTE).map(semVazios)
     };
     const { data, error } = await db.rpc('dominio_gravar', { p: parte });
     if (error) throw error;
@@ -250,10 +257,11 @@ export function criarServidor({ criarDb, agora = () => Date.now(), enviar = (url
     let corpo;
     try { corpo = JSON.parse(bruto); } catch { return resposta({ erro: 'O corpo não é um JSON.' }, 400); }
     if (!corpo || typeof corpo !== 'object' || Array.isArray(corpo)) return resposta({ erro: 'O corpo não é um objeto.' }, 400);
-    // as versões 2 a 4 são só do pacote do Domínio (05/11/2026: o faturamento, as compras e a folha em reais; o
-    // andamento das contabilidades; 09/11/2026: a jornada dos funcionários); o resto lê a 1
+    // as versões 2 a 5 são só do pacote do Domínio (05/11/2026: o faturamento, as compras e a folha em reais; o
+    // andamento das contabilidades; 09/11/2026: a jornada dos funcionários; 11/11/2026: o que o Comparativo tributário
+    // apura pelas notas e pela contabilidade); o resto lê a 1
     const doDominio = corpo.tipo == null && Array.isArray(corpo.mensal);
-    if (corpo.versao !== 1 && !(doDominio && [2, 3, 4].includes(corpo.versao))) return resposta({ erro: 'Versão do pacote desconhecida (esta função lê a 1; o pacote do Domínio, da 1 à 4).' }, 422);
+    if (corpo.versao !== 1 && !(doDominio && [2, 3, 4, 5].includes(corpo.versao))) return resposta({ erro: 'Versão do pacote desconhecida (esta função lê a 1; o pacote do Domínio, da 1 à 5).' }, 422);
     try {
       if (corpo.ping === true) return resposta({ ok: true, ponte: 'ok' });
       if (corpo.tipo === 'receita' && corpo.pedir === 'empresas') {

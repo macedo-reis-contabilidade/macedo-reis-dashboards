@@ -1,5 +1,6 @@
--- comparativo_entradas.sql (rascunho da fila de 11/11/2026, o Comparativo tributário; a ponte NÃO lê esta pasta): por
--- empresa, o ICMS e o IPI das entradas do mês. Os dois parâmetros são o primeiro e o último dia do mês.
+-- entradas_icms.sql (versão 5 do pacote, 11/11/2026: o Comparativo tributário; escrita e conferida no Domínio pela fila
+-- de 11/11, o rascunho comparativo_entradas.sql): por empresa, o ICMS e o IPI das entradas do mês. Os dois parâmetros
+-- são o primeiro e o último dia do mês.
 -- Tabelas: bethadba.efentradas ("Notas Fiscais de Entrada", uma linha por segmento: codi_nat "Natureza" = o CFOP;
 -- IPI_ENT "Valor IPI"; dent_ent a data de entrada, como o compras.sql) e bethadba.efimpent ("Notas Fiscais de Entrada -
 -- Impostos": codi_imp 1 = ICMS; bcal_ien "Base de calculo", vlor_ien "Valor do imposto"). Fora a cancelada, denegada ou

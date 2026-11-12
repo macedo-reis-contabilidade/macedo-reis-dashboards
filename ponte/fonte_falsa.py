@@ -14,6 +14,12 @@ que ficar no PC.
 Desde a versão 4 (09/11/2026), as jornadas (a foto do dia): a 101 com uma 6x1 de 44 horas, uma 5x2 com o sábado
 compensado e uma 12x36 de horista (os três grupos somam os funcionários ativos dela no mês de hoje), e a 104 com um
 grupo sem jornada no Domínio. A 6x1 traz também o nome e o CPF de uma pessoa, que não podem sair do PC.
+Desde a versão 5 (11/11/2026), o que o Comparativo tributário apura pelas notas e pela contabilidade: a 101 (do Simples,
+comércio) com a revenda pelo CFOP, o ICMS das compras, a venda toda sem CST de PIS/Cofins e sem presunção (o acumulador
+do Simples não tem) e o lucro do mês; a 102 com a revenda nos meses pares e prejuízo nos ímpares (o resultado negativo);
+a 104 (do Presumido, serviços) com o ISS, a venda tributada de PIS/Cofins com a apuração, a presunção de 32% com a
+apuração do trimestre — e sem resultado, que ela não tem contabilidade. O cliente da nota, o sócio e o nome da conta
+que uma consulta mal escrita traria ficam no PC.
 """
 import calendar
 import datetime
@@ -167,6 +173,92 @@ class FonteFalsa(Fonte):
             {'codigo': 102, 'caixa_negativo': 1, 'contra_natureza': 0, 'sem_natureza': 1, 'transitorias': 1,
              'transitorias_valor': Decimal('350.75')},
         ]
+
+    # desde a versão 5 do pacote (11/11/2026): o que o Comparativo tributário apura pelas notas e pela contabilidade
+    def saidas_cfop(self, mes):
+        _, m = _ano_mes(mes)
+        zeros = {'venda_producao': 0, 'venda_combustivel': 0, 'industrializacao_encomenda': 0, 'transporte': 0,
+                 'transporte_357': 0, 'energia_comunicacao': 0, 'outras_saidas': 0, 'saidas_exterior': 0,
+                 'base_icms_saidas': 0, 'icms_saidas': 0, 'icms_st_saidas': 0, 'ipi_saidas': 0}
+        linhas = [
+            # 101: a revenda (a soma dos grupos é a receita de mercadoria antes da devolução), parte pra fora do estado
+            {'codigo': 101, **zeros, 'venda_revenda': Decimal('80500.00') + m, 'saidas_no_estado': Decimal('70500.00') + m,
+             'saidas_outro_estado': Decimal('10000.00'),
+             # o que uma consulta mal escrita devolveria — não pode sair deste PC
+             'cliente': 'CLIENTE DA NOTA (INVENTADO)'},
+        ]
+        if m % 2 == 0:   # 102 só tem nota nos meses pares
+            linhas.append({'codigo': 102, **zeros, 'venda_revenda': 7300.4, 'saidas_no_estado': 7300.4,
+                           'saidas_outro_estado': 0})
+        return linhas                                                   # a 104 só presta serviço: sem linha aqui
+
+    def entradas_icms(self, mes):
+        _, m = _ano_mes(mes)
+        linhas = [
+            {'codigo': 101, 'base_icms_compras': Decimal('45000.00') + m, 'icms_compras': Decimal('5400.00'),
+             'ipi_compras': Decimal('112.35'), 'icms_despesas': Decimal('216.00')},
+            {'codigo': 104, 'base_icms_compras': 0, 'icms_compras': 0, 'ipi_compras': 0, 'icms_despesas': 0},
+        ]
+        if m % 2 == 0:
+            linhas.append({'codigo': 102, 'base_icms_compras': 2100, 'icms_compras': 252, 'ipi_compras': 0,
+                           'icms_despesas': 0})
+        return linhas
+
+    def servicos_iss(self, mes):
+        # só a 104 presta serviço: o ISS de 3%, uma parte retida pelo tomador
+        return [{'codigo': 104, 'serv_anexo_iv': 0, 'base_iss': 18000, 'iss_devido': 540, 'iss_retido': Decimal('180.00')}]
+
+    def piscofins(self, mes):
+        _, m = _ano_mes(mes)
+        zeros = {'pc_tributada': 0, 'pc_monofasica': 0, 'pc_st': 0, 'pc_aliquota_zero': 0, 'pc_isenta': 0,
+                 'pc_sem_incidencia': 0, 'pc_suspensa': 0, 'pc_outras': 0, 'pc_sem_cst': 0}
+        sem_apuracao = {'base_pis_cofins': None, 'pis_apurado': None, 'cofins_apurada': None,
+                        'creditos_pis_cofins': None, 'pis_cofins_a_recolher': None}
+        linhas = [
+            # 101, do Simples: o item não tem o CST (a venda toda em pc_sem_cst) e não há apuração
+            {'codigo': 101, **zeros, 'pc_sem_cst': Decimal('80500.00') + m, **sem_apuracao},
+            # 104, do Presumido: a venda tributada, com a apuração do cumulativo (0,65% e 3%)
+            {'codigo': 104, **zeros, 'pc_tributada': 18000, 'base_pis_cofins': 18000, 'pis_apurado': 117,
+             'cofins_apurada': 540, 'creditos_pis_cofins': 0, 'pis_cofins_a_recolher': 657},
+        ]
+        if m % 2 == 0:
+            linhas.append({'codigo': 102, **zeros, 'pc_sem_cst': 7300.4, **sem_apuracao})
+        return linhas
+
+    def presumido(self, mes):
+        _, m = _ano_mes(mes)
+        zeros = {'receita_irpj_1_6': 0, 'receita_irpj_8': 0, 'receita_irpj_16': 0, 'receita_irpj_32': 0,
+                 'receita_irpj_outros': 0, 'receita_csll_12': 0, 'receita_csll_32': 0, 'receita_csll_outros': 0}
+        sem_apuracao = {'apuracao_trimestral': None, 'demais_receitas': None, 'base_irpj': None, 'irpj_apurado': None,
+                        'base_csll': None, 'csll_apurada': None}
+        linhas = [
+            # 101, do Simples: o acumulador não tem a presunção (a receita, com a devolução negativa, em "outros")
+            {'codigo': 101, **zeros, 'receita_irpj_outros': Decimal('80000.00') + m,
+             'receita_csll_outros': Decimal('80000.00') + m, **sem_apuracao},
+            # 104, do Presumido: serviço a 32%, com a apuração do trimestre (3 × 18.000 × 32%; 15% e 9% da base)
+            {'codigo': 104, **zeros, 'receita_irpj_32': 18000, 'receita_csll_32': 18000, 'apuracao_trimestral': 1,
+             'demais_receitas': 0, 'base_irpj': 17280, 'irpj_apurado': 2592, 'base_csll': 17280,
+             'csll_apurada': Decimal('1555.20'),
+             # o que uma consulta mal escrita devolveria — não pode sair deste PC
+             'socio': 'SICRANO (INVENTADO)'},
+        ]
+        if m % 2 == 0:
+            linhas.append({'codigo': 102, **zeros, 'receita_irpj_outros': 7300.4, 'receita_csll_outros': 7300.4,
+                           **sem_apuracao})
+        return linhas
+
+    def resultado(self, mes):
+        _, m = _ano_mes(mes)
+        return [
+            # 101: lucro todo mês
+            {'codigo': 101, 'resultado_antes_ir': Decimal('9200.00') + m, 'irpj_csll_lancados': 0,
+             'receitas_financeiras': Decimal('35.40'), 'lanc_resultado': 380 + m,
+             # o que uma consulta mal escrita devolveria — não pode sair deste PC
+             'conta': 'LUCROS DISTRIBUIDOS AO BELTRANO (INVENTADO)'},
+            # 102: lucro nos meses com venda e prejuízo nos outros (o resultado negativo)
+            {'codigo': 102, 'resultado_antes_ir': Decimal('1800.40') if m % 2 == 0 else Decimal('-420.15'),
+             'irpj_csll_lancados': 0, 'receitas_financeiras': 0, 'lanc_resultado': 9},
+        ]                                                               # a 104 não tem contabilidade: sem linha
 
     def andamento(self, mes):
         ano, m = _ano_mes(mes)

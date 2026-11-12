@@ -1,5 +1,6 @@
--- comparativo_servicos.sql (rascunho da fila de 11/11/2026, o Comparativo tributário; a ponte NÃO lê esta pasta): por
--- empresa, os serviços do mês e o ISS. Os dois parâmetros são o primeiro e o último dia do mês.
+-- servicos_iss.sql (versão 5 do pacote, 11/11/2026: o Comparativo tributário; escrita e conferida no Domínio pela fila
+-- de 11/11, o rascunho comparativo_servicos.sql): por empresa, o ISS das notas de serviço do mês e a parte do serviço
+-- no Anexo IV do Simples. Os dois parâmetros são o primeiro e o último dia do mês.
 -- Tabelas: bethadba.efservicos ("Notas Fiscais de Servico", uma linha por segmento: vcon_ser "Valor contabil", dser_ser
 -- "Data do servico"), bethadba.efimpser ("Notas Fiscais de Servico - Impostos": codi_imp 3 = ISS e 18 = ISS Ret na
 -- bethadba.geimposto; bcal_ise "Base de calculo", vlor_ise "Valor do imposto"), bethadba.EFACUMULADOR_VIGENCIA (o corte do
@@ -10,15 +11,15 @@
 -- Serviço conforme LC nº 116/03" do acumulador (DF_CODIGO_SERVICO_CONFORME_LC_116_03_CODIGO) está vazio em todos, a marca
 -- dos subitens 7.02 e 7.05 do acumulador do Simples (SIMPLESN_SERVICOS_702_705) não está ligada em nenhum, e os itens das
 -- notas de serviço (bethadba.EFMVVPRO, com o produto e o código do serviço dele) têm 100 linhas no banco inteiro. Por
--- isso os grupos serv_construcao, serv_saude, serv_transporte, serv_locacao e serv_outros ficam de fora, e
--- serv_sem_item é todo o serviço. O cfps_ser ("Codigo fiscal da prestacao de servicos") existe em parte das notas, mas
--- é o código fiscal da prestação (5 códigos no escritório de 10/2025 a 09/2026), não o item.
+-- isso o serviço não sai separado pelo item (construção, saúde, transporte, locação): o total dele é o
+-- receita_servicos do faturamento.sql. O cfps_ser ("Codigo fiscal da prestacao de servicos") existe em parte das notas,
+-- mas é o código fiscal da prestação (5 códigos no escritório de 10/2025 a 09/2026), não o item.
 -- serv_anexo_iv: a parte do serviço com o acumulador do Simples no anexo IV (onde ficam a obra, a limpeza, a vigilância
 -- e a advocacia) — uma pista, não o item.
 -- base_iss e iss_devido: a linha 3 (ISS) da efimpser; iss_retido: a linha 18 (ISS Ret). No Simples o ISS vai no DAS e a
 -- nota não tem a linha (em 09/2026, 1 dos 222 segmentos a tem).
--- A soma de serv_sem_item é a parte de serviço do faturamento.sql (receita_servicos). Uma linha por empresa com
--- segmento de serviço de faturamento no mês.
+-- O total do serviço não sai daqui (o rascunho o trazia como serv_sem_item): é o receita_servicos do faturamento.sql,
+-- sobre os mesmos segmentos. Uma linha por empresa com segmento de serviço de faturamento no mês.
 WITH p AS (SELECT CAST(? AS DATE) AS ini, CAST(? AS DATE) AS fim),
 v AS (
     SELECT a.CODI_EMP, a.CODI_ACU, a.VIGENCIA_ACU, a.IFAT_ACU
@@ -50,7 +51,6 @@ iss AS (
      GROUP BY seg.codi_emp, seg.codi_ser
 )
 SELECT seg.codi_emp AS codigo,
-       CAST(SUM(seg.vl) AS NUMERIC(15,2)) AS serv_sem_item,
        CAST(SUM(CASE WHEN vi.anexo = 4 THEN seg.vl ELSE 0 END) AS NUMERIC(15,2)) AS serv_anexo_iv,
        CAST(SUM(COALESCE(iss.base, 0)) AS NUMERIC(15,2)) AS base_iss,
        CAST(SUM(COALESCE(iss.devido, 0)) AS NUMERIC(15,2)) AS iss_devido,

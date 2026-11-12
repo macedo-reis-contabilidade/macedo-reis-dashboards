@@ -2,8 +2,9 @@
 
 Cada bloco tem a sua consulta num arquivo em ponte/consultas/ — empresas.sql, folha.sql, fiscal.sql, contabil.sql,
 desde a versão 2 do pacote (05/11/2026) faturamento.sql, compras.sql e folha_valores.sql e, desde a versão 3 (também
-05/11/2026), origens.sql, cruzamentos.sql, saldos.sql, andamento.sql e encerramento.sql e, desde a versão 4
-(09/11/2026), jornadas.sql.
+05/11/2026), origens.sql, cruzamentos.sql, saldos.sql, andamento.sql e encerramento.sql, desde a versão 4
+(09/11/2026), jornadas.sql e, desde a versão 5 (11/11/2026, o Comparativo tributário), saidas_cfop.sql,
+entradas_icms.sql, servicos_iss.sql, piscofins.sql, presumido.sql e resultado.sql.
 Consulta que ainda tem a linha "-- A CONFERIR" não roda: o bloco fica de fora da rodada (vai pro `faltou` do
 pacote) e o resto segue. Sem a de empresas, a rodada não manda nada.
 
@@ -13,6 +14,7 @@ O que cada consulta recebe e devolve (o contrato está em fonte.py):
     fiscal.sql     ? = último dia do mês (date),         (já contado: COUNT/SUM com GROUP BY da empresa)
     contabil.sql   nessa ordem
     faturamento.sql, compras.sql, folha_valores.sql, origens.sql, cruzamentos.sql, saldos.sql: o mesmo
+    saidas_cfop.sql, entradas_icms.sql, servicos_iss.sql, piscofins.sql, presumido.sql, resultado.sql: o mesmo
     andamento.sql  o primeiro e o último dia do mês de hoje (a foto do dia, uma vez por rodada)
     encerramento.sql  ? = 1º de janeiro, ? = 31 de dezembro do ano (uma vez por ano lido)
     jornadas.sql   ? = hoje (date), ? = o salário do art. 8º da EC 141 (numeric) -> uma linha por empresa e GRUPO de
@@ -138,6 +140,25 @@ class FonteDominio(Fonte):
 
     def saldos(self, mes):
         return self._consultar('saldos', limites_do_mes(mes))
+
+    # a versão 5 (11/11/2026): o que o Comparativo tributário apura pelas notas e pela contabilidade
+    def saidas_cfop(self, mes):
+        return self._consultar('saidas_cfop', limites_do_mes(mes))
+
+    def entradas_icms(self, mes):
+        return self._consultar('entradas_icms', limites_do_mes(mes))
+
+    def servicos_iss(self, mes):
+        return self._consultar('servicos_iss', limites_do_mes(mes))
+
+    def piscofins(self, mes):
+        return self._consultar('piscofins', limites_do_mes(mes))
+
+    def presumido(self, mes):
+        return self._consultar('presumido', limites_do_mes(mes))
+
+    def resultado(self, mes):
+        return self._consultar('resultado', limites_do_mes(mes))
 
     def andamento(self, mes):
         return self._consultar('andamento', limites_do_mes(mes))

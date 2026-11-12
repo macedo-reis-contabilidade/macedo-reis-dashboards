@@ -189,9 +189,33 @@ pessoa ficam no PC; e, desde a 0.4.1 (11/11/2026, decisão do Samuel), o grupo c
 sem a soma dos salários, os afastados e o superior (em branco), que ali diriam de quem é. Uns 3 segundos. O que se achou no Domínio e os números do escritório inteiro em
 `docs/FILA-CODE-2026-11-09-JORNADAS-DUVIDAS.md`.
 
+**O que o Comparativo tributário apura pelas notas e pela contabilidade** (a versão 5 do pacote, 11/11/2026, ponte
+0.5.0): seis consultas por mês, as que a fila de 11/11 escreveu e conferiu no Domínio (os rascunhos
+`comparativo_*.sql`, promovidos; as tabelas, as regras e os números do escritório inteiro em
+`docs/FILA-CODE-2026-11-11-COMPARATIVO-DUVIDAS.md`; menos de 5 segundos cada por mês, uns 5 minutos a mais numa rodada
+de 14 meses). `saidas_cfop.sql`: as vendas pelo CFOP (a produção, a revenda, o combustível, a industrialização por
+encomenda, o transporte, a energia e a comunicação, o resto), pra onde foram (o estado, outro estado, o exterior) e o
+ICMS, o ICMS-ST e o IPI destacados. `entradas_icms.sql`: o ICMS e o IPI das compras e o ICMS das despesas com nota.
+`servicos_iss.sql`: o ISS das notas de serviço (o devido e o retido) e a parte do serviço no Anexo IV do Simples — o
+item da lista da LC 116 não existe no Domínio do escritório. `piscofins.sql`: a venda pela situação tributária (CST) do
+PIS/Cofins do item — só o Presumido e o Real têm; no Simples a venda cai toda em `pc_sem_cst` — e a apuração do mês.
+`presumido.sql`: a receita pelo percentual de presunção do acumulador (1,6, 8, 16 e 32% no IRPJ; 12 e 32% na CSLL) e a
+apuração do IRPJ e da CSLL que o próprio Domínio fez (a do mês ou a do trimestre, `apuracao_trimestral` 1 ou 0; é da
+pessoa jurídica: a linha da matriz já tem as filiais). `resultado.sql`: o resultado da contabilidade no mês antes do
+IRPJ e da CSLL (negativo = prejuízo), o IRPJ e a CSLL lançados, as receitas financeiras e quantos lançamentos tocam
+conta de resultado — zero é o mês sem contabilidade, nunca lucro zero. A descrição das contas e o acumulador só entram
+em filtro; nenhum nome de conta, de cliente ou de fornecedor sai do PC.
+
+**O pacote vai compacto** (desde a 0.5.0): com os 114 campos por linha, o pacote por extenso dos 14 meses passaria dos
+16 MB que a função do sistema aceita. O que vai no envio e nos pendentes é o mesmo pacote com cada linha do mês só com
+o código, a competência e os campos que têm valor (`pacote.compactar` e `pacote.corpo`) — toda empresa e todo mês
+seguem com a sua linha, e o sistema lê o campo que falta como em branco. O log diz o tamanho ("o pacote vai com N MB")
+e avisa acima de 14 MB. O `--saida` segue por extenso, com todos os campos.
+
 As consultas ficam em `ponte\consultas\` (`empresas.sql`, `folha.sql`, `fiscal.sql`, `contabil.sql`,
-`faturamento.sql`, `compras.sql`, `folha_valores.sql`, `origens.sql`, `cruzamentos.sql`, `saldos.sql`, `andamento.sql`,
-`encerramento.sql`, `jornadas.sql`). Enquanto a
+`faturamento.sql`, `compras.sql`, `folha_valores.sql`, `origens.sql`, `cruzamentos.sql`, `saldos.sql`,
+`saidas_cfop.sql`, `entradas_icms.sql`, `servicos_iss.sql`, `piscofins.sql`, `presumido.sql`, `resultado.sql`,
+`andamento.sql`, `encerramento.sql`, `jornadas.sql`). Enquanto a
 consulta tiver a linha `-- A CONFERIR`, ela não roda: o bloco vai pro `faltou` do pacote, e sem a de empresas a
 rodada não manda nada. O que cada uma recebe e devolve está no começo de `ponte\fonte_dominio.py` (as do mês recebem
 o primeiro e o último dia do mês, nessa ordem, e devolvem **uma linha por empresa, já contada**; o `andamento.sql`, os

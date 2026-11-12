@@ -13,6 +13,8 @@ from . import VERSAO, config, envio, pacote
 from .log import Registro
 
 OK, TENTAR_DE_NOVO, NAO_ADIANTA = 0, 1, 2
+# a função do sistema recusa (413) o corpo acima de 16 MB: perto disso, o log avisa antes de o envio começar a voltar
+AVISO_TAMANHO = 14 * 1024 * 1024
 
 
 def rodar(falso=False, sem_enviar=False, saida=None, meses=None):
@@ -89,7 +91,11 @@ def _rodar_totais(base, cfg, reg, falso, sem_enviar, saida, meses):
             pass
 
     reg('lido: ' + pacote.resumo(pac))
-    corpo = json.dumps(pac, ensure_ascii=False).encode('utf-8')
+    # o que vai pro sistema (e pros pendentes) é o pacote compacto: cada linha do mês só com os campos que têm valor
+    corpo = pacote.corpo(pac)
+    reg(f'o pacote vai com {len(corpo) / 1048576:.1f} MB')
+    if len(corpo) > AVISO_TAMANHO:
+        reg('o pacote passou de 14 MB: o sistema recusa acima de 16 MB — diminua o --meses ou avise', 'aviso')
     if saida:
         # caminho solto vai pra pasta da ponte, nunca pra pasta de onde se roda: o pacote de verdade tem nome e CNPJ
         # dos clientes, e rodado da pasta do repositório (que é público) ele cairia lá dentro
@@ -136,7 +142,7 @@ def _rodar_totais(base, cfg, reg, falso, sem_enviar, saida, meses):
             reg(f'pendente {arq.name} recusado pelo sistema e apagado (repetir não adianta)', 'erro')
             codigo = NAO_ADIANTA
             continue
-        guardado = envio.guardar(pasta_pend, pac)
+        guardado = envio.guardar(pasta_pend, pac, corpo)
         reg(f'o sistema não respondeu: a rodada de hoje ficou guardada em pendentes\\{guardado.name}', 'erro')
         return TENTAR_DE_NOVO
 
@@ -145,6 +151,6 @@ def _rodar_totais(base, cfg, reg, falso, sem_enviar, saida, meses):
         return codigo
     if r in (envio.RECUSADO, envio.CONFIG):
         return NAO_ADIANTA
-    guardado = envio.guardar(pasta_pend, pac)
+    guardado = envio.guardar(pasta_pend, pac, corpo)
     reg(f'guardei em pendentes\\{guardado.name} pra mandar na próxima rodada', 'erro')
     return TENTAR_DE_NOVO
