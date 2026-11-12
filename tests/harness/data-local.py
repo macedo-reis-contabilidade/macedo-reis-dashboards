@@ -77,7 +77,15 @@ def abrir(b, base, pagina, erros):
     return ctx, p
 
 def inseridos(p, tab):
-    return json.loads(p.evaluate(f"() => sessionStorage.getItem('__ins_{tab}') || '[]'"))
+    # depois do "Iniciar transição" a Precificação navega pra Transição: com a máquina carregada (a suíte roda 4 testes ao
+    # mesmo tempo), a leitura caía no meio da navegação ("Execution context was destroyed") — espera a página assentar
+    for tentativa in range(5):
+        try:
+            p.wait_for_load_state('load')
+            return json.loads(p.evaluate(f"() => sessionStorage.getItem('__ins_{tab}') || '[]'"))
+        except Exception as e:
+            if 'context was destroyed' not in str(e) or tentativa == 4: raise
+            p.wait_for_timeout(400)
 
 def kit_ok(p, transicao_id, rotulo):
     prazos = sorted(t['prazo'] for t in inseridos(p, 'tarefas') if t.get('transicao_id') == transicao_id)
