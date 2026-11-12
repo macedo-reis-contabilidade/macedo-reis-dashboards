@@ -7,7 +7,8 @@
 // Rodar com: node tests/comparativo-estudo.test.mjs
 import { comparar } from '../assets/js/comparativo-motor.js';
 import { PADROES, comPadroes, ORIGENS_PADRAO, CAMPOS, erroSemTabela, entradaDoMotor, carregarEstudo, estudoGravado, contaDoEstudo, situacaoComGrupo,
-  oQueMuda, avisosDoEstudo, alertaDoLimite, resumoParaGravar, aplicarESe, E_SE, objetivoDoEstudo, opcoesDeObjetivo, alertaDasVedacoes, contabilDoEstudo } from '../assets/js/comparativo-estudo.js';
+  oQueMuda, avisosDoEstudo, alertaDoLimite, resumoParaGravar, aplicarESe, E_SE, objetivoDoEstudo, opcoesDeObjetivo, alertaDasVedacoes, contabilDoEstudo,
+  perguntaDaConfirmacao, pedirConfirmacao, ERRO_AO_PERGUNTAR } from '../assets/js/comparativo-estudo.js';
 
 let falhas = 0;
 const chk = (nome, cond, extra) => { if (!cond) falhas++; console.log((cond ? '  ✓ ' : '  ✗ ') + nome + (!cond && extra !== undefined ? ' → ' + extra : '')); };
@@ -417,6 +418,51 @@ console.log('Qual comparativo, os impedimentos do Simples, a contabilidade e a p
   const e6 = aplicarESe(eDre, oDre, { receita_12_meses: 1200000 }, { aliq2027: ALIQ, serie: est.serie });
   chk('a receita em dobro, com a DRE de 10 meses: o lucro dela dobra e o período fica', perto(e6.entrada.lucroContabil, 80000) && e6.entrada.lucroAte === '2026-07' && !e6.entrada.lucroAnual
     && perto(contaDoEstudo({ ...est, entrada: e6.entrada, origens: e6.origens, aliq2027: ALIQ, hoje: '2026-11-11' }).comparacao.decisao.real.doze, 96000));
+
+  // ---------- a pergunta da confirmação no vigia de quem cuida da contabilidade (11/11/2026, 21h19: "Pra agora vai") ----------
+  {
+    const PG = { id: 'p1', ate: '2026-07', situacao: 'aberta', sim: false, para: 'Adaini', para_email: 'contabil@macedoereis.com.br', pedida_por: 'Samuel', criada_em: '2026-11-12T00:30:00+00:00' };
+    const SIM = { ...PG, situacao: 'respondida', sim: true, resposta: 'Sim, pode usar até jul/26', respondida_em: '2026-11-12T13:00:00+00:00' };
+    const feitas = [];
+    const chamarCom = resp => async (nome, args) => { feitas.push({ nome, args }); return typeof resp === 'function' ? resp(nome, args) : resp; };
+    // a leitura do estado: a função do banco, com a empresa; o que não é pergunta vira null
+    chk('a leitura: chama a comparativo_confirmacao com a empresa e devolve a pergunta', (await perguntaDaConfirmacao(chamarCom({ data: PG, error: null }), 'c8')) === PG
+      && feitas.length === 1 && feitas[0].nome === 'comparativo_confirmacao' && feitas[0].args.p_cliente === 'c8', JSON.stringify(feitas));
+    chk('sem pergunta, com erro, com lixo, com a função que estoura, sem a função ou sem a empresa: null', (await perguntaDaConfirmacao(chamarCom({ data: null, error: null }), 'c8')) === null
+      && (await perguntaDaConfirmacao(chamarCom({ data: PG, error: { message: 'x' } }), 'c8')) === null && (await perguntaDaConfirmacao(chamarCom({ data: [], error: null }), 'c8')) === null
+      && (await perguntaDaConfirmacao(chamarCom({ data: { ate: '2026-07' }, error: null }), 'c8')) === null && (await perguntaDaConfirmacao(chamarCom(() => { throw new Error('caiu'); }), 'c8')) === null
+      && (await perguntaDaConfirmacao(null, 'c8')) === null && (await perguntaDaConfirmacao(chamarCom({ data: PG, error: null }), null)) === null);
+    // o estudo abre com a pergunta junto do Controle; sem as funções, ou com a contabilidade de fora, sem ela
+    const comPg = await carregarEstudo({ ler: banco({ socios: SOC, extras }).ler, cliente: IND, hoje: '2026-11-11', chamar: chamarCom({ data: PG, error: null }) });
+    chk('o estudo abre com a pergunta junto do Controle das contabilidades', comPg.contabil.pergunta === PG && comPg.contabil.feitaAte === '2026-07' && est.contabil.pergunta === null);
+    const foraPg = await carregarEstudo({ ler: banco({ socios: SOC, extras: { ...extras, contabil_empresas: [{ cliente_id: 'c8', faz: false, inicio: '2025-01', fim: null }] } }).ler, cliente: IND, hoje: '2026-11-11', chamar: chamarCom({ data: PG, error: null }) });
+    chk('a contabilidade de fora do escritório não tem a pergunta', foraPg.contabil.faz === false && !('pergunta' in foraPg.contabil));
+    // a conta: o "sim" de quem cuida confirma sozinho (sem marca no estudo); a pergunta aberta deixa provisório
+    const cSim = contaDoEstudo({ ...est, contabil: { ...est.contabil, pergunta: SIM }, entrada: eDre, origens: oDre, aliq2027: ALIQ, hoje: '2026-11-12' });
+    const cAb = contaDoEstudo({ ...est, contabil: { ...est.contabil, pergunta: PG }, entrada: eDre, origens: oDre, aliq2027: ALIQ, hoje: '2026-11-12' });
+    chk('com o sim de quem cuida, o lucro deixa de segurar o estudo; com a pergunta aberta, segue provisório', !cSim.precisao.falta.some(x => ['lucro', 'contabil'].includes(x.id)) && cSim.precisao.tem.some(x => x.id === 'contabil' && /pelo vigia$/.test(x.como))
+      && cAb.roteiro.provisorio && cAb.precisao.falta.some(x => x.id === 'contabil' && x.peso === 'decide'), JSON.stringify([cSim.precisao.tem.find(x => x.id === 'contabil'), cAb.precisao.falta.map(x => x.id)]));
+    // o pedido: a função, a empresa, o mês e os sinais (até 1.400 letras)
+    feitas.length = 0;
+    const r1 = await pedirConfirmacao(chamarCom({ data: { id: 'p2', nova: true, para: 'Adaini' }, error: null }), { clienteId: 'c8', ate: '2026-07', sinais: 'x'.repeat(2000) });
+    chk('o pedido: a comparativo_pedir_confirmacao com a empresa, o mês e os sinais cortados em 1.400', r1.ok === true && r1.id === 'p2' && r1.nova === true && r1.para === 'Adaini' && feitas.length === 1 && feitas[0].nome === 'comparativo_pedir_confirmacao'
+      && feitas[0].args.p_cliente === 'c8' && feitas[0].args.p_ate === '2026-07' && feitas[0].args.p_sinais.length === 1400, JSON.stringify(r1));
+    const r2 = await pedirConfirmacao(chamarCom({ data: { id: 'p2', nova: false, para: 'Adaini' }, error: null }), { clienteId: 'c8', ate: '2026-07' });
+    chk('sem sinais, vai nulo; a pergunta que já estava aberta volta como a mesma', r2.ok && r2.nova === false && feitas[1].args.p_sinais === null);
+    // as recusas da função saem em português; o erro técnico vira a frase genérica
+    const recusa = (code, message) => pedirConfirmacao(chamarCom({ data: null, error: { code, message } }), { clienteId: 'c8', ate: '2026-07' });
+    chk('a recusa da regra chega com a frase do banco', (await recusa('P0001', 'Quem cuida da contabilidade desta empresa é você: confirme direto no estudo.')).erro === 'Quem cuida da contabilidade desta empresa é você: confirme direto no estudo.'
+      && (await recusa('P0001', 'Empresa fora do cadastro.')).erro === 'Empresa fora do cadastro.' && (await recusa('22023', 'Faltou a empresa ou o mês.')).erro === 'Faltou a empresa ou o mês.'
+      && (await recusa('42501', 'Só a equipe do escritório pede a confirmação.')).erro === 'Só a equipe do escritório pede a confirmação.' && (await recusa('P0001', 'x')).ok === false);
+    chk('o erro técnico (a permissão do banco, a função que não existe, a rede, a resposta sem id) vira a frase genérica', (await recusa('42501', 'permission denied for function comparativo_pedir_confirmacao')).erro === ERRO_AO_PERGUNTAR
+      && (await recusa('PGRST202', 'Could not find the function public.comparativo_pedir_confirmacao')).erro === ERRO_AO_PERGUNTAR && (await recusa('P0001', '')).erro === ERRO_AO_PERGUNTAR
+      && (await pedirConfirmacao(chamarCom(() => { throw new Error('Failed to fetch'); }), { clienteId: 'c8', ate: '2026-07' })).erro === ERRO_AO_PERGUNTAR
+      && (await pedirConfirmacao(chamarCom({ data: [], error: null }), { clienteId: 'c8', ate: '2026-07' })).erro === ERRO_AO_PERGUNTAR && /^Não deu pra enviar a pergunta agora\./.test(ERRO_AO_PERGUNTAR));
+    const antes = feitas.length;
+    chk('sem a empresa, com o mês torto ou sem as funções, nem chama o banco', (await pedirConfirmacao(chamarCom({ data: { id: 'x' } }), { clienteId: null, ate: '2026-07' })).ok === false
+      && (await pedirConfirmacao(chamarCom({ data: { id: 'x' } }), { clienteId: 'c8', ate: 'jul/26' })).ok === false && (await pedirConfirmacao(null, { clienteId: 'c8', ate: '2026-07' })).ok === false
+      && (await pedirConfirmacao(chamarCom({ data: { id: 'x' } }))).ok === false && feitas.length === antes);
+  }
 
   // a contabilidade de fora e a empresa sem cadastro
   const { ler: lf } = banco({ socios: SOC, extras: { ...extras, contabil_empresas: [{ cliente_id: 'c8', faz: false, inicio: '2025-01', fim: null }] } });

@@ -840,6 +840,98 @@ def main():
         ok('sem notas no sistema: pelo CNAE do cadastro' in fa and 'A regra e o que fazer estão na missão abaixo.' in fa and 'Com a empresa no Domínio, a ponte traz essa divisão pelas notas, todo dia.' in fa, f'e o que usar aponta a missão ({fa[:90]}…)')
         pb.close()
 
+        print('14. A pergunta da confirmação vai pro vigia de quem cuida da contabilidade')
+        # o "vai" do Samuel, 11/11/2026 (21h19): a missão manda a pergunta pela função do banco (comparativo_pedir_confirmacao),
+        # com o que o Domínio mostra, e o estado dela volta pela comparativo_confirmacao ao abrir a empresa
+        RPC = """
+        window.__rpc = { feitas: [], pergunta: null, erro: null };
+        window.__mockRpc = (nome, args) => {
+          window.__rpc.feitas.push({ nome, args });
+          if (nome === 'comparativo_confirmacao') return { data: window.__rpc.pergunta, error: null };
+          if (nome === 'comparativo_pedir_confirmacao') {
+            if (window.__rpc.erro) return { data: null, error: window.__rpc.erro };
+            window.__rpc.pergunta = { id: 'p-1', ate: args.p_ate, situacao: 'aberta', sim: false, para: 'Adaini', para_email: 'contabil@macedoereis.com.br', pedida_por: 'Samuel',
+              criada_em: '2026-11-01T15:00:00+00:00', resposta: null, resposta_texto: null, respondida_em: null };
+            return { data: { id: 'p-1', nova: true, para: 'Adaini' }, error: null };
+          }
+          return { data: [], error: null };
+        };"""
+        def abrir_com(antes):
+            q = cx.new_page()
+            q.on('pageerror', lambda e: erros.append('comparativo: ' + str(e)))
+            q.add_init_script(antes); q.add_init_script(TOUR); q.add_init_script(SEMEAR)
+            q.clock.set_fixed_time('2026-11-01T12:00:00')
+            q.goto(base + 'fiscal-comparativo.html?cliente=c7')
+            q.wait_for_function("() => document.querySelector('#escolhida h3') && document.querySelector('#escolhida h3').textContent === 'INDUSTRIA DE TESTE LTDA'", timeout=8000)
+            q.wait_for_selector('#pergunta .ct-opcao', timeout=5000)
+            q.click('#pergunta .ct-opcao[data-objetivo="presumido_real"]')
+            q.wait_for_selector('#resultado table.ct', timeout=5000)
+            q.click('#trilha button[data-fase="1"]')
+            return q
+        MC = '#fase .ct-m[data-id="contabil"]'
+        pq = abrir_com(RPC)
+        lidas = pq.evaluate("() => window.__rpc.feitas.filter(x => /^comparativo_/.test(x.nome)).map(x => x.nome + ':' + x.args.p_cliente)")
+        ok(lidas == ['comparativo_confirmacao:c7'], f'ao abrir a empresa, a tela lê o estado da pergunta pela função do banco ({lidas})')
+        bt = pq.locator(MC + ' [data-perguntar-contabil]')
+        ok(bt.count() == 1 and bt.inner_text() == 'Perguntar pra Adaini' and bt.get_attribute('data-perguntar-contabil') == '2026-07' and pq.locator(MC + ' [data-confirmar-contabil]').count() == 1,
+           'a missão da confirmação oferece a pergunta pra quem cuida da contabilidade, ao lado do "Confirmado com a contabilidade"')
+        # a recusa do banco aparece na missão, com a frase dele; o erro técnico vira a frase da casa — e o botão segue lá
+        pq.evaluate("() => { window.__rpc.erro = { code: 'P0001', message: 'O Controle das contabilidades não diz quem cuida desta empresa.' }; }")
+        bt.click()
+        pq.wait_for_function("() => /não diz quem cuida desta empresa/.test(document.querySelector('#fase .ct-m[data-id=\"contabil\"]').textContent)", timeout=4000)
+        av = pq.locator(MC + ' p[role="status"]')
+        ok(av.count() == 1 and 'var(--err)' in (av.get_attribute('style') or '') and pq.locator(MC + ' [data-perguntar-contabil]').count() == 1 and pq.get_attribute(MC, 'data-estado') == 'aberta',
+           f'a recusa do banco aparece na missão, em vermelho, e a pergunta segue disponível ({av.inner_text()[:70]})')
+        pq.evaluate("() => { window.__rpc.erro = { code: 'PGRST202', message: 'Could not find the function public.comparativo_pedir_confirmacao' }; }")
+        pq.click(MC + ' [data-perguntar-contabil]')
+        pq.wait_for_function("() => /Não deu pra enviar a pergunta agora\\./.test(document.querySelector('#fase .ct-m[data-id=\"contabil\"]').textContent)", timeout=4000)
+        ok('Could not find' not in texto(pq, MC), 'o erro técnico do banco não vai pra tela: vira "Não deu pra enviar a pergunta agora."')
+        # a pergunta enviada: a missão diz onde ela está, o botão de perguntar sai e o clique de quem falou com ela segue valendo
+        pq.evaluate("() => { window.__rpc.erro = null; }")
+        pq.click(MC + ' [data-perguntar-contabil]')
+        pq.wait_for_function("() => /A pergunta está no vigia de Adaini desde 01\\/11\\/2026, sem resposta\\./.test(document.querySelector('#fase .ct-m[data-id=\"contabil\"]').textContent)", timeout=4000)
+        mc = texto(pq, MC)
+        ok('Pergunta enviada: aparece no vigia de Adaini, com o que o Domínio mostra. A resposta volta pra esta missão.' in mc and pq.locator(MC + ' [data-perguntar-contabil]').count() == 0
+           and pq.locator(MC + ' [data-confirmar-contabil]').count() == 1 and pq.get_attribute(MC, 'data-estado') == 'aberta' and 'var(--err)' not in (pq.locator(MC + ' p[role="status"]').get_attribute('style') or ''),
+           f'enviada: a missão diz que a pergunta está no vigia dela, sem resposta, e segue aberta ({mc[-150:]})')
+        ped = pq.evaluate("() => window.__rpc.feitas.filter(x => x.nome === 'comparativo_pedir_confirmacao').pop().args")
+        ok(ped['p_cliente'] == 'c7' and ped['p_ate'] == '2026-07' and 'conta transitória ou a classificar com saldo de mai/26 a jul/26' in ped['p_sinais'] and 'lançada até 11/06/2026' in ped['p_sinais'],
+           f'o pedido leva a empresa, o mês e o que o Domínio mostra ({ped["p_sinais"][:70]}…)')
+        ok(pq.evaluate("() => !!(document.activeElement && document.activeElement.closest('#fase .ct-m[data-id=\"contabil\"]'))"), 'e o foco fica na missão')
+        fc = texto(pq, '#fase .ct-usar-item[data-id="ctbconf"]')
+        ok(pq.get_attribute('#fase .ct-usar-item[data-id="ctbconf"]', 'data-estado') == 'falta' and 'perguntado a Adaini em 01/11/2026, sem resposta' in fc and 'Provisório' in texto(pq, '#placar'),
+           'o que usar: perguntado, sem resposta — e o estudo segue provisório')
+        # a resposta "sim" de quem cuida: ao abrir a empresa de novo, a missão vem cumprida pelo vigia, sem o Desfazer
+        def reabrir(q):
+            q.fill('#busca', 'INDUSTRIA DE TESTE')
+            q.click('#sugestoes button[data-id="c7"]')
+        pq.evaluate("() => { Object.assign(window.__rpc.pergunta, { situacao: 'respondida', sim: true, resposta: 'Sim, pode usar até jul/26', respondida_em: '2026-11-02T13:00:00+00:00' }); }")
+        reabrir(pq)
+        pq.wait_for_function("() => { const m = document.querySelector('#fase .ct-m[data-id=\"contabil\"]'); return m && m.dataset.estado === 'feita'; }", timeout=6000)
+        mc = texto(pq, MC)
+        ok('confirmado por Adaini em 02/11/2026, pelo vigia' in mc and 'Adaini respondeu em 02/11/2026 que o resultado até jul/26 é confiável (a pergunta do vigia, feita por Samuel).' in mc
+           and pq.locator(MC + ' button').count() == 0 and 'Pergunta enviada' not in mc and pq.get_attribute('#fase .ct-usar-item[data-id="ctbconf"]', 'data-estado') == 'tem',
+           f'o sim de quem cuida: a missão cumprida pelo vigia, sem botão nenhum (a resposta é dela) ({mc[:120]}…)')
+        ok(pq.evaluate("() => { const r = (window.__mockDb.comparativos || []).find(x => x.cliente_id === 'c7'); return !!r && !(r.entrada.origens || {}).lucroConfirmado; }"),
+           'a resposta dela não vira marca no estudo: vale enquanto a pergunta disser que sim')
+        # o "ainda não", com o que ela escreveu (o texto do banco entra escapado), e a pergunta de novo
+        pq.evaluate("() => { Object.assign(window.__rpc.pergunta, { sim: false, resposta: 'Ainda não: falta acertar (digo o quê)', resposta_texto: 'falta o extrato <b>de julho</b>' }); }")
+        reabrir(pq)
+        pq.wait_for_function("() => { const m = document.querySelector('#fase .ct-m[data-id=\"contabil\"]'); return m && m.dataset.estado === 'aberta' && /Escreveu/.test(m.textContent); }", timeout=6000)
+        mc = texto(pq, MC)
+        ok('Adaini respondeu em 02/11/2026: "Ainda não: falta acertar (digo o quê)". Escreveu: "falta o extrato <b>de julho</b>".' in mc and pq.locator(MC + ' .ct-m-txt b').count() == 0
+           and pq.locator(MC + ' [data-perguntar-contabil]').inner_text() == 'Perguntar pra Adaini de novo' and pq.locator(MC + ' [data-confirmar-contabil]').count() == 1,
+           f'o "ainda não": a resposta e o que ela escreveu, escapado, com o "Perguntar pra Adaini de novo" ({mc[-170:]})')
+        pq.close()
+        # quem cuida da contabilidade não pergunta a si mesma: sem o botão, confirma direto
+        pr = abrir_com('window.__mockEmail = "contabil@macedoereis.com.br";' + RPC)
+        ok(pr.locator(MC + ' [data-perguntar-contabil]').count() == 0 and pr.locator(MC + ' [data-confirmar-contabil]').count() == 1, 'com a própria Adaini na tela, a missão não oferece a pergunta: ela confirma direto')
+        pr.close()
+        # sem as funções no banco (a resposta vazia do banco falso): a tela segue como antes, com a pergunta disponível
+        ps = abrir_com('window.__semRpc = true;')
+        ok(ps.get_attribute(MC, 'data-estado') == 'aberta' and ps.locator(MC + ' [data-perguntar-contabil]').count() == 1 and 'A pergunta está no vigia' not in texto(ps, MC), 'sem pergunta nenhuma no banco, a missão segue aberta, como antes')
+        ps.close()
+
         ok(not erros, 'nenhum erro de JavaScript' + ('' if not erros else ': ' + ' | '.join(erros[:3])))
         b.close()
     srv.shutdown()

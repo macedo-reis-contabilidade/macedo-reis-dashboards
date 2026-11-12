@@ -303,7 +303,8 @@
     import { aplicarRelatorios, FONTES, rotuloComp, mesclarSerie, pareceFolha, cnpjsDoCabecalho, juntarFolha, folhaDoAno, aplicarFolha, doRegimeGeral, simplesNoEstudo,
       periodoDaDre, dreSugerida, janelaDaReceita, mesesDeAte } from './assets/js/comparativo-dados.js';
     // o estudo (o gravado ou os números do sistema, as empresas dos sócios) e a conta: a mesma regra do assistente do escritório
-    import { PADRAO_ATIV, comPadroes, ORIGENS_PADRAO, CAMPOS, erroSemTabela, carregarEstudo, contaDoEstudo, situacaoComGrupo, resumoParaGravar, opcoesDeObjetivo } from './assets/js/comparativo-estudo.js';
+    import { PADRAO_ATIV, comPadroes, ORIGENS_PADRAO, CAMPOS, erroSemTabela, carregarEstudo, contaDoEstudo, situacaoComGrupo, resumoParaGravar, opcoesDeObjetivo,
+      perguntaDaConfirmacao, pedirConfirmacao } from './assets/js/comparativo-estudo.js';
     import { oQueConferiu } from './assets/js/simples-vedacoes.js';
     import { PESO_DA_PRECISAO, NIVEL_DA_PRECISAO } from './assets/js/comparativo-roteiro.js';
     import { assistenteDaTela } from './assets/js/assistente-escritorio.js';
@@ -350,10 +351,11 @@
     // socios: quantos sócios o cadastro tem (null = sem cadastro) · jornada e faseVista: o roteiro (as fases e as missões)
     // vedacoes: o que o cadastro veda no Simples (null = sem cadastro) · contabil: o Controle das contabilidades da empresa
     // trocando: a pergunta "qual comparativo" aberta de novo (o comparativo escolhido fica em entrada.objetivo)
+    // avisoContabil: o que aconteceu com a pergunta mandada pro vigia de quem cuida da contabilidade ({ texto, erro })
     // notasSimples: as de `notas` que só interessam com o Simples na comparação (o limite com as empresas dos sócios, o anexo)
     const st = { cliente: null, nome: '', entrada: null, origens: {}, notas: [], notasSimples: [], conferencia: null, rels: [], fontes: [],
       estudoId: null, gravadoEm: null, gravadoPor: null, semTabela: false, serie: null, serieRel: null, folhaRel: null, grupoSeries: [], grupoFora: [], socios: null,
-      vedacoes: null, contabil: null, trocando: false,
+      vedacoes: null, contabil: null, trocando: false, avisoContabil: null,
       jornada: { inicial: true, feitas: new Set(), fases: new Set() }, faseVista: null };
     let ultimoRoteiro = null;
 
@@ -402,7 +404,7 @@
       await gravarPendente();
       st.cliente = null; st.nome = nome; st.estudoId = null; st.gravadoEm = null; st.gravadoPor = null; st.rels = []; st.conferencia = null;
       st.serie = null; st.serieRel = null; st.folhaRel = null; st.grupoSeries = []; st.grupoFora = []; st.socios = null; st.faseVista = null; st.jornada = { inicial: true, feitas: new Set(), fases: new Set() };
-      st.vedacoes = null; st.contabil = null; st.atividade = null; st.trocando = false;
+      st.vedacoes = null; st.contabil = null; st.atividade = null; st.trocando = false; st.avisoContabil = null;
       st.entrada = comPadroes({ atividades: [{ tipo: 'comercio', receita: 0 }], grupo: [] });
       st.origens = { ...ORIGENS_PADRAO, 'atividades.0.receita': { fonte: 'padrao', texto: 'digite a receita dos 12 meses' }, 'atividades.0.tipo': { fonte: 'padrao' },
         compras: { fonte: 'padrao', texto: 'digite ou solte os relatórios' }, folha: { fonte: 'padrao', texto: 'digite os 12 meses', dica: 'salários, 13º e férias' }, proLabore: { fonte: 'padrao', texto: 'digite' },
@@ -423,6 +425,8 @@
       if (o.limite) q = q.limit(o.limite);
       return q;
     }
+    // as funções do banco (a pergunta da confirmação da contabilidade no vigia de quem cuida dela)
+    function chamarBanco(nome, args) { return supabase.rpc(nome, args); }
     async function abrirCliente(c) {
       await gravarPendente();   // a mudança da empresa de antes grava antes da troca
       st.cliente = c; st.nome = c.nome_principal; st.rels = []; st.estudoId = null; st.gravadoEm = null; st.gravadoPor = null;
@@ -430,7 +434,7 @@
       history.replaceState(null, '', location.pathname + '?cliente=' + encodeURIComponent(c.id));
       $('escolhida').hidden = false; $('escolhida').innerHTML = '<p>Lendo o que o sistema sabe de ' + esc(c.nome_principal) + '…</p>';
       // o gravado ou os números do sistema, e as outras empresas dos mesmos sócios (a lista do cadastro já está aqui)
-      const est = await carregarEstudo({ ler: lerDoBanco, cliente: c, cadastroDe: async ids => new Map(clientes.filter(k => ids.includes(k.id)).map(k => [k.id, k])) });
+      const est = await carregarEstudo({ ler: lerDoBanco, chamar: chamarBanco, cliente: c, cadastroDe: async ids => new Map(clientes.filter(k => ids.includes(k.id)).map(k => [k.id, k])) });
       if (st.cliente !== c) return;   // trocou de empresa no meio da leitura
       st.serie = est.serie; st.serieRel = est.serieRel || null; st.folhaRel = est.folhaRel || null; st.grupoSeries = est.grupoSeries; st.grupoFora = est.grupoFora || []; st.socios = est.socios; st.faseVista = null; st.jornada = { inicial: true, feitas: new Set(), fases: new Set() };
       st.fontes = est.fontes; st.semTabela = est.semTabela;
@@ -438,7 +442,7 @@
       st.entrada = est.entrada; st.origens = est.origens; st.conferencia = est.conferencia;
       st.notas = est.notas; st.notasSimples = est.notasSimples || [];
       st.sistema = est.sistema;
-      st.vedacoes = est.vedacoes || null; st.contabil = est.contabil || null; st.trocando = false;
+      st.vedacoes = est.vedacoes || null; st.contabil = est.contabil || null; st.trocando = false; st.avisoContabil = null;
       // o que o sistema apurou da atividade (as notas do Domínio e o CNAE): é o que cumpre a missão da presunção
       st.atividade = est.atividade || null;
       renderEmpresa(); renderPergunta(); renderForm(); calcular();
@@ -940,12 +944,15 @@
             (m.campo ? '<button type="button" class="btn btn-ghost btn-sm" data-ir="' + esc(m.campo) + '">' + esc(m.irRotulo || 'Ir ao campo') + '</button>' : '') +
             (m.acao === 'mais-grupo' ? '<button type="button" class="btn btn-ghost btn-sm" data-mais-grupo="1">' + esc(m.acaoRotulo) + '</button>' : '') +
             (m.conferir ? '<button type="button" class="btn btn-ghost btn-sm" data-conferir="' + esc(m.conferir.join(',')) + '">✓ ' + esc(m.conferirRotulo || 'Está certo') + '</button>' : '') +
+            (m.perguntar && podePerguntarA(m.perguntar.para) ? '<button type="button" class="btn btn-ghost btn-sm" data-perguntar-contabil="' + esc(m.perguntar.ate || '') + '">' + esc(m.perguntarRotulo || 'Perguntar') + '</button>' : '') +
             (m.confirmar ? '<button type="button" class="btn btn-ghost btn-sm" data-confirmar-contabil="' + esc(m.confirmar.ate || '') + '">✓ ' + esc(m.confirmarRotulo || 'Confirmado') + '</button>' : '') + '</div>';
+          // o que aconteceu com a pergunta mandada pro vigia (enviada, ou por que não foi)
+          const aviso = m.id === 'contabil' && st.avisoContabil ? '<p class="ct-m-txt" role="status"' + (st.avisoContabil.erro ? ' style="color:var(--err)"' : '') + '>' + esc(st.avisoContabil.texto) + '</p>' : '';
           lis.push('<li class="ct-m' + (prox ? ' ct-prox' : '') + (novas.has(m.id) ? ' ct-m-nova' : '') + '" data-id="' + esc(m.id) + '" data-estado="' + m.estado + '" data-falta="' + (m.falta && m.estado !== 'feita' ? 'sim' : 'nao') + '">' +
             '<span class="ct-m-mark" aria-hidden="true">' + (m.estado === 'feita' ? '✓' : '') + '</span><div>' +
             '<div class="ct-m-tit">' + esc(m.titulo) + (m.estado === 'feita' ? '<span class="ct-m-como">' + esc(m.como || 'feito') + '</span>' : prox ? '<small>próximo passo</small>' : '') +
             '<span class="ct-so-leitor">' + (m.estado === 'feita' ? ' (cumprida)' : ' (a cumprir)') + '</span></div>' +
-            '<p class="ct-m-txt">' + esc(m.texto) + '</p>' + acoes + '</div></li>');
+            '<p class="ct-m-txt">' + esc(m.texto) + '</p>' + acoes + aviso + '</div></li>');
         });
         html += '<ul class="ct-missoes">' + lis.join('') + '</ul>';
       }
@@ -981,9 +988,12 @@
       if (e.target.closest('[data-mais-grupo]')) { maisGrupo(); return; }
       const ir = e.target.closest('[data-ir]');
       if (ir) { irAoCampo(ir.dataset.ir); return; }
+      const pc = e.target.closest('[data-perguntar-contabil]');
+      if (pc) { perguntarContabil(pc); return; }
       // a confirmação de quem cuida da contabilidade: fica no estudo com quem marcou, o dia e até que mês (e dá pra desfazer)
       const cc = e.target.closest('[data-confirmar-contabil]'), dc = e.target.closest('[data-desconfirmar-contabil]');
       if (cc || dc) {
+        st.avisoContabil = null;
         if (cc) st.origens.lucroConfirmado = { fonte: 'confirmado', texto: 'confirmado com a contabilidade', ate: cc.dataset.confirmarContabil || null, por: usuario, nome: usuario ? nomePorEmail(usuario) : null, em: hojeLocal() };
         else delete st.origens.lucroConfirmado;
         calcular();
@@ -1000,6 +1010,28 @@
       const prox = document.querySelector('#fase .ct-m.ct-prox, #fase .ct-m[data-estado="aberta"]');
       if (prox) { const b = prox.querySelector('button'); if (b) b.focus(); }
     });
+    // A pergunta da confirmação vai pro vigia de quem cuida da contabilidade (a função do banco), com o que o Domínio mostra
+    // daqueles meses. Quem cuida não pergunta a si mesma: confirma direto. A resposta volta pra missão ao abrir o estudo.
+    function podePerguntarA(nome) { return !!st.cliente && !(usuario && nomePorEmail(usuario) === nome); }
+    async function perguntarContabil(botao) {
+      const m = ultimoRoteiro && ultimoRoteiro.fases.flatMap(f => f.missoes || []).find(x => x.id === 'contabil');
+      const cliente = st.cliente;
+      if (!cliente || !m || !m.perguntar || botao.disabled) return;
+      botao.disabled = true; botao.setAttribute('aria-busy', 'true');
+      const r = await pedirConfirmacao(chamarBanco, { clienteId: cliente.id, ate: m.perguntar.ate, sinais: m.perguntar.sinais });
+      if (st.cliente !== cliente) return;   // trocou de empresa no meio
+      if (r.ok) {
+        // o estado da pergunta, lido de volta; se a leitura falhar, o que acabou de ser pedido (aberta, de hoje)
+        const lida = await perguntaDaConfirmacao(chamarBanco, cliente.id);
+        if (st.cliente !== cliente) return;
+        if (st.contabil) st.contabil.pergunta = lida || { id: r.id, ate: m.perguntar.ate, situacao: 'aberta', sim: false, para: r.para || m.perguntar.para, pedida_por: usuario ? nomePorEmail(usuario) : null, criada_em: new Date().toISOString() };
+        const para = r.para || m.perguntar.para;
+        st.avisoContabil = { texto: r.nova ? 'Pergunta enviada: aparece no vigia de ' + para + ', com o que o Domínio mostra. A resposta volta pra esta missão.' : 'A pergunta já estava no vigia de ' + para + ', esperando a resposta.' };
+      } else st.avisoContabil = { erro: true, texto: r.erro };
+      calcular();
+      const li = document.querySelector('#fase .ct-m[data-id="contabil"]'), b = li && li.querySelector('button');
+      if (b) b.focus();
+    }
     // a missão de soltar um relatório: a caixa dos relatórios acende e o seletor de arquivos abre
     function chamarRelatorio() {
       const d = $('drop');

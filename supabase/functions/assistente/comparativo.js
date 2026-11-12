@@ -42,6 +42,16 @@ export function lerDoBanco(banco) {
   };
 }
 
+// as funções do banco que o estudo lê (hoje, o estado da pergunta da confirmação da contabilidade no vigia de quem cuida
+// dela): pelo banco.chamar do servidor, com o login de quem pergunta. Sem ele (os testes, a avaliação antiga), nada
+export function chamarDoBanco(banco) {
+  return async (nome, args = {}) => {
+    if (!banco || typeof banco.chamar !== 'function') return { data: null, error: { message: 'sem a leitura de funções' } };
+    try { return { data: await banco.chamar(nome, args), error: null }; }
+    catch (e) { return { data: null, error: { message: (e && e.message) || 'erro' } }; }
+  };
+}
+
 // o estudo da pergunta: o aberto na tela (comparativo_id), o da empresa (a aberta, ou pelo nome, id ou CNPJ) ou, sem
 // empresa no cadastro com esse nome, o estudo de empresa sem cadastro gravado com ele. acharEmpresa: a das ferramentas
 export async function estudoDaPergunta({ banco, termo, contexto = {}, acharEmpresa }) {
@@ -52,7 +62,7 @@ export async function estudoDaPergunta({ banco, termo, contexto = {}, acharEmpre
     const c = linhas[0];
     if (!c) return { erro: 'Nenhuma empresa no cadastro com o id ' + id + '.' };
     if (c.tipo_pessoa === 'PF') return { erro: c.nome_principal + ' é pessoa física (IRPF): o comparativo tributário é de empresa.' };
-    return { estudo: await carregarEstudo({ ler, cliente: c }) };
+    return { estudo: await carregarEstudo({ ler, cliente: c, chamar: chamarDoBanco(banco) }) };
   }
   if (!t && contexto.comparativo_id) {
     const { linhas } = await banco.ler('comparativos?select=' + COLS_ESTUDO + '&id=eq.' + enc(contexto.comparativo_id));
@@ -182,7 +192,17 @@ function blocoNumeros(estudo, conta = null) {
   if (ctb) out.push('- A contabilidade, pelo Controle das contabilidades: ' + (ctb.faz === false ? 'o escritório não faz a desta empresa' : ctb.feitaAte ? 'feita até ' + rotuloComp(ctb.feitaAte) : 'nenhum mês feito')
     + (ctb.responsavel && ctb.faz !== false ? ' · quem cuida: ' + ctb.responsavel : '') + '.');
   if (L.ate && L.sinais && L.sinais.lidos) out.push('- O que o Domínio mostra da contabilidade de ' + mm(L.de) + ' a ' + mm(L.ate) + ': ' + (L.sinais.itens.length ? L.sinais.itens.join('; ') + ' (' + L.sinais.comProblema + ' de ' + L.sinais.lidos + ' meses com problema)' : 'nenhum problema') + '.');
-  if (L.ate) out.push('- A confirmação de ' + L.quem + ' de que o resultado até ' + mm(L.ate) + ' é confiável: ' + (L.conf && L.conf.vale ? 'feita' + (L.conf.nome ? ' por ' + L.conf.nome : '') + (L.conf.em ? ' em ' + L.conf.em.split('-').reverse().join('/') : '') : 'falta (na tela, a missão "A confirmação da contabilidade")') + '.');
+  if (L.ate) {
+    // a confirmação: a marcada no estudo, ou o "sim" de quem cuida à pergunta do vigia; aberta, onde a pergunta está
+    const dBR = d => (d ? String(d).split('-').reverse().join('/') : ''), p = L.perg, ela = (p && p.para) || L.responsavel || 'quem cuida';
+    const estado = L.conf && L.conf.vale ? 'feita' + (L.conf.nome ? ' por ' + L.conf.nome : '') + (L.conf.em ? ' em ' + dBR(L.conf.em) : '')
+      : L.pelaPergunta ? 'feita pela resposta de ' + ela + (p.respondidaEm ? ' em ' + dBR(p.respondidaEm) : '') + ' à pergunta do vigia (o resultado até ' + mm(p.ate) + ')'
+      : 'falta (na tela, a missão "A confirmação da contabilidade", que confirma com um clique ou manda a pergunta pro vigia de quem cuida)'
+        + (!p ? '' : p.estado === 'aberta' ? '. A pergunta está no vigia de ' + ela + (p.em ? ' desde ' + dBR(p.em) : '') + (p.pedidaPor ? ', feita por ' + p.pedidaPor : '') + (p.cobre ? '' : ', até ' + mm(p.ate)) + ', sem resposta'
+          : p.estado === 'sim' ? '. ' + ela + ' confirmou só até ' + mm(p.ate) + (p.respondidaEm ? ', em ' + dBR(p.respondidaEm) : '')
+          : '. ' + ela + ' respondeu' + (p.respondidaEm ? ' em ' + dBR(p.respondidaEm) : '') + ' à pergunta do vigia: "' + (p.resposta || p.texto || 'sem confirmar') + '"' + (p.resposta && p.texto ? ' — escreveu: "' + p.texto + '"' : ''));
+    out.push('- A confirmação de ' + L.quem + ' de que o resultado até ' + mm(L.ate) + ' é confiável: ' + estado + '.');
+  }
   if (e.rda || o.rda) out.push('- ICMS do restaurante no Presumido e no Real: ' + (e.rda === 'sim' ? 'optante do RDA (3,5% de todas as vendas de mercadoria, sem crédito)' : e.rda === 'melhor' ? 'o mais barato entre o RDA (3,5% das vendas, sem crédito) e o débito e crédito — os avisos dizem qual a conta usou' : 'débito e crédito, sem o RDA') + ' [' + origemDe(o, 'rda') + ']');
   if (comSimples && Number(e.difalSimples) > 0) out.push(linha('difalSimples'));
   out.push('- RAT ' + pct(e.rat) + '% · FAP ' + pct(e.fap) + ' · terceiros ' + pct(e.terceiros) + '% [' + origemDe(o, 'rat') + ']' + (Number(e.cprb) > 0 ? ' · CPRB ' + pct(e.cprb) + '% (desoneração da folha)' : ''));

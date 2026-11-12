@@ -3,11 +3,12 @@
 // conquistou, e o estudo provisório até as missões que decidem estarem cumpridas.
 // Desde 11/11/2026, o caminho pelo comparativo escolhido (só o Presumido contra o Real: a receita e a presunção, o lucro
 // do Real pela contabilidade, o resto da conta), os impedimentos do Simples pelo cadastro e a precisão do estudo. Também de
-// 11/11/2026: a DRE até onde a contabilidade está feita (e não até o fim da receita) e a confirmação de quem cuida dela.
+// 11/11/2026: a DRE até onde a contabilidade está feita (e não até o fim da receita) e a confirmação de quem cuida dela,
+// que também chega pela pergunta do vigia (o "vai" do Samuel das 21h19: contabil.pergunta).
 // Rodar com: node tests/comparativo-roteiro.test.mjs — dados inventados (o repositório é público).
 
 import { roteiroDoEstudo, crescimentoMedido, FASES, FASES_GERAL, fasesDoObjetivo, fontesDoEstudo, ultimoMesFechado, AUTOMATICO, precisaoDoEstudo, NIVEL_DA_PRECISAO, PESO_DA_PRECISAO, LIMITE_PRESUMIDO,
-  presuncaoDoEstudo, faixasDeMeses, sinaisDaContabilidade, confirmacaoDaContabilidade, lucroDoEstudo } from '../assets/js/comparativo-roteiro.js';
+  presuncaoDoEstudo, faixasDeMeses, sinaisDaContabilidade, confirmacaoDaContabilidade, lucroDoEstudo, perguntaDaContabilidade } from '../assets/js/comparativo-roteiro.js';
 import { entradaDoSistema, premissasParaTestar, situacaoDoGrupo, presuncaoPeloCnae, periodoDaDre } from '../assets/js/comparativo-dados.js';
 import { comparar, testarPremissas, fraseDaDecisao } from '../assets/js/comparativo-motor.js';
 
@@ -484,6 +485,55 @@ console.log('=== qual comparativo: as fases de cada caminho (11/11/2026) ===');
     const foP = fontesDoEstudo({ entrada: eP, origens: oriL, comparacao: comparar({ ...eP, regimes: ['presumido', 'real'], lucroFator: 1.2 }), serie, hoje: '2026-11-11', objetivo: 'presumido_real', contabil: ctb });
     ok('as fontes: a DRE de 10 de 12 meses ("faltam meses") e a confirmação com os meses que o Domínio aponta', foP.lucro[0].estado === 'antigo' && foP.lucro[0].situacao === 'digitado: a DRE de out/25 a jul/26 (10 de 12 meses)'
       && foP.lucro[1].id === 'ctbconf' && foP.lucro[1].onde === 'Quem cuida da contabilidade dela (Adaini): se o resultado até jul/26 é confiável. O Domínio aponta 9 de 10 meses com problema (na missão abaixo).', foP.lucro.slice(0, 2));
+
+    // ---------- a pergunta do vigia (11/11/2026, 21h19: "Pra agora vai") ----------
+    // o que a função comparativo_confirmacao do banco devolve, contra o mês até onde a contabilidade é usada
+    const PG = { id: 'p1', ate: '2026-07', situacao: 'aberta', sim: false, para: 'Adaini', para_email: 'contabil@macedoereis.com.br', pedida_por: 'Samuel', criada_em: '2026-11-12T00:30:00+00:00', resposta: null, resposta_texto: null, respondida_em: null };
+    const pgA = perguntaDaContabilidade(PG, '2026-07');
+    ok('a pergunta aberta: o estado, quem recebe, quem pediu e o dia em Brasília (00h30 UTC do dia 12 é dia 11)', pgA.estado === 'aberta' && pgA.cobre === true && pgA.para === 'Adaini' && pgA.pedidaPor === 'Samuel' && pgA.em === '2026-11-11' && pgA.respondidaEm === null && pgA.ate === '2026-07', pgA);
+    ok('a pergunta até um mês antes do usado não cobre; sem mês usado, cobre', perguntaDaContabilidade(PG, '2026-09').cobre === false && perguntaDaContabilidade({ ...PG, ate: '2026-09' }, '2026-07').cobre === true && perguntaDaContabilidade(PG, null).cobre === true);
+    const SIM = { ...PG, situacao: 'respondida', sim: true, resposta: 'Sim, pode usar até jul/26', respondida_em: '2026-11-12T13:05:00+00:00' };
+    const NAO = { ...PG, situacao: 'respondida', sim: false, resposta: 'Ainda não: falta acertar (digo o quê)', resposta_texto: '  falta o extrato\n de julho ', respondida_em: '2026-11-12T13:05:00+00:00' };
+    ok('respondida: o sim, o não com o texto numa linha, e só o texto', perguntaDaContabilidade(SIM, '2026-07').estado === 'sim' && perguntaDaContabilidade(SIM, '2026-07').respondidaEm === '2026-11-12'
+      && perguntaDaContabilidade(NAO, '2026-07').estado === 'nao' && perguntaDaContabilidade(NAO, '2026-07').texto === 'falta o extrato de julho'
+      && perguntaDaContabilidade({ ...NAO, resposta: null }, '2026-07').resposta === null);
+    ok('o que não é pergunta: nada, lista, sem id, sem mês, cancelada', [null, undefined, [], [PG], 'x', {}, { ...PG, id: null }, { ...PG, ate: 'jul/26' }, { ...PG, situacao: 'cancelada' }].every(x => perguntaDaContabilidade(x, '2026-07') === null));
+    const comPg = pg => ({ ...base, contabil: { ...ctb, pergunta: pg } });
+    // sem pergunta: a missão oferece perguntar, com o que o Domínio mostra pra ir junto
+    ok('sem pergunta: a missão oferece a pergunta pra quem cuida, com os sinais do Domínio', c0.perguntar && c0.perguntar.ate === '2026-07' && c0.perguntar.para === 'Adaini' && c0.perguntarRotulo === 'Perguntar pra Adaini'
+      && /^conta transitória ou a classificar com saldo de jan\/26 a jul\/26 \(R\$\s75\.171 em jul\/26\); a folha não entrou na contabilidade em nov\/25 e dez\/25; o caixa fechou o mês negativo em fev\/26; a conta de banco mais atrasada está lançada até 11\/06\/2026$/.test(c0.perguntar.sinais), c0.perguntar);
+    ok('sem problema no Domínio, a pergunta vai sem os sinais; sem responsável no Controle, não há a quem perguntar', missao(rodarC(G, ORI, { ...base, contabil: { ...ctb, bancoAte: null, meses: ctb.meses.map(m => ({ ...m, problemas: [] })) } }), 'contabil').perguntar.sinais === null
+      && missao(rodarC(G, ORI, { ...base, contabil: { ...ctb, responsavel: null } }), 'contabil').perguntar === null && missao(rodarC({ ...G, lucroContabil: 100000 }, oriL, base), 'contabil').perguntar === null
+      && missao(rodarC({ ...G, lucroContabil: 100000 }, oriL, { ...base, contabil: { faz: false, feitaAte: null, responsavel: 'Adaini', pergunta: SIM } }), 'contabil').perguntar === null);
+    // a pergunta aberta: a missão segue aberta, diz onde ela está e não oferece de novo (o clique de quem falou com ela segue valendo)
+    const hQ = rodarC(eP, oriL, comPg(PG)), cQ = missao(hQ, 'contabil');
+    ok('a pergunta no vigia, sem resposta: a missão diz desde quando, sem o botão de perguntar, e o estudo segue provisório', cQ.estado === 'aberta' && cQ.perguntar === null && cQ.confirmar.ate === '2026-07' && hQ.provisorio && !hQ.fases[1].concluida
+      && / A pergunta está no vigia de Adaini desde 11\/11\/2026, sem resposta\.$/.test(cQ.texto), cQ.texto);
+    // a resposta "sim" até o mês usado: confirma sozinha, sem clique, e não se desfaz por aqui (é a resposta dela)
+    const hS = rodarC(eP, oriL, comPg(SIM)), cS = missao(hS, 'contabil');
+    ok('o sim de quem cuida: a missão cumprida pelo vigia, sem o Desfazer, e a fase 2 fecha', cS.estado === 'feita' && cS.como === 'confirmado por Adaini em 12/11/2026, pelo vigia' && cS.desfazer === false && cS.confirmar === null && cS.perguntar === null
+      && /^Adaini respondeu em 12\/11\/2026 que o resultado até jul\/26 é confiável \(a pergunta do vigia, feita por Samuel\)\. O que o Domínio mostra de out\/25 a jul\/26: /.test(cS.texto) && hS.fases[1].concluida, cS.texto);
+    const LS = lucroDoEstudo({ entrada: eP, origens: oriL, serie, contabil: { ...ctb, pergunta: SIM } });
+    ok('o lucro do estudo: confirmado pela pergunta (e não pela marca do estudo)', LS.confirmado === true && LS.pelaPergunta === true && LS.conf === null && LS.perg.estado === 'sim', [LS.confirmado, LS.pelaPergunta]);
+    // a marca do estudo vem antes: com as duas, vale a de quem clicou (e o Desfazer é dela)
+    const cM = missao(rodarC(eP, { ...oriL, lucroConfirmado: { fonte: 'confirmado', ate: '2026-07', nome: 'Samuel', em: '2026-11-11' } }, comPg(SIM)), 'contabil');
+    ok('com a marca do estudo e o sim da pergunta, vale a marca (com o Desfazer)', cM.estado === 'feita' && cM.como === 'confirmado por Samuel em 11/11/2026' && cM.desfazer === true);
+    // o "ainda não", com o que ela escreveu: aberta, com a resposta à vista, e dá pra perguntar de novo
+    const cN = missao(rodarC(eP, oriL, comPg(NAO)), 'contabil');
+    ok('o "ainda não": a missão mostra a resposta e o que ela escreveu, e oferece perguntar de novo', cN.estado === 'aberta' && cN.perguntar && cN.perguntarRotulo === 'Perguntar pra Adaini de novo'
+      && / Adaini respondeu em 12\/11\/2026: "Ainda não: falta acertar \(digo o quê\)"\. Escreveu: "falta o extrato de julho"\.$/.test(cN.texto), cN.texto);
+    ok('só o texto, sem opção: a resposta é o texto', / Adaini respondeu em 12\/11\/2026: "pode até maio"\.$/.test(missao(rodarC(eP, oriL, comPg({ ...NAO, resposta: null, resposta_texto: 'pode até maio' })), 'contabil').texto));
+    // o sim até junho com a DRE até julho: não cobre — a missão diz e oferece perguntar de novo
+    const cJ = missao(rodarC(eP, oriL, comPg({ ...SIM, ate: '2026-06', resposta: 'Sim, pode usar até jun/26' })), 'contabil');
+    ok('o sim até um mês antes do usado não confirma: diz até onde foi e oferece perguntar de novo', cJ.estado === 'aberta' && cJ.perguntar && cJ.perguntar.ate === '2026-07' && / Adaini confirmou em 12\/11\/2026 só até jun\/26, e a DRE vai até jul\/26\.$/.test(cJ.texto), cJ.texto);
+    // a pergunta aberta até junho com a DRE até julho: diz o mês dela e oferece perguntar até julho
+    const cK = missao(rodarC(eP, oriL, comPg({ ...PG, ate: '2026-06' })), 'contabil');
+    ok('a pergunta aberta de um mês antes: diz até onde ela vai e oferece a do mês usado', cK.perguntar && cK.perguntar.ate === '2026-07' && / A pergunta está no vigia de Adaini desde 11\/11\/2026, até jun\/26, sem resposta\.$/.test(cK.texto), cK.texto);
+    // as fontes da fase acompanham
+    const foDe = pg => fontesDoEstudo({ entrada: eP, origens: oriL, comparacao: comparar({ ...eP, regimes: ['presumido', 'real'], lucroFator: 1.2 }), serie, hoje: '2026-11-12', objetivo: 'presumido_real', contabil: { ...ctb, pergunta: pg } }).lucro.find(x => x.id === 'ctbconf');
+    ok('as fontes: perguntado e sem resposta, confirmado pelo vigia, respondido sem confirmar', foDe(PG).estado === 'falta' && foDe(PG).situacao === 'perguntado a Adaini em 11/11/2026, sem resposta'
+      && foDe(SIM).estado === 'tem' && foDe(SIM).situacao === 'confirmado por Adaini em 12/11/2026, pelo vigia' && foDe(NAO).estado === 'falta' && foDe(NAO).situacao === 'Adaini respondeu em 12/11/2026 e não confirmou'
+      && foDe(null).situacao === 'falta confirmar', [foDe(PG).situacao, foDe(SIM).situacao, foDe(NAO).situacao]);
   }
 
   console.log('=== a precisão do estudo ===');

@@ -1095,7 +1095,7 @@ console.log('O comparativo tributário (a mesma conta da tela, com o "e se"):');
   // com o que o Domínio mostra daqueles meses
   chk('a DRE a pedir (até julho), o que o Domínio mostra da contabilidade e a confirmação que falta', /- Lucro contábil antes do IRPJ e da CSLL \(a DRE\): não informado — [^\n]*\]\. A DRE a pedir: de out\/25 a jul\/26 \(10 dos 12 meses da receita, até onde a contabilidade está feita\); os que faltam entram pela margem dos outros/.test(t)
     && /- O que o Domínio mostra da contabilidade de out\/25 a jul\/26: conta transitória ou a classificar com saldo de mai\/26 a jul\/26 \(R\$\s?9\.000 em jul\/26\); a conta de banco mais atrasada está lançada até 11\/06\/2026 \(3 de 10 meses com problema\)\./.test(t)
-    && /- A confirmação de quem cuida da contabilidade dela \(Adaini\) de que o resultado até jul\/26 é confiável: falta \(na tela, a missão "A confirmação da contabilidade"\)\./.test(t)
+    && /- A confirmação de quem cuida da contabilidade dela \(Adaini\) de que o resultado até jul\/26 é confiável: falta \(na tela, a missão "A confirmação da contabilidade", que confirma com um clique ou manda a pergunta pro vigia de quem cuida\)\./.test(t)
     && /\[a conferir · decide o resultado\] A confirmação da contabilidade: Antes de apresentar, confirme com quem cuida da contabilidade dela \(Adaini\)/.test(t)
     && /- A confirmação da contabilidade \[decide o resultado\]: o lucro errado troca o resultado entre o Presumido e o Real/.test(t), (t.match(/- O que o Domínio mostra[^\n]*\n[^\n]*/) || [''])[0]);
   chk('a resposta do Presumido contra o Real pede o mês da DRE, a confirmação e os problemas do Domínio', /de onde veio o lucro da conta — o da contabilidade \(a DRE, até que mês ela vai e se quem cuida da contabilidade já confirmou; se o Domínio mostra problema naqueles meses, diga quais\)/.test(t));
@@ -1121,6 +1121,26 @@ console.log('O comparativo tributário (a mesma conta da tela, com o "e se"):');
       && /O lucro do Real parte do lucro da contabilidade \(R\$\s?40\.000,00 na DRE: R\$\s?48\.000,00 nos 12 meses, pela receita\)/.test(tg), (tg.match(/- Lucro contábil[^\n]*/) || [''])[0]);
     const tge = await fsG.comparativo({ e_se: { lucro_contabil_12_meses: 60000 } });
     chk('o "e se" sobre a DRE de 10 meses: o de antes é o dos 12 meses (R$ 48.000), e o novo entra como o dos 12 meses', /- Lucro contábil antes do IRPJ e da CSLL \(a DRE\): R\$\s?48\.000,00 → R\$\s?60\.000,00/.test(tge), (tge.match(/- Lucro contábil[^\n]*/) || [''])[0]);
+  }
+  // 11/11/2026 (21h19, o "vai" do Samuel): a pergunta da confirmação no vigia de quem cuida da contabilidade — o assistente
+  // lê o estado dela pela função do banco (banco.chamar, com o login de quem pergunta) e diz onde ela está
+  {
+    const PG = { id: 'p1', ate: '2026-07', situacao: 'aberta', sim: false, para: 'Adaini', para_email: 'contabil@macedoereis.com.br', pedida_por: 'Samuel', criada_em: '2026-11-12T00:30:00+00:00', resposta: null, resposta_texto: null, respondida_em: null };
+    const com = resp => { const b = bancoFalso({ extras }); const feitas = []; b.banco.chamar = async (nome, args) => { feitas.push({ nome, args }); if (resp instanceof Error) throw resp; return resp; }; return { ...b, feitas }; };
+    const texto = async b => (await criarFerramentas({ banco: b.banco, hoje: '2026-11-12', contexto: { cliente_id: ID_I }, usuario: { email: 'fiscal@macedoereis.com.br', nome: 'Thalia', socio: false } }).comparativo({}));
+    const aberta = com(PG), ta = await texto(aberta);
+    chk('a pergunta aberta no vigia: lida pela função do banco, a confirmação falta e o texto diz onde a pergunta está (o dia em Brasília)', aberta.feitas.length === 1 && aberta.feitas[0].nome === 'comparativo_confirmacao' && aberta.feitas[0].args.p_cliente === ID_I
+      && /é confiável: falta \(na tela, a missão "A confirmação da contabilidade", que confirma com um clique ou manda a pergunta pro vigia de quem cuida\)\. A pergunta está no vigia de Adaini desde 11\/11\/2026, feita por Samuel, sem resposta\./.test(ta)
+      && /\[a conferir · decide o resultado\] A confirmação da contabilidade: [^\n]*A pergunta está no vigia de Adaini desde 11\/11\/2026, sem resposta\./.test(ta), (ta.match(/- A confirmação de quem[^\n]*/) || [''])[0]);
+    const ts = await texto(com({ ...PG, situacao: 'respondida', sim: true, resposta: 'Sim, pode usar até jul/26', respondida_em: '2026-11-12T13:00:00+00:00' }));
+    chk('o sim de quem cuida: a confirmação feita pela resposta, e a missão cumprida pelo vigia', /é confiável: feita pela resposta de Adaini em 12\/11\/2026 à pergunta do vigia \(o resultado até jul\/26\)\./.test(ts)
+      && /\[cumprida: confirmado por Adaini em 12\/11\/2026, pelo vigia\] A confirmação da contabilidade: Adaini respondeu em 12\/11\/2026 que o resultado até jul\/26 é confiável \(a pergunta do vigia, feita por Samuel\)\./.test(ts), (ts.match(/- A confirmação de quem[^\n]*/) || [''])[0]);
+    const tn = await texto(com({ ...PG, situacao: 'respondida', sim: false, resposta: 'Ainda não: falta acertar (digo o quê)', resposta_texto: 'falta o extrato de julho', respondida_em: '2026-11-12T13:00:00+00:00' }));
+    chk('o "ainda não": a confirmação falta, com a resposta e o que ela escreveu', /é confiável: falta \([^)]*\)\. Adaini respondeu em 12\/11\/2026 à pergunta do vigia: "Ainda não: falta acertar \(digo o quê\)" — escreveu: "falta o extrato de julho"\./.test(tn), (tn.match(/- A confirmação de quem[^\n]*/) || [''])[0]);
+    // sem login (a função devolve nada), com a função fora do ar e com o que não é pergunta: o estudo segue sem ela
+    const semNada = /é confiável: falta \(na tela, a missão "A confirmação da contabilidade", que confirma com um clique ou manda a pergunta pro vigia de quem cuida\)\.\n/;
+    chk('sem pergunta, com erro ou com lixo na resposta da função: o texto segue como sem ela', semNada.test(await texto(com(null))) && semNada.test(await texto(com(new Error('o banco recusou a função (404)')))) && semNada.test(await texto(com([]))));
+    chk('o prompt: a confirmação se faz na tela, e o assistente não manda a pergunta', /a confirmação se faz na tela, na missão "A confirmação da contabilidade": um clique de quem já falou com ela, ou o botão que manda a pergunta pro vigia dela, e a resposta volta pro estudo — você não manda essa pergunta, só diz como está/.test(INSTRUCOES));
   }
   const tt = await fs.comparativo({ objetivo: 'todos' });
   chk('com os três, a origem da atividade leva a parte que é só do Simples (o anexo que as notas não dizem)', /- Atividade 1: Indústria \[Domínio, pela ponte: toda a receita das notas de out\/25 a set\/26 é venda de mercadoria · o anexo, pelo CNAE do cadastro \(1091-1\/02 - [^\]]*\): confira\] — /.test(tt), (tt.match(/- Atividade 1: [^\n]{0,260}/) || [''])[0]);
@@ -1157,6 +1177,17 @@ console.log('O comparativo tributário (a mesma conta da tela, com o "e se"):');
   await criarServidor({ env: k => ENV[k], fetch: f2, agora: () => AGORA, chamar: async c => { corpoModelo = c; return final('ok')(); } })(pedido({ pergunta: 'Qual o mais barato?', contexto: { pagina: { caminho: 'fiscal-comparativo.html', nome: 'Comparativo tributário', setor: 'fiscal' }, comparativo_id: EST } }));
   const msg = corpoModelo.messages[corpoModelo.messages.length - 1].content.map(b => b.text).join('');
   chk('o servidor: o estudo sem cadastro aberto vai no preâmbulo pelo nome (sem colchete)', /Estudo do Comparativo tributário aberto na tela: PROSPECT  LTDA , empresa sem cadastro/.test(msg) && /Tela aberta: Comparativo tributário — fiscal-comparativo\.html \(setor fiscal\)/.test(msg), msg);
+}
+{
+  // 11/11/2026 (21h19): o estado da pergunta da confirmação da contabilidade vem de uma função do banco — o servidor chama
+  // pelo GET do PostgREST, com o login de quem pergunta (as regras do banco valem), e a falha dela não derruba a ferramenta
+  const { f, log } = servidorFalso();
+  const srv = criarServidor({ env: k => ENV[k], fetch: f, agora: () => AGORA, chamar: roteiro([usarFerramenta('comparativo', {}), final('Feito.')]) });
+  const j = await (await srv(pedido({ pergunta: 'E o comparativo desta empresa?', contexto: { pagina: { caminho: 'fiscal-comparativo.html', nome: 'Comparativo tributário', setor: 'fiscal' }, cliente_id: ID_A } }, 'jwt-thalia'))).json();
+  const rpc = log.filter(x => x.url.includes('/rest/v1/rpc/'));
+  chk('o servidor lê a função do banco com o login de quem pergunta: GET, a empresa no endereço, sem a chave de servidor', rpc.length === 1 && rpc[0].metodo === 'GET' && rpc[0].url === 'https://banco.teste/rest/v1/rpc/comparativo_confirmacao?p_cliente=' + ID_A
+    && rpc[0].headers.Authorization === 'Bearer jwt-thalia' && rpc[0].headers.apikey === 'anon' && rpc[0].corpo === null, JSON.stringify(rpc));
+  chk('a função fora do ar (404) não derruba a resposta', j.resposta === 'Feito.', JSON.stringify(j).slice(0, 200));
 }
 
 {

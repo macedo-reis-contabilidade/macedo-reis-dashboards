@@ -99,6 +99,14 @@ export function criarServidor({ env, fetch: f = globalThis.fetch, agora = () => 
       const linhas = await r.json();
       const n = Number(((r.headers && r.headers.get('content-range')) || '').split('/')[1]);
       return { linhas: Array.isArray(linhas) ? linhas : [], total: contar && Number.isFinite(n) ? n : null };
+    },
+    // uma função do banco só de leitura (stable), pelo GET do PostgREST, com o mesmo login: hoje, só a que diz o estado
+    // da pergunta da confirmação da contabilidade (comparativo_confirmacao). Devolve o valor da função (ou null)
+    async chamar(nome, args = {}) {
+      const q = Object.entries(args).map(([k, v]) => encodeURIComponent(k) + '=' + encodeURIComponent(String(v))).join('&');
+      const r = await f(URLB + '/rest/v1/rpc/' + encodeURIComponent(nome) + (q ? '?' + q : ''), { headers: { apikey: jwt ? ANON : SERVICO, Authorization: 'Bearer ' + (jwt || SERVICO) } });
+      if (!r.ok) throw new Error('o banco recusou a função (' + r.status + ')');
+      return r.json();
     } };
   }
 

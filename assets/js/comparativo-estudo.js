@@ -106,7 +106,8 @@ export function opcoesDeObjetivo(regimeAtual, vedacoes = null) {
 // ler(tabela, { cols, eq: { coluna: valor }, em: { coluna: [valores] }, ordem: { coluna, desc }, limite }) → { data, error }
 // (a tela, pelo supabase-js; o assistente, pelo PostgREST com o login de quem pergunta). cliente: a linha do cadastro
 // ({ id, nome_principal, nome_fantasia, documento, regime_tributario, cnae_principal, cidade, uf }). cadastroDe(ids) →
-// Map(id → { id, nome_principal, nome_fantasia }) (opcional: a tela já tem a lista; sem ela, lê do banco).
+// Map(id → { id, nome_principal, nome_fantasia }) (opcional: a tela já tem a lista; sem ela, lê do banco). chamar(nome,
+// args) → { data, error } (opcional: as funções do banco, pra pergunta da confirmação da contabilidade).
 // Volta o estudo como a tela abre — o gravado (o que a equipe digitou e conferiu) ou, sem ele, os números do sistema —, o
 // que o sistema sabe hoje (sistema: o "Recomeçar com os números do sistema") e as outras empresas dos mesmos sócios. O CPF
 // dos sócios só casa as empresas: não sai daqui (nem na volta, nem pro assistente).
@@ -118,12 +119,46 @@ async function lerCadastro(ler, ids) {
 const hojeEmBrasilia = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Sao_Paulo', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
 // o Domínio pela ponte (05/11/2026): só os meses fechados — o último mês fechado é o do roteiro (o do PGDAS que já venceu)
 const soFechados = (linhas, fechado) => (linhas || []).filter(l => l && fechado && String(l.competencia) <= fechado);
-export async function carregarEstudo({ ler, cliente, cadastroDe = null, hoje = null }) {
+// A pergunta da confirmação da contabilidade no vigia de quem cuida dela (11/11/2026, o "vai" do Samuel): duas funções do
+// banco. chamar(nome, args) → { data, error } (a tela, pelo supabase.rpc; o assistente, pelo PostgREST com o login de quem
+// pergunta). A pergunta em si só é lida por quem recebe e pelos sócios (a regra da tabela perguntas_equipe); o estado dela
+// qualquer um do escritório lê pela comparativo_confirmacao: { id, ate, situacao, resposta, resposta_texto, sim,
+// respondida_em, para, para_email, pedida_por, criada_em }. Sem a função, com erro ou sem pergunta: null.
+export async function perguntaDaConfirmacao(chamar, clienteId) {
+  if (typeof chamar !== 'function' || !clienteId) return null;
+  try {
+    const r = await chamar('comparativo_confirmacao', { p_cliente: clienteId });
+    const d = r && !r.error ? r.data : null;
+    return d && typeof d === 'object' && !Array.isArray(d) && d.id ? d : null;
+  } catch (err) { return null; }
+}
+// Pede a confirmação a quem cuida da contabilidade da empresa (comparativo_pedir_confirmacao): a pergunta nasce no cartão
+// do vigia dela, com o que o Domínio mostra daqueles meses (sinais), e pedir de novo o mesmo mês devolve a que está aberta.
+// Volta { ok: true, id, nova, para } ou { ok: false, erro } — o erro em português: o do banco quando a recusa é da regra
+// (quem cuida é a própria pessoa, a empresa fora do Controle, sem responsável), senão o genérico.
+export const ERRO_AO_PERGUNTAR = 'Não deu pra enviar a pergunta agora. Tente de novo em instantes.';
+export async function pedirConfirmacao(chamar, { clienteId, ate, sinais = null } = {}) {
+  if (typeof chamar !== 'function' || !clienteId || !/^\d{4}-\d{2}$/.test(String(ate || ''))) return { ok: false, erro: ERRO_AO_PERGUNTAR };
+  try {
+    const r = await chamar('comparativo_pedir_confirmacao', { p_cliente: clienteId, p_ate: ate, p_sinais: sinais ? String(sinais).slice(0, 1400) : null });
+    if (r && r.error) {
+      // a mensagem do banco só quando é a da função (as recusas dela saem com estes códigos, em português): o resto é erro
+      // técnico, em inglês, e vira a frase genérica
+      const msg = String(r.error.message || '').trim(), cod = String(r.error.code || '');
+      const daRegra = msg && (cod === 'P0001' || cod === '22023' || (cod === '42501' && /^Só a equipe/.test(msg)));
+      return { ok: false, erro: daRegra ? msg : ERRO_AO_PERGUNTAR };
+    }
+    const d = r ? r.data : null;
+    if (!d || typeof d !== 'object' || Array.isArray(d) || !d.id) return { ok: false, erro: ERRO_AO_PERGUNTAR };
+    return { ok: true, id: d.id, nova: d.nova !== false, para: d.para ? String(d.para) : null };
+  } catch (err) { return { ok: false, erro: ERRO_AO_PERGUNTAR }; }
+}
+export async function carregarEstudo({ ler, cliente, cadastroDe = null, hoje = null, chamar = null }) {
   const c = cliente;
   const fechado = ultimoMesFechado(hoje || hojeEmBrasilia());
   // o Domínio do mês: os números do estudo (CAMPOS_PONTE) e o andamento da contabilidade (CAMPOS_DOMINIO, a versão 3)
   const colsDominio = [...new Set([...CAMPOS_PONTE, ...CAMPOS_DOMINIO, 'ultimo_lancamento', 'incluido_ate'])].join(', ');
-  const [rCaso, rFr, rPg, rEst, rDom, rRec, rCtb, rCtbM, rFoto] = await Promise.all([
+  const [rCaso, rFr, rPg, rEst, rDom, rRec, rCtb, rCtbM, rFoto, pergunta] = await Promise.all([
     ler('rt_casos', { cols: 'id, anexo, rbt12, receita_mensal, sim_obs, atualizado_em', eq: { cliente_id: c.id }, ordem: { coluna: 'atualizado_em', desc: true }, limite: 1 }),
     ler('fr_empresas', { cols: 'id', eq: { cliente_id: c.id }, limite: 1 }),
     ler('receita_pgdas', { cols: 'competencia, receita_mes', eq: { cliente_id: c.id }, ordem: { coluna: 'competencia', desc: true }, limite: 12 }),
@@ -133,7 +168,9 @@ export async function carregarEstudo({ ler, cliente, cadastroDe = null, hoje = n
     ler('receita_empresas', { cols: 'pendencias, situacao_fiscal_em', eq: { cliente_id: c.id }, limite: 1 }),
     ler('contabil_empresas', { cols: 'faz, inicio, fim, responsavel', eq: { cliente_id: c.id }, limite: 1 }),
     ler('contabil_meses', { cols: 'competencia, situacao, feita_em', eq: { cliente_id: c.id } }),
-    ler('dominio_andamento', { cols: COLS_FOTO, eq: { cliente_id: c.id } })
+    ler('dominio_andamento', { cols: COLS_FOTO, eq: { cliente_id: c.id } }),
+    // a pergunta da confirmação da contabilidade no vigia de quem cuida dela (null sem a função ou sem pergunta)
+    perguntaDaConfirmacao(chamar, c.id)
   ]);
   const dominio = soFechados(rDom && !rDom.error ? rDom.data : [], fechado);
   let fr = [];
@@ -198,6 +235,8 @@ export async function carregarEstudo({ ler, cliente, cadastroDe = null, hoje = n
   const ctbEmp = rCtb && !rCtb.error && rCtb.data && rCtb.data[0];
   // e o que o Domínio mostra de cada mês (todos os que ele leu, não só os fechados do estudo), pra confirmação dela
   const contabil = contabilDoEstudo(ctbEmp, (rCtbM && !rCtbM.error && rCtbM.data) || [], rDom && !rDom.error ? rDom.data : [], (rFoto && !rFoto.error && rFoto.data) || [], hoje);
+  // a pergunta do vigia vai junto do Controle (contabil.pergunta): a missão da confirmação lê dali
+  if (contabil && contabil.faz !== false) contabil.pergunta = pergunta || null;
   // a campanha da Reforma, o Fator R e o PGDAS são do Simples: na empresa do Presumido ou do Real, a falta deles não é notícia
   const geral = sis.entrada.regimeAtual === 'presumido' || sis.entrada.regimeAtual === 'real';
   const fontes = [
@@ -239,7 +278,8 @@ export async function carregarEstudo({ ler, cliente, cadastroDe = null, hoje = n
 // cada mês mostra. O Samuel, 11/11/2026: "eu ainda confirmaria com a Adaini se é confiável usar esse número até essa
 // data" — o sistema faz a primeira leitura, pra pergunta chegar a ela com o que olhar.
 // emp: a linha de contabil_empresas · linhasMeses: as de contabil_meses · linhasDominio: as de dominio_mensal (com as
-// colunas de CAMPOS_DOMINIO) · linhasFoto: as de dominio_andamento. Volta { faz, feitaAte, responsavel, meses, bancoAte }:
+// colunas de CAMPOS_DOMINIO) · linhasFoto: as de dominio_andamento. Volta { faz, feitaAte, responsavel, meses, bancoAte }
+// (o carregarEstudo põe junto a `pergunta`, o estado da pergunta da confirmação no vigia de quem cuida):
 // meses: [{ competencia, estado, problemas: [{ tipo, valor }] }] — os que o Domínio leu, até o último que dá pra fechar,
 // só com os problemas fortes (problemasDoMes, a regra do Controle das contabilidades) · bancoAte: o dia até onde a conta de
 // banco mais atrasada está lançada. Null sem a empresa no Controle.

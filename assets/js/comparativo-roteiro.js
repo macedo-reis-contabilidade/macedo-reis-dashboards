@@ -205,10 +205,32 @@ export function confirmacaoDaContabilidade(origens, ate) {
   if (!oc || oc.fonte !== 'confirmado') return null;
   return { vale: !ate || !oc.ate || String(oc.ate) >= String(ate), ate: oc.ate || null, nome: oc.nome || null, em: oc.em || null };
 }
+// o dia ('AAAA-MM-DD', em Brasília) de um instante do banco ("2026-11-12T00:23:42+00:00"): UTC−3, sem horário de verão
+const diaEmBrasilia = iso => {
+  const s = String(iso || '');
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+  const t = Date.parse(s);
+  return Number.isFinite(t) ? new Date(t - 3 * 3600e3).toISOString().slice(0, 10) : null;
+};
+// A pergunta da confirmação no vigia de quem cuida da contabilidade (11/11/2026, o "vai" do Samuel) — o que a função
+// comparativo_confirmacao do banco devolve ({ id, ate, situacao, resposta, resposta_texto, sim, respondida_em, para,
+// pedida_por, criada_em }), lida contra o mês até onde a contabilidade é usada. Volta null sem pergunta, ou { estado:
+// 'aberta' | 'sim' | 'nao', cobre (a pergunta vai até o mês usado, ou além), ate, para, pedidaPor, em (o dia em que foi
+// feita), respondidaEm, resposta (a opção escolhida), texto (o que quem respondeu escreveu) }
+export function perguntaDaContabilidade(pergunta, ate) {
+  const p = pergunta && typeof pergunta === 'object' && !Array.isArray(pergunta) ? pergunta : null;
+  if (!p || !p.id || !/^\d{4}-\d{2}$/.test(String(p.ate || '')) || !['aberta', 'respondida'].includes(p.situacao)) return null;
+  const txt = v => String(v == null ? '' : v).replace(/\s+/g, ' ').trim() || null;
+  return { estado: p.situacao === 'aberta' ? 'aberta' : p.sim === true ? 'sim' : 'nao', cobre: !ate || String(p.ate) >= String(ate), ate: String(p.ate),
+    para: txt(p.para), pedidaPor: txt(p.pedida_por), em: diaEmBrasilia(p.criada_em), respondidaEm: diaEmBrasilia(p.respondida_em),
+    resposta: txt(p.resposta), texto: txt(p.resposta_texto) };
+}
 // Tudo do lucro da contabilidade num lugar só, pra missão, pra linha do "O que usar" e pra tela: jan (a janela da receita),
 // sug (a DRE que o estudo pede: até onde a contabilidade está feita), dre (o período da DRE informada e o fator que a leva
 // aos 12 meses; null sem o lucro), ate (o mês até onde vai a contabilidade usada: o da DRE, senão o da pedida), sinais (o
-// que o Domínio mostra até lá), conf (a confirmação) e quem (com quem confirmar)
+// que o Domínio mostra até lá), conf (a confirmação marcada no estudo), perg (a pergunta do vigia: contabil.pergunta),
+// confirmado (uma das duas vale: a marcada no estudo, ou o "sim" de quem cuida até o mês usado — pelaPergunta) e quem
+// (com quem confirmar)
 export function lucroDoEstudo({ entrada = {}, origens = {}, serie = null, contabil = null } = {}) {
   const e = entrada || {};
   const jan = janelaDaReceita(serie);
@@ -218,22 +240,40 @@ export function lucroDoEstudo({ entrada = {}, origens = {}, serie = null, contab
   const ate = dre ? dre.ate : sug && !sug.antes ? sug.ate : null;
   const resp = contabil && contabil.faz !== false && contabil.responsavel ? String(contabil.responsavel) : null;
   const quem = resp ? 'quem cuida da contabilidade dela (' + resp + ')' : contabil && contabil.faz === false ? 'o contador que faz a contabilidade dela' : 'quem faz a contabilidade dela';
-  return { jan, sug, dre, de, ate, sinais: sinaisDaContabilidade(contabil, de, ate), conf: confirmacaoDaContabilidade(origens, ate), quem, responsavel: resp };
+  const conf = confirmacaoDaContabilidade(origens, ate);
+  const perg = contabil && contabil.faz !== false ? perguntaDaContabilidade(contabil.pergunta, ate) : null;
+  const manual = !!(conf && conf.vale), pelaPergunta = !manual && !!(perg && perg.estado === 'sim' && perg.cobre);
+  return { jan, sug, dre, de, ate, sinais: sinaisDaContabilidade(contabil, de, ate), conf, perg, confirmado: manual || pelaPergunta, pelaPergunta, quem, responsavel: resp };
 }
-// a missão da confirmação: aberta até alguém marcar "Confirmado com a contabilidade" (a tela grava quem e quando)
+// A missão da confirmação: aberta até alguém marcar "Confirmado com a contabilidade" (a tela grava quem e quando), ou até
+// quem cuida da contabilidade responder que sim à pergunta do vigia. Aberta, oferece a pergunta (perguntar: { ate, para,
+// sinais }): a tela manda pela função do banco, e a resposta volta por contabil.pergunta.
 function missaoDaConfirmacao(L, peso) {
-  const { dre, de, ate, conf, sinais, quem } = L;
-  const feita = !!(conf && conf.vale);
+  const { dre, de, ate, conf, perg, sinais, quem, responsavel, pelaPergunta } = L;
+  const feita = !!L.confirmado;
   const per = de && ate ? 'de ' + rotuloComp(de) + ' a ' + rotuloComp(ate) : '';
   const doDominio = !sinais || !sinais.lidos ? '' : sinais.itens.length ? ' O que o Domínio mostra ' + per + ': ' + sinais.itens.join('; ') + '.' : ' O Domínio não aponta problema ' + per + '.';
   const naoFeitos = sinais && sinais.naoFeitos.length && dre ? ' Pelo Controle das contabilidades, ' + faixasDeMeses(sinais.naoFeitos) + (sinais.naoFeitos.length === 1 ? ' ainda não está feito.' : ' ainda não estão feitos.') : '';
   const mudou = conf && !conf.vale ? ' A confirmação de ' + dataBR(conf.em) + ' foi até ' + rotuloComp(conf.ate) + ', e a DRE agora vai até ' + rotuloComp(ate) + ': confirme de novo.' : '';
+  const ela = (perg && perg.para) || responsavel || 'Quem cuida da contabilidade';
+  const quando = d => (d ? ' em ' + dataBR(d) : '');
+  // onde a pergunta do vigia está: sem resposta, confirmada só até um mês antes do usado, ou respondida que não
+  const daPergunta = !perg || feita ? ''
+    : perg.estado === 'aberta' ? ' A pergunta está no vigia de ' + ela + (perg.em ? ' desde ' + dataBR(perg.em) : '') + (perg.cobre ? '' : ', até ' + rotuloComp(perg.ate)) + ', sem resposta.'
+    : perg.estado === 'sim' ? ' ' + ela + ' confirmou' + quando(perg.respondidaEm) + ' só até ' + rotuloComp(perg.ate) + ', e a DRE vai até ' + rotuloComp(ate) + '.'
+    : ' ' + ela + ' respondeu' + quando(perg.respondidaEm) + ': "' + (perg.resposta || perg.texto || 'sem confirmar') + '".' + (perg.resposta && perg.texto ? ' Escreveu: "' + perg.texto + '".' : '');
+  // a pergunta só não é oferecida com uma aberta até o mês usado (ela já está no vigia de quem cuida)
+  const podePerguntar = !feita && !!responsavel && !!ate && !(perg && perg.estado === 'aberta' && perg.cobre);
   return { id: 'contabil', titulo: 'A confirmação da contabilidade', curto: 'a confirmação da contabilidade', peso,
-    estado: feita ? 'feita' : 'aberta', como: feita ? 'confirmado' + (conf.nome ? ' por ' + conf.nome : '') + (conf.em ? ' em ' + dataBR(conf.em) : '') : null,
-    texto: feita ? (conf.nome || 'A equipe') + ' confirmou com ' + quem + ' que o resultado' + (conf.ate ? ' até ' + rotuloComp(conf.ate) : '') + ' é confiável' + (conf.em ? ', em ' + dataBR(conf.em) : '') + '.' + doDominio
-      : 'Antes de apresentar, confirme com ' + quem + ' se o resultado' + (ate ? ' até ' + rotuloComp(ate) : '') + ' é confiável: os meses conciliados e fechados, sem lançamento por fazer.' + doDominio + naoFeitos + mudou,
+    estado: feita ? 'feita' : 'aberta',
+    como: !feita ? null : pelaPergunta ? 'confirmado por ' + ela + quando(perg.respondidaEm) + ', pelo vigia' : 'confirmado' + (conf.nome ? ' por ' + conf.nome : '') + (conf.em ? ' em ' + dataBR(conf.em) : ''),
+    texto: pelaPergunta ? ela + ' respondeu' + quando(perg.respondidaEm) + ' que o resultado até ' + rotuloComp(perg.ate) + ' é confiável (a pergunta do vigia' + (perg.pedidaPor ? ', feita por ' + perg.pedidaPor : '') + ').' + doDominio
+      : feita ? (conf.nome || 'A equipe') + ' confirmou com ' + quem + ' que o resultado' + (conf.ate ? ' até ' + rotuloComp(conf.ate) : '') + ' é confiável' + (conf.em ? ', em ' + dataBR(conf.em) : '') + '.' + doDominio
+      : 'Antes de apresentar, confirme com ' + quem + ' se o resultado' + (ate ? ' até ' + rotuloComp(ate) : '') + ' é confiável: os meses conciliados e fechados, sem lançamento por fazer.' + doDominio + naoFeitos + mudou + daPergunta,
     efeito: 'o lucro errado troca o resultado entre o Presumido e o Real',
-    confirmar: feita ? null : { ate: ate || null }, confirmarRotulo: 'Confirmado com a contabilidade', desfazer: feita, desfazerRotulo: 'Desfazer a confirmação' };
+    perguntar: podePerguntar ? { ate, para: responsavel, sinais: sinais && sinais.lidos && sinais.itens.length ? sinais.itens.join('; ') : null } : null,
+    perguntarRotulo: 'Perguntar pra ' + (responsavel || 'quem cuida') + (perg ? ' de novo' : ''),
+    confirmar: feita ? null : { ate: ate || null }, confirmarRotulo: 'Confirmado com a contabilidade', desfazer: feita && !pelaPergunta, desfazerRotulo: 'Desfazer a confirmação' };
 }
 
 // Volta { simples, numeros, premissas, veredito }: as linhas de cada fase — { id, info, onde, auto, estado (tem | antigo |
@@ -341,9 +381,13 @@ export function fontesDoEstudo({ entrada = {}, origens = {}, comparacao = null, 
       auto: 'A ponte do Domínio ainda não traz o resultado da contabilidade: por enquanto, digite o lucro da DRE.' });
     // a confirmação de quem cuida da contabilidade: com o lucro na conta, ou enquanto ele é pedido
     if (L.ate && (lucroInf || !conferido('lucroContabil'))) {
-      const ok = !!(L.conf && L.conf.vale);
+      const ok = !!L.confirmado, pg = L.perg, ela = (pg && pg.para) || L.responsavel || 'quem cuida';
       add(F2, { id: 'ctbconf', info: 'A confirmação da contabilidade', estado: ok ? 'tem' : 'falta',
-        situacao: ok ? 'confirmado' + (L.conf.nome ? ' por ' + L.conf.nome : '') + (L.conf.em ? ' em ' + dataBR(L.conf.em) : '') : 'falta confirmar',
+        situacao: L.pelaPergunta ? 'confirmado por ' + ela + (pg.respondidaEm ? ' em ' + dataBR(pg.respondidaEm) : '') + ', pelo vigia'
+          : ok ? 'confirmado' + (L.conf.nome ? ' por ' + L.conf.nome : '') + (L.conf.em ? ' em ' + dataBR(L.conf.em) : '')
+          : pg && pg.estado === 'aberta' && pg.cobre ? 'perguntado a ' + ela + (pg.em ? ' em ' + dataBR(pg.em) : '') + ', sem resposta'
+          : pg && pg.estado === 'nao' ? ela + ' respondeu' + (pg.respondidaEm ? ' em ' + dataBR(pg.respondidaEm) : '') + ' e não confirmou'
+          : 'falta confirmar',
         onde: maiuscula(L.quem) + ': se o resultado até ' + rotuloComp(L.ate) + ' é confiável' + (L.sinais && L.sinais.itens.length ? '. O Domínio aponta ' + L.sinais.comProblema + ' de ' + L.sinais.lidos + ' meses com problema (na missão abaixo)' : '') + '.',
         auto: 'Nenhum sistema tem: é a palavra de quem fecha a contabilidade.' });
     }
