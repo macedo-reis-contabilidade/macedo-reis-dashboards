@@ -303,8 +303,8 @@ export function lucroDoEstudo({ entrada = {}, origens = {}, serie = null, contab
 // dela (12/11/2026, com o resultado mês a mês pela ponte): o mês em que o resultado passa da receita do mês (o lançamento
 // do ano inteiro de uma vez: o custo das mercadorias, a depreciação) e o lucro da contabilidade acima do que as notas e a
 // folha do sistema deixam (no Real, nos 12 meses: a receita menos as compras, as despesas com nota, a folha e os tributos —
-// só fecha com estoque formado no período, ou com compra que ficou sem o custo lançado). Volta [{ curto, texto }]: o
-// curto vai na pergunta do vigia, o texto na missão.
+// só fecha com estoque formado ou investimento no período, que não são custo, ou com compra que ficou sem o custo
+// lançado). Volta [{ curto, texto }]: o curto vai na pergunta do vigia, o texto na missão.
 export function alertasDoResultado({ L = null, comparacao = null, entrada = {} } = {}) {
   const out = [];
   const at = (L && L.atipicos) || [];
@@ -318,9 +318,9 @@ export function alertasDoResultado({ L = null, comparacao = null, entrada = {} }
   if (real && real.disponivel && real.lucroInformado && real.lucroEstimado != null && real.lucro - real.lucroEstimado > Math.max(5000, 0.02 * num(r0.receita))) {
     const comCompras = num(entrada && entrada.compras) > 0;
     const teto = real.lucroEstimado < 0 ? 'prejuízo de ' + brl(-real.lucroEstimado) : brl(real.lucroEstimado);
-    out.push({ curto: 'o lucro da contabilidade no Real (' + brl(real.lucro) + ' nos 12 meses) passa do que as notas e a folha do sistema deixam (' + teto + ')' + (comCompras ? ': o custo das vendas (o estoque) está lançado mês a mês?' : ': a folha e as despesas entraram?'),
+    out.push({ curto: 'o lucro da contabilidade no Real (' + brl(real.lucro) + ' nos 12 meses) passa do que as notas e a folha do sistema deixam (' + teto + ')' + (comCompras ? ': tem estoque ou ativo novo no período, e o custo das vendas está lançado mês a mês?' : ': a folha e as despesas entraram?'),
       texto: 'Pela contabilidade, o lucro no Real dá ' + brl(real.lucro) + ' nos 12 meses; pelas notas e pela folha do sistema (a receita menos as compras, as despesas com nota, a folha e os tributos), daria no máximo ' + teto + '. '
-        + (comCompras ? 'Só fecha se a empresa formou estoque no período, ou se parte das compras ficou sem o custo lançado: pergunte como o custo das vendas (o estoque) é lançado.' : 'Só fecha se a folha ou outra despesa do sistema não entrou na contabilidade.') });
+        + (comCompras ? 'Só fecha se a empresa formou estoque ou investiu no período (o que vai pro estoque ou pro ativo não é custo), ou se parte das compras ficou sem o custo lançado: pergunte como o custo das vendas (o estoque) é lançado.' : 'Só fecha se a folha ou outra despesa do sistema não entrou na contabilidade.') });
   }
   return out;
 }
