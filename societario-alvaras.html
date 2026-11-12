@@ -53,6 +53,7 @@
         </div>
       </div>
 
+      <div id="avisoRep" class="alv-rep-aviso" role="status" hidden></div>
       <div id="lista"></div>
       <div id="vazio" class="empty-state" hidden>Nenhum alvará neste filtro.</div>
     </main>
@@ -85,6 +86,7 @@
           <label class="fa-field"><span>Número do alvará</span><input type="text" id="nNumero" class="input"></label>
           <label class="fa-field"><span>Órgão emissor</span><input type="text" id="nOrgao" class="input" placeholder="Ex.: Prefeitura, Bombeiros, Vigilância…"></label>
         </div>
+        <div id="nRepetido" class="alv-repetido" role="alert" hidden></div>
         <div class="fa-field-row">
           <label class="fa-field"><span>Cidade</span><input type="text" id="nCidade" class="input"></label>
           <label class="fa-field"><span>Responsável * <i style="font-style:normal;color:var(--text-dim)">(a tarefa de renovação vai pra agenda dela)</i></span><select id="nResp" class="input"><option value="">— escolha —</option></select></label>
@@ -133,6 +135,7 @@
           <label class="fa-field"><span>Número do alvará</span><input type="text" id="dNumero" class="input"></label>
           <label class="fa-field"><span>Órgão emissor</span><input type="text" id="dOrgao" class="input"></label>
         </div>
+        <div id="dRepetido" class="alv-repetido" role="alert" hidden></div>
         <div class="fa-field-row">
           <label class="fa-field"><span>Responsável</span><select id="dResp" class="input"><option value="">— escolha —</option></select></label>
           <label class="fa-field"><span>Recorrência</span>
@@ -170,6 +173,8 @@
 
   <script type="module">
     import { supabase, getCurrentUser, signOut } from './assets/js/supabase.js';
+    // o alvará repetido (12/11/2026, pedido da Adaini): a mesma empresa não fica com dois alvarás de mesmo tipo e número
+    import { repetidosDe, emDobro, descreverAlvara, chaveDoNumero } from './assets/js/alvaras-repetidos.js';
 
     const TIPOS = [
       'Alvará de Funcionamento',
@@ -189,6 +194,7 @@
     let usuarioEmail = null;
     let filtro = 'todos';
     let alvAtual = null;
+    let dobro = new Map();   // os que já estão em dobro: id → os ids dos outros iguais
 
     const elLista = document.getElementById('lista');
     const elVazio = document.getElementById('vazio');
@@ -256,6 +262,8 @@
         .order('vencimento', { ascending: true, nullsFirst: false });
       if (error) { elLista.innerHTML = '<p style="color:var(--err);">Erro ao carregar: '+escapeHtml(error.message)+'</p>'; return; }
       alvaras = data || [];
+      dobro = emDobro(alvaras);
+      if (filtro === 'repetidos' && !dobro.size) voltarParaTodos();
       atualizarContadores();
       render();
     }
@@ -282,12 +290,35 @@
       if (filtro==='renovacao') return emRenovacao(a);
       if (filtro==='aconfirmar') return aConfirmar(a);
       if (filtro==='vigentes') return vigente(a);
+      if (filtro==='repetidos') return dobro.has(a.id);
       return true;
+    }
+    function voltarParaTodos(){
+      filtro = 'todos';
+      document.querySelectorAll('.fa-focus-card').forEach(x => x.classList.toggle('is-active', x.dataset.f === 'todos'));
+    }
+    // o aviso em cima da lista: quantos estão em dobro, com o atalho pra ver só eles (um ao lado do outro) e excluir o que sobra
+    function renderAvisoRep(){
+      const el = document.getElementById('avisoRep');
+      if (!dobro.size) { el.hidden = true; el.innerHTML = ''; return; }
+      // quantos alvarás estão em dobro (cada grupo de iguais conta um), não quantas linhas
+      const n = new Set([...dobro].map(([id, outros]) => [id, ...outros].sort().join('|'))).size, vendo = filtro === 'repetidos';
+      el.hidden = false;
+      el.innerHTML = '<span>' + (n === 1 ? 'Um alvará está cadastrado' : n + ' alvarás estão cadastrados') + ' mais de uma vez: mesma empresa, mesmo tipo e mesmo número. Abra, confira e exclua o que sobra.</span>'
+        + '<button type="button" class="btn btn-ghost btn-sm" id="btnVerRep">' + (vendo ? 'Ver todos' : 'Ver os repetidos') + '</button>';
+      document.getElementById('btnVerRep').addEventListener('click', () => {
+        if (filtro === 'repetidos') voltarParaTodos();
+        else { filtro = 'repetidos'; document.querySelectorAll('.fa-focus-card').forEach(x => x.classList.remove('is-active')); }
+        render();
+      });
     }
 
     function render(){
       const q = searchInput.value.trim().toLowerCase();
+      renderAvisoRep();
       let itens = alvaras.filter(aplicaFiltro);
+      // nos repetidos, os iguais ficam um ao lado do outro
+      if (filtro === 'repetidos') itens = [...itens].sort((a, b) => (nomeEmpresa(a) + '|' + (a.tipo || '') + '|' + chaveDoNumero(a.numero)).localeCompare(nomeEmpresa(b) + '|' + (b.tipo || '') + '|' + chaveDoNumero(b.numero), 'pt-BR'));
       if (q) itens = itens.filter(a =>
         (nomeEmpresa(a)+' '+(a.tipo||'')+' '+(a.cidade||'')+' '+(a.numero||'')+' '+(a.orgao||'')).toLowerCase().includes(q)
       );
@@ -304,7 +335,7 @@
         return `<div class="alv-card" data-id="${a.id}">
           <div class="alv-top">
             <span class="alv-tipo">${escapeHtml(a.tipo||'Alvará')}</span>
-            ${pill} ${rec}
+            ${pill} ${rec}${dobro.has(a.id) ? ' <span class="pill pill-rep" title="Esta empresa tem outro alvará com o mesmo tipo e o mesmo número">Repetido</span>' : ''}
           </div>
           <div class="alv-empresa">${escapeHtml(nomeEmpresa(a))}</div>
           <div class="alv-meta">
@@ -317,6 +348,57 @@
       }).join('');
       elLista.querySelectorAll('.alv-card').forEach(c => c.addEventListener('click', () => abrirDetalhe(c.dataset.id)));
       elLista.querySelectorAll('.alv-doc-flag').forEach(a => a.addEventListener('click', e => e.stopPropagation()));
+    }
+
+    /* ---------- O ALVARÁ REPETIDO (12/11/2026, pedido da Adaini) ---------- */
+    // a mesma empresa não fica com dois alvarás de mesmo tipo e número (assets/js/alvaras-repetidos.js): o aviso aparece
+    // enquanto a pessoa preenche, e o Cadastrar, o Salvar e o Renovar conferem de novo no banco antes de gravar
+    const COLUNAS_REP = 'id, cliente_id, tipo, numero, vencimento, status';
+    async function abrirExistente(id){
+      if (!alvaras.some(a => a.id === id)) await carregar();
+      fecharNovo();
+      abrirDetalhe(id);
+    }
+    // vermelho: a empresa já tem este alvará (mesmo tipo e número) · amarelo: o número está em outro tipo de alvará dela
+    function mostrarRepetido(el, rep, { jaEstava = false } = {}) {
+      const a = rep.iguais[0] || rep.outroTipo[0];
+      if (!a) { el.hidden = true; el.innerHTML = ''; el.className = 'alv-repetido'; return; }
+      const igual = rep.iguais.length > 0;
+      el.hidden = false;
+      el.className = 'alv-repetido ' + (igual ? 'alv-repetido-igual' : 'alv-repetido-outro');
+      const frase = !igual ? 'Esta empresa já tem este número em outro alvará: <b>' + escapeHtml(descreverAlvara(a)) + '</b>. Se for outro documento, pode gravar.'
+        : jaEstava ? 'Este alvará está cadastrado mais de uma vez pra esta empresa. O outro: <b>' + escapeHtml(descreverAlvara(a)) + '</b>. Confira os dois e exclua o que sobra.'
+        : 'Esta empresa já tem este alvará: <b>' + escapeHtml(descreverAlvara(a)) + '</b>. Não dá pra gravar o mesmo duas vezes.';
+      el.innerHTML = frase + ' <button type="button" class="btn btn-ghost btn-sm" data-abrir-alv="' + escapeHtml(a.id) + '">' + (igual && jaEstava ? 'Abrir o outro' : 'Abrir o que já existe') + '</button>';
+      el.querySelector('[data-abrir-alv]').addEventListener('click', () => abrirExistente(a.id));
+    }
+    const tipoDoNovo = () => { const t = document.getElementById('nTipo').value; return t === '__outro__' ? document.getElementById('nTipoOutro').value.trim() : t; };
+    function conferirNovo(lista = alvaras){
+      const rep = repetidosDe(lista, { cliente_id: document.getElementById('nCliente').value, tipo: tipoDoNovo(), numero: document.getElementById('nNumero').value });
+      mostrarRepetido(document.getElementById('nRepetido'), rep);
+      return rep;
+    }
+    ['nCliente', 'nTipo', 'nTipoOutro', 'nNumero'].forEach(id => ['input', 'change'].forEach(ev => document.getElementById(id).addEventListener(ev, () => conferirNovo())));
+    // na janela do alvará: o que já estava em dobro (o número de quando abriu) segue editável, com o aviso — resolve-se
+    // excluindo um dos dois; o número trocado por um que a empresa já tem no mesmo tipo não grava
+    function conferirDetalhe(lista = alvaras){
+      const nada = { rep: { iguais: [], outroTipo: [] }, mudou: false };
+      if (!alvAtual) return nada;
+      const numero = document.getElementById('dNumero').value;
+      const rep = repetidosDe(lista, { id: alvAtual.id, cliente_id: alvAtual.cliente_id, tipo: alvAtual.tipo, numero });
+      const mudou = chaveDoNumero(numero) !== chaveDoNumero(alvAtual.numero);
+      mostrarRepetido(document.getElementById('dRepetido'), rep, { jaEstava: !mudou });
+      return { rep, mudou };
+    }
+    document.getElementById('dNumero').addEventListener('input', () => conferirDetalhe());
+    const perguntaOutroTipo = (numero, outro) => confirm('Esta empresa já tem o número ' + String(numero).trim() + ' em outro alvará (' + descreverAlvara(outro) + ').\n\nÉ outro documento mesmo? OK grava; Cancelar volta.');
+    // true = não gravar
+    async function barrarNoDetalhe(){
+      const { data, error } = await supabase.from('alvaras').select(COLUNAS_REP).eq('cliente_id', alvAtual.cliente_id);
+      const { rep, mudou } = conferirDetalhe(error ? alvaras : (data || []));
+      if (!mudou) return false;
+      if (rep.iguais.length) { document.getElementById('dNumero').focus(); document.getElementById('dRepetido').scrollIntoView({ block: 'center' }); return true; }
+      return rep.outroTipo.length > 0 && !perguntaOutroTipo(document.getElementById('dNumero').value, rep.outroTipo[0]);
     }
 
     /* ---------- MODAL NOVO ---------- */
@@ -337,6 +419,7 @@
       ['nCliente','nTipo','nTipoOutro','nNumero','nOrgao','nCidade','nResp','nVenc','nLink','nObs'].forEach(id=>document.getElementById(id).value='');
       document.getElementById('nRecorr').value='nenhuma';
       document.getElementById('nTipoOutroWrap').hidden = true;
+      mostrarRepetido(document.getElementById('nRepetido'), { iguais: [], outroTipo: [] });
       // o bloco "Anexar alvará" também zera: arquivo, lista, status e o botão Ler e preencher
       aArquivos = []; aDoc.value = ''; aArquivosEl.innerHTML = ''; aStatus.textContent = ''; aStatus.style.color = ''; aBtnExtrair.hidden = true;
     }
@@ -441,6 +524,7 @@
       const obs = d.observacoes_extracao ? (' ' + d.observacoes_extracao) : '';
       aStatus.style.color = (cid || !d.empresa) ? 'var(--success)' : 'var(--warning)';
       aStatus.textContent = 'Campos preenchidos abaixo — confira antes de salvar.' + conf + msgEmpresa + obs;
+      conferirNovo();
     }
 
     document.getElementById('nSalvar').addEventListener('click', async () => {
@@ -450,6 +534,11 @@
       if (!cliente_id) { alert('Selecione a empresa.'); return; }
       if (!tipo) { alert('Informe o tipo de alvará.'); return; }
       if (!document.getElementById('nResp').value) { alert('Escolha o responsável — a tarefa de renovação vai pra agenda dessa pessoa.'); return; }
+      // o alvará repetido: confere no banco (outra pessoa pode ter acabado de cadastrar o mesmo)
+      const { data: daEmpresa, error: eRep } = await supabase.from('alvaras').select(COLUNAS_REP).eq('cliente_id', cliente_id);
+      const rep = conferirNovo(eRep ? alvaras : (daEmpresa || []));
+      if (rep.iguais.length) { document.getElementById('nNumero').focus(); document.getElementById('nRepetido').scrollIntoView({ block: 'center' }); return; }
+      if (rep.outroTipo.length && !perguntaOutroTipo(document.getElementById('nNumero').value, rep.outroTipo[0])) return;
 
       const btn = document.getElementById('nSalvar');
       btn.disabled = true; btn.innerHTML = '<span class="spinner spinner-sm"></span>Salvando...';
@@ -509,6 +598,7 @@
       if (vencido(a)) { banner.hidden = false; banner.className = 'alv-venc-banner'; banner.textContent = 'Vencido em ' + fmtData(a.vencimento) + ' — precisa renovar.'; }
       else { banner.hidden = true; banner.className = 'alv-conc-banner'; }
 
+      conferirDetalhe();
       ovDet.classList.add('is-open');
       await carregarTimeline(id);
     }
@@ -540,6 +630,7 @@
 
     document.getElementById('dSalvar').addEventListener('click', async () => {
       if (!alvAtual) return;
+      if (await barrarNoDetalhe()) return;
       const novoStatus = document.getElementById('dStatus').value;
       const statusMudou = novoStatus !== alvAtual.status;
       const patch = {
@@ -572,6 +663,7 @@
       if (!novaData) { alert('Informe a nova data de vencimento (campo Vencimento) antes de renovar.'); return; }
       const atual = alvAtual.vencimento ? String(alvAtual.vencimento).slice(0,10) : '';
       if (novaData === atual && !confirm('A data de vencimento continua a mesma. Renovar mesmo assim?')) return;
+      if (await barrarNoDetalhe()) return;
       const antiga = alvAtual.vencimento ? fmtData(alvAtual.vencimento) : '—';
       const patch = {
         status: 'vigente',
@@ -636,6 +728,14 @@
     .pill-vig { color:var(--ok); border-color:rgba(63,176,122,.45); }
     .pill-renov { color:var(--warn); border-color:rgba(227,179,65,.45); }
     .pill-venc { color:var(--err); border-color:rgba(224,108,108,.5); }
+    .pill-rep { color:var(--orange); border-color:rgba(251,146,60,.5); }
+    .alv-rep-aviso[hidden] { display:none; }
+    .alv-rep-aviso { display:flex; gap:12px; align-items:center; justify-content:space-between; flex-wrap:wrap; background:rgba(251,146,60,.08); border:1px solid rgba(251,146,60,.35); color:var(--text-2); border-radius:12px; padding:10px 14px; font-size:13px; margin-bottom:12px; }
+    .alv-repetido { border-radius:10px; padding:8px 12px; font-size:13px; line-height:1.5; }
+    .alv-repetido-igual { background:rgba(224,108,108,.12); border:1px solid rgba(224,108,108,.4); color:var(--err); }
+    .alv-repetido-outro { background:rgba(227,179,65,.10); border:1px solid rgba(227,179,65,.4); color:var(--warn); }
+    .alv-repetido b { color:var(--text); font-weight:600; }
+    .alv-repetido .btn { margin-left:6px; }
     .alv-recorr { font-size:12px; color:var(--brand-light); background:rgba(91,130,166,.12); border:1px solid rgba(91,130,166,.25); border-radius:999px; padding:2px 10px; }
 
     .fa-modal-overlay { position:fixed; inset:0; background:var(--overlay); display:none; align-items:center; justify-content:center; padding:20px; z-index:100; }
