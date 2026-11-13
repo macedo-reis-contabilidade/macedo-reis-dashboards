@@ -8,10 +8,41 @@
   <link rel="stylesheet" href="assets/css/style.css">
   <script type="module" src="assets/js/auth-guard.js"></script>
   <style>
-    .dashboard-card { position:relative; transition: transform .15s ease, border-color .15s ease, background .15s ease, box-shadow .15s ease; }
-    .dashboard-card:hover { transform: translateY(-2px); border-color: rgba(138,174,200,.35); background: var(--fill-1); box-shadow: 0 8px 24px rgba(0,0,0,.25); }
+    /* A abertura do Painel (13/11/2026, pedido do Samuel: "dar um pouco mais de alegria"): bom dia com o nome de quem
+       entrou, a frase do dia, o dia em números e o anel do dia. As contas são as da coluna "Seu dia" da Agenda
+       (assets/js/painel-dia.js). Os cards (a cor do módulo, o número na frente) estão no style.css, pra todos os painéis. */
+    .pn-hero { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:32px; align-items:center; margin-bottom:34px; }
+    .pn-hero h1 { font-size:2.6rem; margin:8px 0 10px; }
+    .pn-hero h1 em { font-style:normal; color:var(--sol); }
+    .pn-frase { color:var(--text-2); font-size:1.02rem; max-width:760px; min-height:1.5em; text-wrap:pretty; }
+    .pn-chips { display:flex; flex-wrap:wrap; gap:10px; margin-top:20px; }
+    .pn-chips.is-lendo { min-height:40px; }   /* enquanto o dia é lido, o lugar dos números fica guardado */
+    .pn-chips:empty:not(.is-lendo) { display:none; }
+    .pn-chip { display:inline-flex; align-items:center; gap:9px; padding:8px 14px 8px 10px; border-radius:999px; background:var(--fill-2); border:1px solid var(--line); color:var(--text); font:500 .88rem/1.4 var(--font-body); text-decoration:none; cursor:pointer; transition:background .15s ease, border-color .15s ease, transform .15s ease; }
+    .pn-chip:hover { background:var(--fill-3); border-color:var(--line-strong); color:var(--text); transform:translateY(-1px); }
+    .pn-chip:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
+    /* o número: a cor do assunto clareada sobre 20% dela (4,8:1 ou mais, também no hover); no tema claro, escurecida */
+    .pn-chip b { font-weight:700; font-size:.86rem; min-width:22px; height:22px; padding:0 6px; border-radius:999px; display:inline-grid; place-items:center; background:var(--fill-3); background:color-mix(in srgb, var(--c) 20%, transparent); color:var(--c); color:color-mix(in srgb, var(--c) 70%, #fff); font-variant-numeric:tabular-nums; }
+    :root[data-theme="light"] .pn-chip { background:var(--surface); }
+    :root[data-theme="light"] .pn-chip b { color:color-mix(in srgb, var(--c) 62%, #000); }
+    .pn-anel { display:grid; grid-template-columns:auto 1fr; gap:18px; align-items:center; padding:18px 24px 18px 18px; border-radius:20px; background:linear-gradient(180deg, var(--fill-2), var(--fill-1)); border:1px solid var(--line); box-shadow:var(--shadow); color:var(--text); text-decoration:none; transition:border-color .15s ease, transform .15s ease; }
+    .pn-anel[hidden] { display:none; }
+    .pn-anel:hover { border-color:var(--sol); color:var(--text); transform:translateY(-2px); }
+    .pn-anel:focus-visible { outline:2px solid var(--accent); outline-offset:3px; }
+    :root[data-theme="light"] .pn-anel { background:var(--surface); }
+    .pn-anel svg { display:block; }
+    .pn-anel-trilho { stroke:var(--fill-3); }
+    #pnAnelArco { transition:stroke-dasharray .9s cubic-bezier(.2,.8,.2,1); }
+    .pn-anel-pct { font:700 18px var(--font-body); fill:var(--text); }
+    .pn-anel-t { font-size:.78rem; color:var(--text-muted); }
+    .pn-anel-n { font-weight:700; font-size:1.3rem; letter-spacing:-.02em; line-height:1.15; margin:2px 0 4px; }
+    .pn-anel-s { font-size:.84rem; color:var(--sol); font-weight:600; }
+    .dashboard-grid { grid-template-columns:repeat(3, minmax(0, 1fr)); }
+    @media (max-width: 980px) { .pn-hero { grid-template-columns:1fr; } .dashboard-grid { grid-template-columns:repeat(2, minmax(0, 1fr)); } }
+    @media (max-width: 640px) { .pn-hero h1 { font-size:2rem; } .dashboard-grid { grid-template-columns:1fr; } }
+    @media (prefers-reduced-motion: reduce) { .pn-chip, .pn-anel, #pnAnelArco { transition:none; } .pn-chip:hover, .pn-anel:hover { transform:none; } }
 
-    /* Cor de identidade por grupo (no ícone) */
+    /* Cor de identidade por grupo (no ícone; o assets/js/cards-painel.js leva a mesma cor pro card inteiro) */
     a[href="agenda.html"]         .dashboard-card-icon { background: rgba(120,170,230,.16); color:#8FC0F0; }
     a[href="clientes/index.html"] .dashboard-card-icon { background: rgba(91,192,190,.15);  color:#7FD4D2; }
     a[href="setores.html"]        .dashboard-card-icon { background: rgba(133,151,224,.15); color:#8597E0; }
@@ -22,11 +53,7 @@
     /* Selo "hoje" (urgência do dia) — canto superior direito */
     .badge-hoje { position:absolute; top:14px; right:14px; background:rgba(227,179,65,.18); border:1px solid rgba(227,179,65,.5); color:var(--warn); font-size:11px; font-weight:700; padding:3px 10px; border-radius:999px; letter-spacing:.04em; text-transform:uppercase; box-shadow:0 0 0 3px rgba(227,179,65,.06); }
 
-    /* Status no rodapé: backlog de tarefas abertas (ou "em dia") */
-    .badge.card-status { font-size:11px; font-weight:700; padding:3px 10px; border-radius:999px; letter-spacing:.03em; }
-    .card-status.st-open  { background:rgba(138,174,200,.14); border:1px solid rgba(138,174,200,.38); color:var(--text-2); }
-    .card-status.st-clear { background:rgba(63,176,122,.14);  border:1px solid rgba(63,176,122,.4);  color:var(--ok); }
-    .card-status.st-load  { background:var(--line); border:1px solid var(--fill-3); color:var(--text-muted); }
+    /* O número do rodapé de cada card ("9 abertas", "Em dia") é desenhado pelo style.css (.dashboard-card-footer .card-status) */
   </style>
 </head>
 <body>
@@ -47,11 +74,23 @@
     </header>
 
     <main class="content">
-      <div class="page-header">
-        <div class="eyebrow">Painel central</div>
-        <h1>Dashboards do escritório</h1>
-        <p>Acesso unificado aos sistemas internos. Cada card abre o dashboard correspondente.</p>
-      </div>
+      <section class="pn-hero" aria-label="O seu dia">
+        <div>
+          <div class="eyebrow" id="pnData">Painel central</div>
+          <h1 id="pnOla">Painel central</h1>
+          <p class="pn-frase" id="pnFrase">&nbsp;</p>
+          <div class="pn-chips is-lendo" id="pnChips"></div>
+        </div>
+        <a class="pn-anel" id="pnAnel" href="agenda.html" title="Abrir a Agenda" hidden>
+          <svg width="84" height="84" viewBox="0 0 84 84" aria-hidden="true" focusable="false">
+            <defs><linearGradient id="pnAnelCor" x1="0" y1="0" x2="1" y2="1"><stop offset="0" style="stop-color:var(--sol-forte)"/><stop offset="1" style="stop-color:var(--sol)"/></linearGradient></defs>
+            <circle class="pn-anel-trilho" cx="42" cy="42" r="30" fill="none" stroke-width="9"/>
+            <circle id="pnAnelArco" cx="42" cy="42" r="30" fill="none" stroke="url(#pnAnelCor)" stroke-width="9" stroke-linecap="round" stroke-dasharray="0 189" transform="rotate(-90 42 42)"/>
+            <text class="pn-anel-pct" id="pnAnelPct" x="42" y="48" text-anchor="middle">0%</text>
+          </svg>
+          <div><div class="pn-anel-t">Seu dia</div><div class="pn-anel-n" id="pnAnelN"></div><div class="pn-anel-s" id="pnAnelS"></div></div>
+        </a>
+      </section>
 
       <div class="dashboard-grid">
         <a href="agenda.html" class="dashboard-card">
@@ -65,6 +104,7 @@
           <p>Suas tarefas e rotinas organizadas por dia, semana e mês. Ordene o dia por prioridade.</p>
           <div class="dashboard-card-footer">
             <span>Acessar →</span>
+            <span class="badge card-status st-load">·</span>
           </div>
         </a>
 
@@ -145,8 +185,113 @@
 
   <script type="module">
     import { supabase, getCurrentUser, signOut } from './assets/js/supabase.js';
+    import { nomePorEmail, SOCIOS } from './assets/js/equipe.js';
+    import { dataPorExtenso, saudacaoDaHora, fraseDoDia, textoDoAnel, lerDia } from './assets/js/painel-dia.js';
 
     const HOJE = new Date().toLocaleDateString('en-CA'); // YYYY-MM-DD local
+
+    // ---- a abertura (13/11/2026): bom dia, a frase do dia, o dia em números e o anel ----
+    // Só leitura. As contas do dia são as da coluna "Seu dia" da Agenda (assets/js/painel-dia.js); os avisos do vigia, os
+    // "meus" do cartão do vigia; as mensagens, o número da aba Equipe do balão (evento "mr:aba-contador").
+    const $ = id => document.getElementById(id);
+    // pessoa: o nome de quem entrou como está nas tarefas (o da equipe); nome: o da saudação; dia: undefined = lendo, null = não leu
+    const abertura = { email: '', pessoa: null, nome: '', socio: false, dia: undefined, vigia: 0, equipe: 0, lidoEm: 0, vez: 0 };
+    const VOLTA_DO_ANEL = 2 * Math.PI * 30;
+
+    function saudar() {
+      const agora = new Date(), h1 = $('pnOla');
+      $('pnData').textContent = dataPorExtenso(agora);
+      h1.textContent = saudacaoDaHora(agora.getHours()) + (abertura.nome ? ', ' : '.');
+      if (abertura.nome) { const em = document.createElement('em'); em.textContent = abertura.nome; h1.append(em, '.'); }
+    }
+    saudar();
+
+    function chip({ id, n, um, varios, cor, href, aoClicar }) {
+      const el = document.createElement(href ? 'a' : 'button');
+      el.className = 'pn-chip'; el.id = id;
+      if (href) el.href = href; else { el.type = 'button'; el.addEventListener('click', aoClicar); }
+      el.style.setProperty('--c', cor);
+      const b = document.createElement('b');
+      b.textContent = n > 99 ? '99+' : String(n);
+      el.append(b, ' ' + (n === 1 ? um : varios));   // o espaço é pro texto lido ("2 atrasadas"): na tela, quem afasta é o gap
+      return el;
+    }
+    // quem atende o pedido é o assistente do escritório (o balão do canto); sem ele, o caminho de sempre
+    function pedir(evento, detail, senao) {
+      const d = { ...detail };
+      window.dispatchEvent(new CustomEvent(evento, { detail: d }));
+      if (!d.atendido && senao) window.location.href = senao;
+    }
+    function desenharAbertura() {
+      const c = abertura.dia;
+      if (c !== undefined) $('pnFrase').textContent = fraseDoDia(c);
+      // os números do dia, cada um com o seu caminho: só aparece o que tem
+      const lugar = $('pnChips'), chips = [];
+      if (c && c.faltam) chips.push(chip({ id: 'pnHoje', n: c.faltam, um: 'pra hoje', varios: 'pra hoje', cor: 'var(--sol)', href: 'agenda.html' }));
+      if (c && c.atrasadas) chips.push(chip({ id: 'pnAtrasadas', n: c.atrasadas, um: 'atrasada', varios: 'atrasadas', cor: 'var(--err)',
+        aoClicar: () => pedir('mr:revisar-atrasadas', { pessoa: abertura.pessoa }, 'agenda.html') }));
+      if (abertura.vigia) chips.push(chip({ id: 'pnVigia', n: abertura.vigia, um: 'aviso do vigia', varios: 'avisos do vigia', cor: 'var(--accent)',
+        aoClicar: () => pedir('mr:ver-vigia', {}, 'index.html?vigia=meus') }));
+      if (abertura.equipe) chips.push(chip({ id: 'pnEquipe', n: abertura.equipe, um: 'mensagem da equipe', varios: 'mensagens da equipe', cor: 'var(--brand-light)',
+        aoClicar: () => pedir('mr:abrir-aba', { aba: 'equipe' }) }));
+      const foco = document.activeElement && lugar.contains(document.activeElement) ? document.activeElement.id : null;
+      lugar.replaceChildren(...chips);
+      if (foco && $(foco)) $(foco).focus({ preventScroll: true });
+      lugar.classList.toggle('is-lendo', c === undefined);
+      // o anel do dia
+      const anel = $('pnAnel');
+      if (c) {
+        const t = textoDoAnel(c), arco = $('pnAnelArco');
+        $('pnAnelN').textContent = t.titulo;
+        $('pnAnelS').textContent = t.detalhe;
+        $('pnAnelPct').textContent = c.total ? c.pct + '%' : '—';
+        anel.setAttribute('aria-label', 'Seu dia: ' + t.titulo + (c.total ? ' (' + c.pct + '%), ' : ' ') + t.detalhe + '. Abrir a Agenda');
+        arco.style.visibility = c.feitas ? 'visible' : 'hidden';
+        const novo = anel.hidden;
+        anel.hidden = false;
+        const encher = () => { arco.style.strokeDasharray = (c.total ? VOLTA_DO_ANEL * c.feitas / c.total : 0).toFixed(1) + ' ' + VOLTA_DO_ANEL.toFixed(1); };
+        if (novo) requestAnimationFrame(() => requestAnimationFrame(encher)); else encher();
+      } else if (c === null) anel.hidden = true;
+      // o card da Agenda: o que falta hoje; sem nada pra hoje, as atrasadas
+      const st = document.querySelector('a.dashboard-card[href="agenda.html"] .card-status');
+      if (st && c !== undefined) {
+        if (!c) { st.textContent = '—'; st.className = 'badge card-status st-load'; }
+        else if (c.faltam) { st.textContent = c.faltam + ' pra hoje'; st.className = 'badge card-status st-open'; }
+        else if (c.atrasadas) { st.textContent = c.atrasadas + (c.atrasadas === 1 ? ' atrasada' : ' atrasadas'); st.className = 'badge card-status st-open'; }
+        else { st.textContent = 'Em dia'; st.className = 'badge card-status st-clear'; }
+      }
+    }
+    // os avisos do vigia de quem entrou: os mesmos "meus" do cartão e da saudação do assistente
+    async function contarVigia() {
+      try {
+        const { lerAchados, filtrarAchados, semResolvidosAgora } = await import('./assets/js/vigia.js');
+        const lista = semResolvidosAgora(await lerAchados(supabase, { ignorados: false }), abertura.email);
+        return filtrarAchados(lista, { nome: abertura.pessoa, socio: abertura.socio }).length;
+      } catch (e) { return 0; }
+    }
+    async function lerAbertura() {
+      const vez = ++abertura.vez;
+      abertura.lidoEm = Date.now();
+      const [dia, vigia] = abertura.pessoa ? await Promise.all([lerDia(supabase, { pessoa: abertura.pessoa, socio: abertura.socio }), contarVigia()]) : [null, 0];
+      if (vez !== abertura.vez) return;   // outra leitura saiu depois desta: vale a mais nova
+      abertura.dia = dia; abertura.vigia = vigia;
+      desenharAbertura();
+    }
+    // o número das mensagens vem do balão (a aba Equipe); o que muda nas tarefas pelo assistente refaz a conta; e a tela
+    // que ficou aberta em segundo plano confere de novo quando volta pra frente (a saudação e a data também)
+    window.addEventListener('mr:aba-contador', ev => {
+      const d = ev && ev.detail;
+      if (!d || d.aba !== 'equipe') return;
+      abertura.equipe = Math.max(0, Math.round(Number(d.n) || 0));
+      desenharAbertura();
+    });
+    let relerEm = null;
+    const reler = () => { clearTimeout(relerEm); relerEm = setTimeout(lerAbertura, 500); };
+    window.addEventListener('mr:tarefas-mudaram', reler);
+    window.addEventListener('mr:feito', reler);
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible' && abertura.lidoEm && Date.now() - abertura.lidoEm > 60000) { saudar(); lerAbertura(); }
+    });
 
     // ---- lógica de periodicidade das rotinas (igual ao dashboard) ----
     const hojeD = new Date(HOJE + 'T00:00:00');
@@ -181,7 +326,13 @@
         const displayName = user.user_metadata?.full_name || user.email?.split('@')[0] || 'Usuário';
         document.getElementById('userName').textContent = displayName;
         document.getElementById('userAvatar').textContent = displayName.charAt(0).toUpperCase();
+        abertura.email = String(user.email || '').toLowerCase();
+        abertura.pessoa = nomePorEmail(abertura.email);
+        abertura.socio = SOCIOS.includes(abertura.email);
+        abertura.nome = abertura.pessoa || String(user.user_metadata?.full_name || '').trim().split(/\s+/)[0] || '';
+        saudar();
       }
+      lerAbertura();
       pintarNoticias(user);
       pintarAtendimento(user);
       await pintarSelosDoDia(user);

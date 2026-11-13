@@ -24,6 +24,9 @@
 // O chat da equipe (16/10/2026, no lugar do Beep) é a aba "Equipe" do mesmo painel (assets/js/chat-equipe.js): as
 // mensagens chegam em qualquer tela, e o número delas soma no balão. As notícias (20/10/2026) são a aba "Notícias"
 // (assets/js/noticias.js): o número das novas fica na barra das abas, e a Importante nova vira um recado da carinha.
+// A abertura do Painel central (13/11/2026, index.html) fala com o balão por eventos: "mr:ver-vigia" abre o cartão do vigia
+// de quem entrou (aqui), "mr:abrir-aba" ({ aba }) abre uma aba do painel e "mr:aba-contador" ({ aba, n }) avisa o número de
+// cada aba (os dois em assets/js/assistente.js). Quem atende marca detail.atendido.
 // ============================================================
 
 import { supabase } from './supabase.js';
@@ -478,6 +481,13 @@ function ligarVida() {
     if (!api || !pessoa) return;
     if (ev.detail) ev.detail.atendido = true;
     iniciarRevisao(pessoa);
+  });
+  // a abertura do Painel central pede o cartão do vigia (13/11/2026, o "N avisos do vigia"): os de quem entrou.
+  // Marca "atendido"; sem o assistente, o Painel abre o endereço com ?vigia=meus
+  window.addEventListener('mr:ver-vigia', ev => {
+    if (!api) return;
+    if (ev && ev.detail) ev.detail.atendido = true;
+    abrirVigia({ ver: 'meus' }, 'O que o vigia achou pra você conferir:');
   });
   // com uma janela aberta, o balão fica discreto (menor e mais claro) pra não cobrir o canto dela
   let t1 = null, t2 = null;

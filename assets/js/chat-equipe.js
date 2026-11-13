@@ -26,6 +26,7 @@
 // ============================================================
 
 import { nomePorEmail } from './equipe.js';
+import { corDaPessoa } from './cores-pessoas.js';   // cada pessoa com a sua cor (13/11/2026)
 import { escapeHtml } from './assistente.js';
 
 // ---------- auxiliares puros ----------
@@ -733,8 +734,12 @@ export function montarChatEquipe({ supabase, email, el, ctl }) {
   }
 
   // ---------- a lista ----------
-  const avatar = (nome, { grupo = false, online = false, escritorio = false, avisos = false } = {}) => '<span class="ch-avatar' + (avisos ? ' ch-avatar-avisos' : grupo ? ' ch-avatar-grupo' : '') + '" aria-hidden="true">'
-    + (avisos ? ICONE.sino : escritorio ? ICONE.predio : grupo ? ICONE.grupo : escapeHtml(iniciais(nome))) + (online ? '<i class="ch-online"></i>' : '') + '</span>';
+  // o avatar de uma pessoa leva a cor dela (--p, de assets/js/cores-pessoas.js: sempre um #RRGGBB daqui, nunca texto do banco)
+  const avatar = (nome, { grupo = false, online = false, escritorio = false, avisos = false } = {}) => {
+    const cor = (grupo || escritorio || avisos) ? null : corDaPessoa(nome);
+    return '<span class="ch-avatar' + (avisos ? ' ch-avatar-avisos' : grupo ? ' ch-avatar-grupo' : '') + '"' + (cor ? ' style="--p:' + cor + '"' : '') + ' aria-hidden="true">'
+      + (avisos ? ICONE.sino : escritorio ? ICONE.predio : grupo ? ICONE.grupo : escapeHtml(iniciais(nome))) + (online ? '<i class="ch-online"></i>' : '') + '</span>';
+  };
   function desenharLista() {
     if (!st.pronto && !st.erro) { ul.innerHTML = '<li class="ch-carregando">Abrindo o chat…</li>'; return; }
     if (st.erro && !st.convs.size) { ul.innerHTML = '<li class="ch-carregando">' + escapeHtml(st.erro) + ' <button type="button" class="as-botao as-botao-link" data-ch="tentar">Tentar de novo</button></li>'; return; }

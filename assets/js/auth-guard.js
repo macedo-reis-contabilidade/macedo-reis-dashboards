@@ -8,6 +8,7 @@ import { precisaTrocar } from './senha.js';
 import './autogrow.js'; // textareas crescem com o texto em todo o sistema
 import './theme.js';    // tema claro/escuro (interruptor no topo, escolha por navegador)
 import './janelas.js';  // Esc fecha a janela aberta que está por cima
+import { iniciarCards } from './cards-painel.js';   // os cards dos painéis: a cor do módulo e o número na frente (13/11/2026)
 
 document.documentElement.style.visibility = 'hidden';
 
@@ -27,6 +28,7 @@ const aqui = () => window.location.pathname + window.location.search;
     u.searchParams.set('redirect', aqui());
     window.location.replace(u.href);
   } else {
+    try { iniciarCards(); } catch (e) { /* enfeite dos cards: sem ele a tela segue igual */ }
     document.documentElement.style.visibility = 'visible';
     vigiarSessao(session.user && session.user.email);
     // o assistente do escritório: o mesmo balão em todas as telas com login (sem ele, a tela segue igual)

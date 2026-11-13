@@ -41,7 +41,7 @@
     .ag-nav button:last-child { border-right:none; }
     .ag-nav button:hover { background:var(--ag-fill-2); }
     .ag-hoje-btn { padding:0 12px !important; font-size:12.5px; font-weight:600; }
-    .ag-periodo { font-size:14px; font-weight:600; color:var(--text); text-transform:capitalize; white-space:nowrap; padding:0 4px; }
+    .ag-periodo { font-size:14px; font-weight:600; color:var(--text); white-space:nowrap; padding:0 4px; }   /* as maiúsculas vêm no texto (comMaiusculas): o capitalize dava "13 De Novembro" */
     .ag-views { display:inline-flex; border:1px solid var(--ag-line); border-radius:var(--ag-r); background:var(--ag-fill); padding:3px; gap:2px; }
     .ag-view-btn { padding:0 12px; font-size:12.5px; font-weight:600; color:var(--text-muted); background:none; border:none; border-radius:var(--ag-r-sm); cursor:pointer; font-family:inherit; }
     .ag-view-btn:hover { color:var(--text); }
@@ -71,7 +71,7 @@
     .sd-linha { margin:0; font-size:13px; color:var(--text-muted); }
     .sd-linha b { font-size:20px; color:var(--text); font-weight:700; font-variant-numeric:tabular-nums; }
     .sd-barra { height:6px; border-radius:6px; background:var(--line); margin:10px 0 0; overflow:hidden; }
-    .sd-barra i { display:block; height:100%; background:var(--brand-light); border-radius:6px; transition:width .5s ease; }
+    .sd-barra i { display:block; height:100%; background:var(--sol-forte); border-radius:6px; transition:width .5s ease; }   /* o progresso do dia em champanhe, como o anel do Painel (13/11/2026) */
     .sd-barra.cheia i { background:var(--ok); }
     .sd-festa { margin:10px 0 0; font-size:12.5px; font-weight:600; color:var(--ok); }
     .sd-atras { display:flex; align-items:center; gap:10px; margin-top:14px; padding-top:12px; border-top:1px solid var(--ag-line); font-size:13px; color:var(--text-2); line-height:1.35; }
@@ -389,6 +389,8 @@
     import { abrirNovaTarefa, FATURAVEL_SEM_EMPRESA } from './assets/js/nova-tarefa.js';
     import { formatDocumento, normalizarDocumento } from './assets/js/utils.js';
     import { rotinaDoDia, rotinaFeita } from './assets/js/rotinas-dia.js';
+    import { corDaPessoa, inicialDaPessoa } from './assets/js/cores-pessoas.js';   // cada pessoa com a sua cor (13/11/2026)
+    import { comMaiusculas } from './assets/js/painel-dia.js';
     import { montarChecklist, rotuloDoProgresso } from './assets/js/checklist.js';
     import { lerNoticias, destaquesPraMim, CAMPOS_LEVES, ROTULO_SETOR, ROTULO_RELEVANCIA, setoresDe, dataCurta, quando } from './assets/js/noticias.js';
     import { alterarTarefas, desfazerAlteracao } from './assets/js/tarefas-acoes.js';
@@ -435,8 +437,9 @@
     function mesmaData(a,b){ return ymd(a)===ymd(b); }
     const HOJE_STR = ymd(hojeMeiaNoite());
     const DOW = ['Seg','Ter','Qua','Qui','Sex','Sáb','Dom'];
-    const fmtDiaLongo = (d)=> d.toLocaleDateString('pt-BR',{weekday:'long', day:'numeric', month:'long'});
-    const fmtMesAno = (d)=> d.toLocaleDateString('pt-BR',{month:'long', year:'numeric'});
+    // a data por extenso do jeito da casa (13/11/2026): "Sexta-feira, 13 de Novembro", "Novembro de 2026"
+    const fmtDiaLongo = (d)=> comMaiusculas(d.toLocaleDateString('pt-BR',{weekday:'long', day:'numeric', month:'long'}));
+    const fmtMesAno = (d)=> comMaiusculas(d.toLocaleDateString('pt-BR',{month:'long', year:'numeric'}));
 
     // ---- rótulo de rotina (campo varia) ----
     function rotuloRotina(r){ return r.titulo || r.descricao || r.nome || r.tarefa || r.atividade || 'Rotina'; }
@@ -452,6 +455,9 @@
       if (!m) return null;
       return m[1] + 'h' + (m[2] && m[2] !== '00' ? m[2] : '');
     }
+    // o responsável com a cor da pessoa (13/11/2026): a bolinha com a inicial vem do CSS (.pessoa-chip::before, pelo data-i),
+    // então o texto do elemento continua só o nome; "Ambos" e quem não tem cor ficam como texto
+    const chipPessoa = nome => { const c = corDaPessoa(nome); return c ? `<span class="pessoa-chip" style="--p:${c}" data-i="${esc(inicialDaPessoa(nome))}">${esc(nome)}</span>` : `<span>${esc(nome)}</span>`; };
     // a tarefa (ou a rotina) é da pessoa? "Ambos" é dos dois sócios — a mesma regra da revisão das atrasadas do assistente
     function daPessoa(item, pessoa){
       const r = norm(item.responsavel), f = norm(pessoa);
@@ -546,7 +552,7 @@
       if (!itens.length) html += '<div style="color:var(--text-muted); padding:20px 4px;">Nada aqui.</div>';
       itens.forEach(t => {
         const cli = t.clientes?.nome_principal ? `<span>${esc(t.clientes.nome_principal)}</span><span class="sep">·</span>` : '';
-        const resp = t.responsavel ? `<span>${esc(t.responsavel)}</span>` : '';
+        const resp = t.responsavel ? chipPessoa(t.responsavel) : '';
         const atras = t.prazo < hS ? `<span class="t-hora" style="color:var(--err);">${Math.round((hojeMeiaNoite() - new Date(t.prazo + 'T00:00:00')) / 86400000)} dia(s) atrasada</span>` : '';
         html += `<div class="ag-card ${classePrio(t.prioridade)}" data-bstask="${t.id}">
           ${loteCheck(t)}
@@ -937,7 +943,7 @@
       visiveis.forEach(t => {
         const concl = t.status === 'concluida';
         const cli = t.clientes?.nome_principal ? `<span>${esc(t.clientes.nome_principal)}</span><span class="sep">·</span>` : '';
-        const resp = t.responsavel ? `<span>${esc(t.responsavel)}</span>` : '';
+        const resp = t.responsavel ? chipPessoa(t.responsavel) : '';
         html += `<div class="ag-card ${classePrio(t.prioridade)}" data-bstask="${t.id}"${concl ? ' style="opacity:.55;"' : ''}>
           ${loteCheck(t)}
           <div class="ag-card-main">
@@ -984,7 +990,7 @@
       let html = `<div class="ag-dia-secao">⚠ Sem prazo definido <span class="cont">${itens.length}</span>${aviso}</div>`;
       itens.forEach(t => {
         const cli = t.clientes?.nome_principal ? `<span>${esc(t.clientes.nome_principal)}</span><span class="sep">·</span>` : '';
-        const resp = t.responsavel ? `<span>${esc(t.responsavel)}</span>` : '';
+        const resp = t.responsavel ? chipPessoa(t.responsavel) : '';
         html += `<div class="ag-card ${classePrio(t.prioridade)}" data-sptask="${t.id}">
           <div class="ag-card-main">
             <div class="ag-card-titulo">${esc(t.titulo) || '(sem título)'}${horaDaTarefa(t) ? `<span class="t-hora">🕐 ${horaDaTarefa(t)}</span>` : ''}${chipLista(t)}${t.competencia_fiscal ? `<span class="t-hora" title="Competência">comp. ${esc(t.competencia_fiscal)}</span>` : ''}${t.transicao_id ? '<span class="t-hora" title="tarefa de transição">🔁</span>' : ''}</div>
@@ -1201,7 +1207,7 @@
       if (!pend.length) html += `<div class="ag-vazio">Sem tarefas pendentes neste dia.</div>`;
       pend.forEach(t => {
         const cli = t.clientes?.nome_principal ? `<span>${esc(t.clientes.nome_principal)}</span><span class="sep">·</span>` : '';
-        const resp = t.responsavel ? `<span>${esc(t.responsavel)}</span>` : '';
+        const resp = t.responsavel ? chipPessoa(t.responsavel) : '';
         html += `<div class="ag-card ${classePrio(t.prioridade)}" data-taskid="${t.id}" data-prio="${norm(t.prioridade)}" draggable="true" title="Arraste pra reordenar (dentro da mesma prioridade)">
           <div class="ag-card-main">
             <div class="ag-card-titulo">${esc(t.titulo)||'(sem título)'}${horaDaTarefa(t) ? `<span class="t-hora">🕐 ${horaDaTarefa(t)}</span>` : ''}${chipLista(t)}${t.competencia_fiscal ? `<span class="t-hora" title="Competência">comp. ${esc(t.competencia_fiscal)}</span>` : ''}${t.transicao_id ? '<span class="t-hora" title="tarefa de transição">🔁</span>' : ''}</div>
@@ -1220,7 +1226,7 @@
         html += `<div class="ag-dia-secao">Rotinas do dia <span class="cont">${feitasRot}/${rotinas.length}</span></div>`;
         rotinas.forEach(r => {
           const feita = rotinaFeita(r, d);
-          const resp = r.responsavel ? `<span>${esc(r.responsavel)}</span>` : '';
+          const resp = r.responsavel ? chipPessoa(r.responsavel) : '';
           const check = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>`;
           html += `<div class="ag-card ag-rotina ${feita?'feita':''}" data-rotcard="${r.id}" style="cursor:pointer;" title="Clique pra adiar">
             <button class="ag-rot-check ${feita?'on':''}" data-rotid="${r.id}" data-feita="${feita?1:0}" title="${feita?'Desfazer':'Marcar como feita'}" aria-label="${feita?'Desfazer rotina':'Concluir rotina'}">${feita?check:''}</button>

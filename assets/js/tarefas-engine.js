@@ -17,6 +17,7 @@ import { rotinaDoDia, rotinaFeita } from './rotinas-dia.js';
 import { avisarDependentes } from './tarefas-acoes.js';
 import { montarChecklist, rotuloDoProgresso } from './checklist.js';
 import { EQUIPE as EQUIPE_ATUAL, saiuDaEquipe } from './equipe.js';
+import { corDaPessoa, inicialDaPessoa } from './cores-pessoas.js';   // cada pessoa com a sua cor (13/11/2026)
 
 const CSS = `
   .fa-focus { display:grid; grid-template-columns:repeat(5,1fr); gap:12px; margin-bottom:22px; }
@@ -200,6 +201,9 @@ export function initTarefas(userCfg) {
   }
 
   const esc = t => String(t == null ? '' : t).replace(/[&<>]/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[m]));
+  // o responsável com a cor da pessoa (13/11/2026, como na Agenda): a bolinha com a inicial vem do CSS (.pessoa-chip::before,
+  // pelo data-i — só letra ou número), então o texto da célula continua só o nome; "Ambos" fica como texto
+  const chipPessoa = nome => { const c = corDaPessoa(nome); return c ? '<span class="pessoa-chip" style="--p:' + c + '" data-i="' + esc(inicialDaPessoa(nome)) + '">' + esc(nome) + '</span>' : esc(nome); };
   const escA = t => String(t == null ? '' : t).replace(/"/g, '&quot;');
   const escF = t => String(t == null ? '' : t).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   const $ = id => document.getElementById(id);
@@ -749,7 +753,7 @@ export function initTarefas(userCfg) {
         return '<tr class="fa-row-proc '+(t.status==='concluida'?'fa-row-done':'')+'" data-id="'+t.id+'">'+
           '<td class="fa-chk-td" data-label="">'+caixa+'</td>'+
           '<td data-label="'+escA(C.clienteLabel)+'">'+(t.faturavel ? '<span title="Faturável: ao concluir, gera a tarefa Faturar: pro Samuel">💰</span> ' : '')+cli+(rotuloDoProgresso(t.descricao) ? ' <small style="color:var(--text-muted);white-space:nowrap" title="Itens da lista feitos">'+rotuloDoProgresso(t.descricao)+'</small>' : '')+'</td>'+
-          '<td data-label="Responsável">'+(t.responsavel?esc(t.responsavel):'—')+'</td>'+
+          '<td data-label="Responsável">'+(t.responsavel?chipPessoa(t.responsavel):'—')+'</td>'+
           '<td data-label="Prazo">'+(t.prazo?'<span class="'+(atrasada?'fa-atrasada':'')+'">'+formatDate(t.prazo)+'</span>':'—')+'</td>'+
           '<td data-label="Status">'+statusPill(t.status)+'</td></tr>';
       }).join('');

@@ -6,21 +6,35 @@
 @import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Manrope:wght@300;400;500;600;700&display=swap');
 
 :root {
+  /* 13/11/2026 — "mais alegria" (pedido do Samuel): a logo tem duas cores, o azul e o bronze/champanhe, e o sistema só
+     usava o azul. O azul ficou o da pétala clara (era o azul-aço #5B82A6), o fundo ganhou mais azul e menos preto
+     (era #0A0E14) e o texto secundário clareou: o --text-dim antigo (#5A6478) dava 3,0:1 sobre o card, abaixo do
+     mínimo de 4,5:1 pra letra pequena. O champanhe (--sol) é a cor do que é pessoal e do que é novo: a saudação,
+     o "pra hoje", o progresso do dia, a mensagem não lida. Estado segue em verde, amarelo e vermelho. */
   --brand-pale:    #C5D8E8;
   --brand-light:   #8AAEC8;
-  --brand-primary: #5B82A6;
-  --brand-dark:    #3A5878;
+  --brand-primary: #4682C8;
+  --brand-dark:    #3567A8;
 
-  --bg:            #0A0E14;
-  --surface:       #131820;
-  --surface-2:     #1A2029;
-  --surface-hover: #222A36;
-  --border:        #2A323D;
-  --border-soft:   #1F2630;
+  --bg:            #0B111E;
+  --surface:       #121A2A;
+  --surface-2:     #182236;
+  --surface-hover: #1F2C44;
+  --border:        #2B3852;
+  --border-soft:   #1F2A40;
 
   --text:          #E8ECF2;
-  --text-muted:    #8A95A8;
-  --text-dim:      #5A6478;
+  --text-muted:    #A3AEC2;                 /* 7,8:1 sobre o card */
+  --text-dim:      #7F8BA3;                 /* 5,1:1 sobre o card */
+
+  --sol:           #E9C39C;                 /* o champanhe da logo: texto e traço */
+  --sol-forte:     #F2B77E;                 /* o mesmo, mais cheio: preenchimento (selo, barra, anel) */
+  --sol-tinta:     #1B1206;                 /* texto em cima do --sol-forte */
+  --btn-1:         #3F78BC;                 /* o botão principal, de cima pra baixo: letra branca a 4,5:1 ou mais nas duas pontas */
+  --btn-2:         #3567A8;
+  --luz-1:         rgba(74,134,200,.24);    /* as duas luzes do alto da tela: o azul... */
+  --luz-2:         rgba(233,195,156,.15);   /* ...e o champanhe */
+  --luz-3:         rgba(82,180,198,.07);
 
   --success:       #3DD68C;
   --warning:       #F0B859;
@@ -43,7 +57,7 @@
   --line-strong:   rgba(255,255,255,.22);   /* borda de controle (check, input vazio) */
   --overlay:       rgba(6,10,16,.78);       /* fundo de modal */
   --pop:           rgba(15,22,32,.94);      /* popover / tooltip */
-  --topbar-bg:     rgba(10,14,20,.85);
+  --topbar-bg:     rgba(11,17,30,.82);
 
   --font-display:  'Fraunces', Georgia, serif;
   --font-body:     'Manrope', -apple-system, BlinkMacSystemFont, sans-serif;
@@ -58,8 +72,17 @@
 :root[data-theme="light"] {
   --brand-pale:    #2F4F6E;
   --brand-light:   #3E6A8E;
-  --brand-primary: #4A739A;
-  --brand-dark:    #2F4F6E;
+  --brand-primary: #3A70B4;
+  --brand-dark:    #2C5A96;
+
+  --sol:           #8C5A26;                 /* o bronze da logo, escuro o bastante pra ler no branco (5,8:1) */
+  --sol-forte:     #E3A75F;
+  --sol-tinta:     #2A1A06;
+  --btn-1:         #3F78BC;
+  --btn-2:         #3567A8;
+  --luz-1:         rgba(70,130,200,.11);
+  --luz-2:         rgba(227,167,95,.13);
+  --luz-3:         rgba(82,180,198,.05);
 
   --bg:            #F3F5F8;
   --surface:       #FFFFFF;
@@ -70,7 +93,7 @@
 
   --text:          #1B2430;
   --text-muted:    #5B6678;
-  --text-dim:      #6E788A;                 /* 30/09: mais escuro — o anterior dava 2,4–2,9:1 */
+  --text-dim:      #646E81;                 /* 13/11: 4,6:1 ou mais em qualquer fundo claro (o de 30/09, #6E788A, dava 4,1 sobre o fundo da tela) */
 
   --success:       #1E8E5A;
   --warning:       #B7791F;
@@ -160,9 +183,11 @@ body::before {
   content: '';
   position: fixed;
   inset: 0;
+  /* duas luzes suaves no alto, as duas cores da logo: a azul à esquerda e a champanhe à direita (13/11/2026) */
   background-image:
-    radial-gradient(circle at 20% 0%, rgba(91, 130, 166, 0.08) 0%, transparent 50%),
-    radial-gradient(circle at 80% 100%, rgba(58, 88, 120, 0.06) 0%, transparent 50%);
+    radial-gradient(1000px 520px at 10% -10%, var(--luz-1), transparent 62%),
+    radial-gradient(760px 440px at 92% -14%, var(--luz-2), transparent 62%),
+    radial-gradient(900px 600px at 55% 115%, var(--luz-3), transparent 60%);
   pointer-events: none;
   z-index: 0;
 }
@@ -187,9 +212,9 @@ h3 { font-size: 1.15rem; line-height: 1.3; }
   font-family: var(--font-body);
   font-size: 0.7rem;
   font-weight: 600;
-  letter-spacing: 0.18em;
+  letter-spacing: 0.14em;
   text-transform: uppercase;
-  color: var(--brand-light);
+  color: var(--sol);
 }
 
 a { color: var(--brand-light); text-decoration: none; transition: color 0.15s; }
@@ -213,7 +238,7 @@ a:hover { color: var(--brand-pale); }
 .topbar-brand { display: flex; align-items: center; gap: 14px; }
 .topbar-logo { width: 36px; height: 36px; display: flex; align-items: center; justify-content: center; }
 .topbar-name { font-family: var(--font-display); font-weight: 600; font-size: 1.1rem; letter-spacing: -0.01em; }
-.topbar-name span { color: var(--brand-light); font-weight: 500; }
+.topbar-name span { color: var(--sol); font-weight: 500; }
 .topbar-actions { display: flex; align-items: center; gap: 16px; }
 /* os atalhos do alto (23/10/2026, assets/js/atalhos.js): Onvio, Drive e webmail em todas as telas com login */
 .tb-atalhos { display: flex; align-items: center; gap: 4px; margin: 0 auto 0 32px; padding-left: 22px; border-left: 1px solid var(--border-soft); }
@@ -309,9 +334,16 @@ a:hover { color: var(--brand-pale); }
 .btn:hover:not(:disabled) { background: var(--surface-hover); color: var(--text); }
 .btn:disabled { opacity: 0.5; cursor: not-allowed; }
 
-.btn-primary { background: var(--brand-primary); border-color: var(--brand-primary); }
-.btn-primary:hover:not(:disabled) { background: var(--brand-dark); border-color: var(--brand-dark); color: var(--text); }
-[data-theme="light"] .btn-primary, [data-theme="light"] .btn-primary:hover:not(:disabled) { color: #fff; }
+/* o botão principal com mais vida (13/11/2026): o azul da logo de cima pra baixo, letra branca e um pouco de volume */
+.btn-primary {
+  background: linear-gradient(135deg, var(--btn-1) 0%, var(--btn-2) 100%); border-color: transparent; color: #fff; font-weight: 600;
+  box-shadow: 0 6px 16px rgba(53,103,168,.28), inset 0 1px 0 rgba(255,255,255,.18);
+}
+.btn-primary:hover:not(:disabled) {
+  background: linear-gradient(135deg, var(--btn-1) 0%, var(--btn-2) 100%); border-color: transparent; color: #fff;   /* a mesma cor (clarear tiraria o contraste da letra): quem responde é o volume */
+  transform: translateY(-1px); box-shadow: 0 10px 22px rgba(53,103,168,.42), inset 0 1px 0 rgba(255,255,255,.26);
+}
+.btn-primary:disabled { box-shadow: none; }
 
 .btn-ghost { background: transparent; border-color: var(--border); }
 .btn-ghost:hover:not(:disabled) { background: var(--surface); }
@@ -326,45 +358,121 @@ a:hover { color: var(--brand-pale); }
 .btn-icon { padding: 8px; width: 36px; height: 36px; }
 
 .dashboard-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 20px; }
+/* Os cards dos painéis (o Painel central, Setores e o painel de cada setor) — 13/11/2026: a cor do módulo no card
+   inteiro, a descrição em duas linhas e o número na frente. A cor (--cor) vem do ícone de cada card, que cada tela já
+   pinta: quem a leva pro card e separa o número do rótulo é o assets/js/cards-painel.js (chamado pelo auth-guard.js em
+   toda tela com login). Sem ele, o card fica com o azul da marca e o selo como texto: nada quebra.
+   As telas têm regras próprias pro :hover e pros selos (mais antigas, no <style> de cada uma): os seletores daqui são
+   mais específicos de propósito, pra valerem por cima sem mexer em cada tela. */
 .dashboard-card {
+  --cor: var(--brand-light);
   background: var(--surface);
-  border: 1px solid var(--border-soft);
-  border-radius: var(--radius-lg);
-  padding: 28px;
+  background:
+    radial-gradient(260px 150px at 0% 0%, color-mix(in srgb, var(--cor) 14%, transparent), transparent 72%),
+    linear-gradient(180deg, var(--fill-1), transparent),
+    var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  padding: 24px 24px 20px;
   text-decoration: none;
   color: var(--text);
-  transition: all 0.2s;
+  transition: transform .18s ease, border-color .18s ease, background .18s ease, box-shadow .18s ease;
   position: relative;
   overflow: hidden;
   display: flex;
   flex-direction: column;
   min-height: 180px;
+  box-shadow: var(--shadow);
 }
+/* o fio da cor do módulo no alto do card, que acende no hover */
 .dashboard-card::before {
   content: '';
   position: absolute;
-  inset: 0;
-  background: linear-gradient(135deg, rgba(91, 130, 166, 0.04) 0%, transparent 50%);
+  left: 24px; right: 24px; top: 0; height: 2px;
+  border-radius: 0 0 2px 2px;
+  background: var(--cor);
   opacity: 0;
-  transition: opacity 0.2s;
+  transition: opacity .18s ease;
   pointer-events: none;
 }
-.dashboard-card:hover:not(.is-disabled) {
+a.dashboard-card:hover:not(.is-disabled), .dashboard-grid .dashboard-card:hover:not(.is-disabled) {
   border-color: var(--brand-primary);
-  transform: translateY(-2px);
-  box-shadow: var(--shadow);
+  border-color: color-mix(in srgb, var(--cor) 55%, transparent);
+  background: var(--surface);
+  background:
+    radial-gradient(320px 180px at 0% 0%, color-mix(in srgb, var(--cor) 20%, transparent), transparent 72%),
+    linear-gradient(180deg, color-mix(in srgb, var(--cor) 7%, transparent), transparent),
+    var(--surface);
+  transform: translateY(-3px);
+  box-shadow: var(--shadow-lg);
 }
 .dashboard-card:hover:not(.is-disabled)::before { opacity: 1; }
 .dashboard-card.is-disabled { cursor: not-allowed; opacity: 0.55; }
 .dashboard-card-icon {
-  width: 44px; height: 44px; border-radius: var(--radius);
+  width: 46px; height: 46px; border-radius: 13px;
   background: linear-gradient(135deg, var(--brand-primary), var(--brand-dark));
   display: flex; align-items: center; justify-content: center;
-  margin-bottom: 20px; color: var(--text);
+  margin-bottom: 16px; color: var(--text);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, currentColor 26%, transparent);
 }
-.dashboard-card h3 { margin-bottom: 6px; }
-.dashboard-card p { color: var(--text-muted); font-size: 0.88rem; flex: 1; }
-.dashboard-card-footer { display: flex; align-items: center; justify-content: space-between; margin-top: 16px; font-size: 0.8rem; color: var(--text-dim); }
+.dashboard-card h3 { font-size: 1.2rem; margin-bottom: 4px; }
+.dashboard-card p {
+  color: var(--text-muted); font-size: 0.86rem; flex: 1;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+}
+.dashboard-card-footer {
+  display: flex; align-items: baseline; justify-content: space-between; gap: 12px;
+  margin-top: 18px; padding-top: 14px; border-top: 1px solid var(--line);
+  font-size: 0.84rem; color: var(--text-muted); min-height: 46px;
+}
+.dashboard-card-footer:not(:has(.card-status)) { border-top-color: transparent; }
+/* a mesma linha em todo card, com ou sem o número grande: o texto do rodapé fica na mesma altura de um card pro outro */
+.dashboard-card-footer > span:first-child, .dashboard-card-footer > .card-status { line-height: 34px; }
+/* o "Acessar →" vai pro canto e só aparece ao passar o mouse (o card inteiro já é o link); sem número, fica à vista */
+.dashboard-card-footer > span:first-child:not(.card-status) {
+  order: 2; margin-left: auto; white-space: nowrap; font-weight: 600; color: var(--cor);
+  opacity: 0; transform: translateX(-4px); transition: opacity .18s ease, transform .18s ease;
+}
+.dashboard-card:hover .dashboard-card-footer > span:first-child:not(.card-status),
+.dashboard-card:focus-visible .dashboard-card-footer > span:first-child:not(.card-status) { opacity: 1; transform: none; }
+.dashboard-card-footer > span:only-child { opacity: .8 !important; transform: none !important; color: var(--text-muted) !important; font-weight: 500 !important; }
+/* o número na frente: "9 abertas", "✓ Em dia" — sem a pílula e sem as maiúsculas de antes */
+.dashboard-card-footer .badge.card-status,
+.dashboard-card-footer .badge.card-status.st-open,
+.dashboard-card-footer .badge.card-status.st-clear,
+.dashboard-card-footer .badge.card-status.st-load {
+  order: 1; background: none; border: 0; border-radius: 0; padding: 0;
+  font-size: 0.86rem; font-weight: 500; letter-spacing: 0; text-transform: none; color: var(--text-muted);
+}
+.dashboard-card-footer .badge.card-status b {
+  font-family: var(--font-body); font-size: 1.5rem; font-weight: 700; letter-spacing: -0.03em; line-height: 1;
+  color: var(--text); margin-right: 3px; font-variant-numeric: tabular-nums;
+}
+.dashboard-card-footer .badge.card-status b[data-zero] { color: var(--text-dim); }
+.dashboard-card-footer .badge.card-status.st-clear { color: var(--ok); font-weight: 600; }
+.dashboard-card-footer .badge.card-status.st-clear::before { content: '✓ '; }
+.dashboard-card-footer .badge.card-status.st-load { color: var(--text-dim); }
+/* o selo "N hoje" no canto do card: em champanhe, com o ponto aceso */
+.dashboard-card .badge-hoje {
+  background: color-mix(in srgb, var(--sol) 16%, transparent); border: 1px solid color-mix(in srgb, var(--sol) 50%, transparent);
+  color: var(--sol); font-size: 12px; font-weight: 700; letter-spacing: 0; text-transform: none;
+  padding: 4px 11px 4px 9px; display: inline-flex; align-items: center; gap: 6px; box-shadow: none;
+}
+.dashboard-card .badge-hoje::before {
+  content: ''; width: 6px; height: 6px; border-radius: 50%; background: var(--sol-forte);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--sol-forte) 25%, transparent);
+}
+:root[data-theme="light"] .dashboard-card {
+  background: var(--surface);
+  background: radial-gradient(260px 150px at 0% 0%, color-mix(in srgb, var(--cor) 13%, transparent), transparent 72%), var(--surface);
+  box-shadow: 0 1px 2px rgba(15,23,42,.05), 0 6px 18px rgba(15,23,42,.05);
+}
+:root[data-theme="light"] a.dashboard-card:hover:not(.is-disabled), :root[data-theme="light"] .dashboard-grid .dashboard-card:hover:not(.is-disabled) {
+  background: var(--surface);
+  background: radial-gradient(320px 180px at 0% 0%, color-mix(in srgb, var(--cor) 20%, transparent), transparent 72%), var(--surface);
+  box-shadow: 0 2px 4px rgba(15,23,42,.06), 0 14px 32px rgba(15,23,42,.10);
+}
+@media (prefers-reduced-motion: reduce) { .dashboard-card, .dashboard-card-footer > span:first-child, .btn-primary { transition: none; } a.dashboard-card:hover:not(.is-disabled), .btn-primary:hover:not(:disabled) { transform: none; } }
 
 .badge { display: inline-block; padding: 3px 10px; border-radius: 999px; font-size: 0.7rem; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; }
 .badge-soon { background: var(--surface-2); color: var(--text-dim); border: 1px solid var(--border); }
@@ -462,7 +570,7 @@ a:hover { color: var(--brand-pale); }
 .login-brand { text-align: center; margin-bottom: 32px; }
 .login-brand-logo { display: inline-flex; width: 56px; height: 56px; align-items: center; justify-content: center; margin-bottom: 16px; }
 .login-brand h1 { font-size: 1.4rem; margin-bottom: 4px; }
-.login-brand h1 span { color: var(--brand-light); font-weight: 500; }
+.login-brand h1 span { color: var(--sol); font-weight: 500; }   /* o "&" em champanhe, como no alto das telas */
 .login-brand p { font-size: 0.85rem; color: var(--text-muted); }
 
 .form-group { margin-bottom: 18px; }
@@ -795,8 +903,8 @@ dialog::backdrop { background: rgba(0, 0, 0, 0.65); backdrop-filter: blur(4px); 
 .as-lancador:focus-visible { outline:2px solid var(--accent); outline-offset:3px; }
 .as-lancador .as-rosto { width:100%; height:100%; display:block; }
 :root[data-theme="light"] .as-lancador { filter:drop-shadow(0 8px 18px rgba(15,23,42,.18)); }
-.as-selo { position:absolute; top:-5px; right:-5px; min-width:20px; height:20px; padding:0 6px; border-radius:10px; background:var(--accent);
-  color:var(--bg); font:700 11px/20px var(--font-body); text-align:center; box-shadow:0 0 0 3px var(--bg); }
+.as-selo { position:absolute; top:-5px; right:-5px; min-width:20px; height:20px; padding:0 6px; border-radius:10px; background:var(--sol-forte);
+  color:var(--sol-tinta); font:700 11px/20px var(--font-body); text-align:center; box-shadow:0 0 0 3px var(--bg); }
 .as-selo[hidden] { display:none; }
 
 .as-rosto .as-cabeca { fill:var(--brand-primary); }
@@ -1014,9 +1122,9 @@ a.as-botao-link { text-decoration:underline; text-underline-offset:2px; }
   font:600 12.5px/1 var(--font-body); cursor:pointer; border-radius:8px 8px 0 0; }
 .as-aba:hover { color:var(--text); }
 .as-aba.as-aba-atual { color:var(--text); }
-.as-aba.as-aba-atual::after { content:''; position:absolute; left:8px; right:8px; bottom:-1px; height:2px; border-radius:2px; background:var(--brand-primary); }
+.as-aba.as-aba-atual::after { content:''; position:absolute; left:8px; right:8px; bottom:-1px; height:2px; border-radius:2px; background:var(--sol); }
 .as-aba:focus-visible { outline:2px solid var(--accent); outline-offset:-2px; }
-.as-aba-n { min-width:18px; height:18px; padding:0 5px; border-radius:9px; background:var(--accent); color:var(--bg); font:700 10.5px/18px var(--font-body); text-align:center; box-sizing:border-box; }
+.as-aba-n { min-width:18px; height:18px; padding:0 5px; border-radius:9px; background:var(--sol-forte); color:var(--sol-tinta); font:700 10.5px/18px var(--font-body); text-align:center; box-sizing:border-box; }
 .as-aba-n[hidden] { display:none; }
 .as-vista { flex:1; min-height:0; display:flex; flex-direction:column; }
 .as-vista[hidden] { display:none; }
@@ -1048,6 +1156,15 @@ a.as-botao-link { text-decoration:underline; text-underline-offset:2px; }
   font:700 12px/1 var(--font-body); letter-spacing:.02em; }
 .ch-avatar svg { width:17px; height:17px; }
 .ch-avatar-grupo { border-radius:11px; background:rgba(91,130,166,.2); color:var(--brand-light); }
+/* cada pessoa com a sua cor (13/11/2026, assets/js/cores-pessoas.js): o avatar e o responsável levam --p no style */
+/* a letra é a cor da pessoa clareada (70% com branco) sobre 22% da cor: 5:1 ou mais em qualquer fundo do tema escuro;
+   no claro, 48% com preto sobre 30% com branco (tests/cores-pessoas.test.mjs confere as duas contas) */
+.ch-avatar[style*="--p"] { background:color-mix(in srgb, var(--p) 22%, transparent); color:color-mix(in srgb, var(--p) 70%, #fff); box-shadow:inset 0 0 0 1px color-mix(in srgb, var(--p) 38%, transparent); font-weight:700; }
+:root[data-theme="light"] .ch-avatar[style*="--p"] { background:color-mix(in srgb, var(--p) 30%, #fff); color:color-mix(in srgb, var(--p) 48%, #000); }
+.pessoa-chip { display:inline-flex; align-items:center; gap:6px; color:var(--text-2); }
+.pessoa-chip::before { content:attr(data-i); flex:none; width:20px; height:20px; border-radius:50%; display:inline-grid; place-items:center; font-size:10.5px; font-weight:700; line-height:1;
+  background:color-mix(in srgb, var(--p) 22%, transparent); color:color-mix(in srgb, var(--p) 70%, #fff); box-shadow:inset 0 0 0 1px color-mix(in srgb, var(--p) 40%, transparent); }
+:root[data-theme="light"] .pessoa-chip::before { background:color-mix(in srgb, var(--p) 30%, #fff); color:color-mix(in srgb, var(--p) 48%, #000); }
 .ch-online { position:absolute; right:-1px; bottom:-1px; width:10px; height:10px; border-radius:50%; background:var(--ok); box-shadow:0 0 0 2px var(--surface); }
 .ch-linha-txt { flex:1; min-width:0; display:flex; flex-direction:column; gap:2px; }
 .ch-linha-topo { display:flex; align-items:baseline; gap:8px; min-width:0; }
@@ -1056,8 +1173,8 @@ a.as-botao-link { text-decoration:underline; text-underline-offset:2px; }
 .ch-linha-baixo { display:flex; align-items:center; gap:6px; min-width:0; }
 .ch-linha small { flex:1; min-width:0; font-size:12px; color:var(--text-muted); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .ch-tem-novas .ch-linha-baixo small { color:var(--text-2); }
-.ch-tem-novas .ch-linha-topo time { color:var(--accent); font-weight:600; }
-.ch-n { flex:none; min-width:18px; height:18px; padding:0 5px; border-radius:9px; background:var(--accent); color:var(--bg); font:700 10.5px/18px var(--font-body); text-align:center; box-sizing:border-box; }
+.ch-tem-novas .ch-linha-topo time { color:var(--sol); font-weight:600; }
+.ch-n { flex:none; min-width:18px; height:18px; padding:0 5px; border-radius:9px; background:var(--sol-forte); color:var(--sol-tinta); font:700 10.5px/18px var(--font-body); text-align:center; box-sizing:border-box; }
 .ch-mudo { flex:none; color:var(--text-muted); display:inline-flex; opacity:.7; }
 .ch-mudo svg { width:13px; height:13px; }
 .ch-carregando { padding:14px 10px; font-size:12.5px; color:var(--text-muted); }
@@ -1115,7 +1232,10 @@ a.as-botao-link { text-decoration:underline; text-underline-offset:2px; }
 .ch-msg.eu { align-self:flex-end; align-items:flex-end; }
 .ch-autor { font-size:11.5px; font-weight:600; color:var(--brand-light); margin:0 0 2px 4px; }
 .ch-bolha { background:var(--fill-2); color:var(--text); border-radius:14px 14px 14px 4px; padding:7px 11px; font-size:13.5px; line-height:1.45; white-space:pre-wrap; overflow-wrap:anywhere; }
-.ch-msg.eu .ch-bolha { background:rgba(91,130,166,.24); border-radius:14px 14px 4px 14px; }
+.ch-msg.eu .ch-bolha { border-radius:14px 14px 4px 14px; }
+/* as minhas mensagens no azul do botão principal (13/11/2026): antes eram quase da cor das dos outros */
+.ch-msg.eu:not(.ch-apagada) .ch-bolha:not(.ch-so-emoji) { background:linear-gradient(135deg, var(--btn-1), var(--btn-2)); color:#fff; box-shadow:0 4px 12px rgba(53,103,168,.26); }
+.ch-msg.eu:not(.ch-apagada) .ch-bolha a { color:#fff; }
 .ch-junta .ch-bolha { border-radius:14px; }
 .ch-bolha a { color:var(--brand-light); text-decoration:underline; text-underline-offset:2px; }
 .ch-apagada .ch-bolha { background:none; border:1px dashed var(--line-strong); color:var(--text-muted); }
@@ -1130,8 +1250,8 @@ a.as-botao-link { text-decoration:underline; text-underline-offset:2px; }
 .ch-confirma { display:inline-flex; flex-wrap:wrap; gap:6px; align-items:baseline; color:var(--text-2); }
 .ch-dia, .ch-novas { display:flex; align-items:center; gap:10px; margin:12px 0 2px; font-size:11px; color:var(--text-muted); }
 .ch-dia::before, .ch-dia::after, .ch-novas::before, .ch-novas::after { content:''; flex:1; height:1px; background:var(--line); }
-.ch-novas { color:var(--accent); font-weight:600; }
-.ch-novas::before, .ch-novas::after { background:var(--accent); opacity:.45; }
+.ch-novas { color:var(--sol); font-weight:600; }
+.ch-novas::before, .ch-novas::after { background:var(--sol); opacity:.45; }
 .ch-antigas { display:flex; justify-content:center; padding:2px 0 6px; }
 .ch-vazio { flex:1; display:flex; align-items:center; justify-content:center; color:var(--text-muted); font-size:12.5px; text-align:center; padding:20px; }
 .ch-destaque .ch-bolha { box-shadow:0 0 0 2px var(--accent); }

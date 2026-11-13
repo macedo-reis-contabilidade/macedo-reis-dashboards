@@ -719,6 +719,8 @@ export function montarAssistente(op) {
         contador: (n, { balao = true } = {}) => {
           const v = Math.max(0, Math.round(Number(n) || 0)), quieta = balao === false;
           if (contagens[a.id] !== v || soNaBarra.has(a.id) !== quieta) { contagens[a.id] = v; if (quieta) soNaBarra.add(a.id); else soNaBarra.delete(a.id); atualizarSelo(); }
+          // a tela pode mostrar o número (13/11/2026: a abertura do Painel central, "N mensagens da equipe")
+          try { window.dispatchEvent(new CustomEvent('mr:aba-contador', { detail: { assistente: op.id, aba: a.id, n: v } })); } catch (e) { /* enfeite */ }
         },
         status: () => { if (abaAtual() === a.id) atualizarTopo(); },
         avisar: msg => avisar(msg),
@@ -730,6 +732,15 @@ export function montarAssistente(op) {
       try { instancias[a.id] = a.montar(lugar, ctl) || {}; } catch (e) { instancias[a.id] = {}; }
     });
     mostrarAba(abaAtual());
+    // a tela pede uma aba (13/11/2026: o "N mensagens da equipe" da abertura do Painel central abre a Equipe):
+    // window.dispatchEvent(new CustomEvent('mr:abrir-aba', { detail: { aba: 'equipe' } })) — quem atende marca detail.atendido
+    window.addEventListener('mr:abrir-aba', ev => {
+      const id = ev && ev.detail && ev.detail.aba;
+      if (!id || !abaDe(id)) return;
+      ev.detail.atendido = true;
+      mostrarAba(id);
+      if (!est.aberto) abrir(true); else chamarAba(id, 'aoMostrar', { foco: true });
+    });
   }
 
   // ---------- começo ----------

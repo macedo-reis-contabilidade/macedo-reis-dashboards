@@ -41,6 +41,8 @@ def util(k):
     return d
 DIAS = [util(k) for k in range(1, 6)]
 SEMANA = ['segunda', 'terça', 'quarta', 'quinta', 'sexta', 'sábado', 'domingo']
+SEMANA_EXTENSO = ['Segunda-feira', 'Terça-feira', 'Quarta-feira', 'Quinta-feira', 'Sexta-feira', 'Sábado', 'Domingo']
+MESES = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro']
 
 XSS_T = '<img src=x onerror="window.__xss=1">Tarefa com HTML (teste)'
 XSS_C = '<img src=x onerror="window.__xss=2">CLIENTE COM HTML LTDA'
@@ -210,8 +212,9 @@ def main():
         p.click(f'#sdProximos .sd-dia[data-sddia="{DIAS[2].isoformat()}"]')
         p.wait_for_function("d => document.querySelector('#sdProximos .sd-dia') && document.querySelector('#sdProximos .sd-dia').dataset.sddia > d", arg=DIAS[2].isoformat(), timeout=6000)
         periodo = p.text_content('#agPeriodo')
-        longo = p.evaluate("s => { const [y, m, d] = s.split('-').map(Number); return new Date(y, m - 1, d).toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long' }); }", DIAS[2].isoformat())
-        ok(periodo == longo, f'3. clicar num dia abre o dia ("{periodo}")')
+        # a data por extenso do jeito da casa (13/11/2026): "Sexta-feira, 13 de Novembro", escrita assim no texto
+        longo = f'{SEMANA_EXTENSO[DIAS[2].weekday()]}, {DIAS[2].day} de {MESES[DIAS[2].month - 1]}'
+        ok(periodo == longo, f'3. clicar num dia abre o dia ("{periodo}", esperado "{longo}")')
         prox = p.get_attribute('#sdProximos .sd-dia', 'data-sddia')
         ok(prox == DIAS[3].isoformat(), f'3. e os próximos dias passam a ser os depois dele (começa em {prox})')
         p.close()
