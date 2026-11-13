@@ -14,7 +14,7 @@
 // seguem no DAS. Nada aqui é sobre trocar de regime tributário.
 // ============================================================
 
-import { RT_PRAZO, janelaAberta as janelaAbertaEm } from './rt-prazos.js';
+import { RT_PRAZO, RT_NOTAS, janelaAberta as janelaAbertaEm } from './rt-prazos.js';
 import { REFERENCIA_CBS_2027 } from './rt-motor.js';
 import { formatDocumento } from './utils.js';
 
@@ -29,9 +29,10 @@ const dataBR = iso => { try { return new Date(iso + 'T12:00:00').toLocaleDateStr
 const MES_ABREV = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
 const fmtCnpj = d => d ? formatDocumento(d) : '—';   // CNPJ numérico ou alfanumérico (IN RFB 2.229/2024)
 
-// Notas fiscais no padrão do IBS/CBS: para o optante do Simples, obrigatórias a partir de 01/01/2027, por dentro ou por
-// fora (Ato Conjunto RFB/CGIBS nº 4/2026, art. 1º, § 1º) — "manter" não dispensa a adequação do emissor
-const NOTA_DFE = ' Em qualquer caso, a partir de 01/01/2027 as notas fiscais passam a sair no novo padrão, com IBS e CBS (Ato Conjunto RFB/CGIBS nº 4/2026).';
+// Notas fiscais no padrão do IBS/CBS para o optante do Simples, por dentro ou por fora: a NFS-e de serviço a partir de
+// 01/01/2027 e a NF-e, a NFC-e e o resto a partir de 01/03/2027 (Ato Conjunto RFB/CGIBS nº 4/2026, art. 1º, § 1º, na
+// redação do nº 7/2026 — RT_NOTAS em rt-prazos.js) — "manter" não dispensa a adequação do emissor
+const NOTA_DFE = ' Em qualquer caso, as notas fiscais passam a sair no novo padrão, com IBS e CBS: ' + RT_NOTAS.texto + ' (' + RT_NOTAS.norma + ').';
 
 const SELO = { alta: 's-forte', media: 's-media', baixa: 's-fraca', nao_medido: 's-fraca' };
 const selo = (nivel, texto) => '<span class="selo ' + SELO[nivel] + '">' + esc(texto || nivel) + '</span>';

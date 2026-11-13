@@ -7,7 +7,7 @@ const page = fs.readFileSync(new URL('../fiscal-reforma.html', import.meta.url),
 const i = page.indexOf('    function montarDadosAnalise('); const j = page.indexOf("\n    $('dGerar').onclick");
 const src = page.slice(i, j);
 import { perfilAtividade, cnaeMaisCompleto, ramoComReducao, ramoComZero, reducaoServicoPorCnae, conferirRbt12, CREDITO_FORNECEDOR_SIMPLES } from '../assets/js/dominio-relatorios.js';
-import { RT_PRAZO, janelaAberta as janelaAbertaEm } from '../assets/js/rt-prazos.js';
+import { RT_PRAZO, RT_NOTAS, janelaAberta as janelaAbertaEm } from '../assets/js/rt-prazos.js';
 import { avaliarConfianca, inferirProcedencia, decisaoDe, ROT_DECISAO } from '../assets/js/rt-confianca.js';
 // o escapeHtml da página (fiscal-reforma.html), o mesmo: o nome do maior cliente vem das notas e entra na análise como texto
 const escapeHtml = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -217,7 +217,8 @@ chk('crédito do cliente só da parte cheia', Math.abs(rest.sim.semestre.credito
 chk('pergunta de venda a PJ avisa da refeição por contrato (art. 273)', /fornecimento de refeições a empresas por contrato/.test(rest.txt) && /CNAE 5620-1\/01/.test(rest.txt) && /art\. 273, a conferir/.test(rest.txt));
 chk('fonte do mix de 40% traz a mesma ressalva', rest.d.fontes.some(f => /Mix de alíquotas/.test(f.o_que) && /art\. 273, a conferir/.test(f.ressalva || '')));
 console.log('Notas no padrão IBS/CBS em 2027:');
-chk('manter também avisa das notas a partir de 01/01/2027', /Mantendo, não é preciso fazer nada quanto à opção/.test(rest.txt) && /Ato Conjunto RFB\/CGIBS nº 4\/2026/.test(rest.txt));
+chk('manter também avisa das notas: a NFS-e em 01/01/2027 e a NF-e em 01/03/2027 (Ato nº 7)', /Mantendo, não é preciso fazer nada quanto à opção/.test(rest.txt) && /as de serviço \(NFS-e\) a partir de 01\/01\/2027/.test(rest.txt) && /\(NF-e, NFC-e, CT-e e BP-e\) a partir de 01\/03\/2027/.test(rest.txt) && /Ato Conjunto RFB\/CGIBS nº 4\/2026, art\. 1º, § 1º, na redação do Ato Conjunto nº 7\/2026/.test(rest.txt));
+chk('a frase das notas é a do rt-prazos.js (uma fonte só)', RT_NOTAS.servico === '01/01/2027' && RT_NOTAS.mercadoria === '01/03/2027' && rest.txt.includes(RT_NOTAS.texto) && !/a partir de 01\/01\/2027 as notas fiscais/.test(rest.txt));
 
 // 9) Módulo Simuladores do curso (12/10/2026): indústria no Anexo I em 2027, "opte, se o comercial confirmar", margem da
 //    decisão, ICMS/ISS do DAS fora da base e crédito das despesas por tipo — casos sintéticos com os números dos exercícios

@@ -25,5 +25,19 @@ export const RT_PRAZO = {
   proximaEfeito: 'julho/2027'
 };
 
+// Notas fiscais no padrão do IBS e da CBS para o optante do Simples, por dentro ou por fora — "manter" não dispensa a
+// adequação do emissor. Ato Conjunto RFB/CGIBS nº 4/2026, art. 1º, § 1º, na redação do Ato Conjunto nº 7/2026 (DOU de
+// 13/11/2026, em vigor na publicação): a NFS-e das alíneas "d" a "h" do inciso III (os serviços em geral, os bens
+// imateriais e a locação) a partir de 01/01/2027 · as demais hipóteses do caput (NF-e, NFC-e, CT-e, MDF-e, BP-e e a
+// NFS-e das alíneas "a" a "c": plataformas digitais e os subitens 1.03, 1.05, 1.09 e 16.01 da LC 116) a partir de
+// 01/03/2027. Até 12/11/2026, no texto original do Ato nº 4, era 01/01/2027 para tudo. A análise técnica e o
+// comunicado leem daqui.
+export const RT_NOTAS = {
+  servico: '01/01/2027',
+  mercadoria: '01/03/2027',
+  norma: 'Ato Conjunto RFB/CGIBS nº 4/2026, art. 1º, § 1º, na redação do Ato Conjunto nº 7/2026',
+  texto: 'as de serviço (NFS-e) a partir de 01/01/2027, e as de mercadoria e de transporte (NF-e, NFC-e, CT-e e BP-e) a partir de 01/03/2027, data que vale também para a NFS-e de licenciamento de software, processamento e hospedagem de dados, conteúdo pela internet, plataformas digitais e transporte coletivo municipal'
+};
+
 // a janela de 2026 está aberta? (hojeISO = 'AAAA-MM-DD' no fuso local)
 export const janelaAberta = hojeISO => String(hojeISO || '') <= RT_PRAZO.opcaoFim;
