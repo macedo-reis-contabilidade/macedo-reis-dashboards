@@ -10,7 +10,8 @@ Confere:
      honorário de hoje pelo boleto, pelo Conta Azul (o nome do cliente) e sem cobrança, o piso com a diferença, o MEI e as
      tarefas; o ex-cliente fora; os filtros;
   2. revisar: o questionário já preenchido (com a etiqueta de onde veio cada resposta), o que falta responder, o painel
-     comparando com o de hoje; responder tira da lista do que falta; mudar a resposta do sistema tira a etiqueta;
+     comparando com o de hoje; responder tira da lista do que falta; mudar a resposta do sistema tira a etiqueta; o que mais
+     pesa no preço em destaque (14/11/2026), com o quanto, e a lista no aviso de cima;
   3. salvar a revisão: grava em revisoes_honorario (situação "estudo", o motor, o de hoje e de onde veio), nada em
      Propostas; volta à carteira com a revisão na linha;
   4. a situação: reajuste proposto; aceito com o valor e o mês — o boleto a emitir do mês troca na hora (e a base), a
@@ -233,6 +234,17 @@ def main():
            and val('A5') == '2' and chip('A5') == 'sócios', 'as obrigações vinculadas, quem emite as notas, o sistema da carteira e os sócios')
         faltam = txt('#prCartFaltam')
         ok('Funcionários registrados' in faltam and 'Qualidade da organização dos documentos recebidos' in faltam and 'Regime' not in faltam, f'o que falta responder (que mexe no preço) ({faltam!r})')
+        # o que mais pesa no preço (14/11/2026): com estes parâmetros, só o ERP passa de R$ 100 (de −R$ 20 a +R$ 200: R$ 220)
+        peso = lambda q: p.eval_on_selector(f'#prQuestionario .pr-q[data-qid="{q}"]', 'd => { const c = d.querySelector(".pr-chip-peso"); '
+            'return { linha: d.classList.contains("pr-pesa"), chip: c && !c.hidden ? c.textContent.replace(/\\u00a0/g, " ") : null, titulo: c ? c.title.replace(/\\u00a0/g, " ") : null, tem: !!c }; }')
+        erp = peso('B8')
+        ok(erp['linha'] and erp['chip'] == 'pesa no preço: até R$ 220' and 'o honorário vai de R$ 430 (Possui integrado à contabilidade) a R$ 650 (Não possui). Agora: R$ 650.' in (erp['titulo'] or ''),
+           f'a pergunta que mais pesa no preço fica em destaque, com o quanto e, no título, de quanto a quanto ({erp!r})')
+        d6, a10 = peso('D6'), peso('A10')
+        ok(not d6['linha'] and d6['tem'] and d6['chip'] is None and not a10['linha'] and not a10['tem'] and not peso('C1')['tem'],
+           f'a que pesa pouco (o eSocial, R$ 30) fica sem destaque; o regime e as de número nem têm a etiqueta ({d6!r}, {a10!r})')
+        pesa = txt('#prCartPesa')
+        ok(pesa == 'O que mais pesa no preço: Sistema ERP (até R$ 220)', f'no aviso de cima, a lista do que mais pesa ({pesa!r})')
         comp = txt('#prCartComp')
         ok('Hoje R$ 300 → motor R$ 650' in comp and '+117%' in comp and p.is_hidden('#prOrc'), f'o painel compara com o de hoje; o orçamento pro cliente sai de cena ({comp!r})')
         ok(p.is_hidden('#prSalvar') and p.is_hidden('#prSalvarNova') and 'A revisão grava sozinha' in txt('#prSalvoMsg') and db('window.__mockDb.revisoes_honorario.length') == 1,
@@ -241,6 +253,11 @@ def main():
         ok('Funcionários registrados' not in txt('#prCartFaltam') and 'R$ 700' in txt('#prCartComp'), 'responder tira da lista do que falta e o motor sobe')
         p.select_option('#prQuestionario [data-q="B8"]', 'Possui integrado à contabilidade'); p.wait_for_timeout(150)
         ok(chip('B8') is None, 'mudar a resposta que veio do sistema tira a etiqueta')
+        erp2 = peso('B8')
+        ok(erp2['linha'] and erp2['chip'] == 'pesa no preço: até R$ 220' and 'Agora: R$ 480.' in (erp2['titulo'] or ''),
+           f'o destaque acompanha a resposta: o peso é o mesmo, o "agora" muda ({erp2!r})')
+        p.click('#prCartPesa [data-ir="B8"]'); p.wait_for_timeout(150)
+        ok(p.evaluate('() => document.activeElement && document.activeElement.dataset.q') == 'B8', 'o nome na lista leva à pergunta')
         motor = p.inner_text('#prTotal').replace('\xa0', ' ')
 
         print('3. A revisão grava sozinha')

@@ -135,6 +135,10 @@
     .pr-cart-faltam button { background:none; border:0; padding:0; font:inherit; color:var(--brand-light); text-decoration:underline; text-underline-offset:2px; cursor:pointer; }
     .pr-chip-sis { display:inline-block; vertical-align:1px; margin-left:6px; padding:1px 7px; border-radius:999px; font-size:10.5px; color:var(--ok); border:1px solid rgba(63,176,122,.4); background:rgba(63,176,122,.1); }
     .pr-chip-sis[hidden] { display:none; }
+    /* 14/11/2026: as perguntas que mais pesam no preço (assets/js/precificacao-peso.js), em destaque, com o quanto */
+    .pr-q.pr-pesa { box-shadow:inset 3px 0 0 var(--accent); background:color-mix(in srgb, var(--accent) 6%, transparent); padding-left:10px; }
+    .pr-chip-peso { display:inline-block; vertical-align:1px; margin-left:6px; padding:1px 7px; border-radius:999px; font-size:10.5px; font-weight:600; color:var(--accent); border:1px solid color-mix(in srgb, var(--accent) 45%, transparent); background:color-mix(in srgb, var(--accent) 12%, transparent); cursor:help; }
+    .pr-chip-peso[hidden] { display:none; }
     .pr-q.ct-falta label { color:var(--warn); }
     .ct-comp { margin:0 0 10px; padding:10px 12px; border-radius:10px; background:rgba(82,180,198,.08); border:1px solid rgba(82,180,198,.3); font-size:13px; color:var(--text-2); line-height:1.5; }
     .ct-comp[hidden] { display:none; }
@@ -334,6 +338,8 @@
     import { tarefasDoKit, teraFuncionariosDaProposta } from './assets/js/transicao-kit.js';
     // o motor (o mesmo da aba Carteira) e a Carteira: o que o sistema já sabe de cada cliente da casa
     import { indexarParams as indexarParametros, calcularMotor, faturamentoAnual } from './assets/js/precificacao-motor.js';
+    // o que mais pesa no preço (14/11/2026): o motor refeito com cada opção de cada pergunta de escolha
+    import { pesoDasPerguntas, cruciais, temPeso } from './assets/js/precificacao-peso.js';
     import { respostasDoSistema, regimesDasQuestoes, ehMei, honorarioDeHoje, parcelasDeHonorario, parcelaDoCliente, faltamResponder, ultimaPorCliente, mesesDaVigencia,
       mesesLivres, mesBR, diferenca, SITUACOES, rotuloSituacao, FONTES, aplicarReajusteAgora, referenciaDaLinha, pagaMenosQueOMotor, resumoDaCarteira,
       ultimaDeclaracaoPorCliente, ordenarCarteira, proximaOrdem, ordemValida } from './assets/js/precificacao-carteira.js';
@@ -506,6 +512,28 @@
       renderObrigacoes();
       atualizarComparacao();
       atualizarMarcasCarteira();
+      atualizarPesos();
+    }
+    // as perguntas que mais pesam no preço desta empresa (14/11/2026, pedido do Samuel: "algum tipo de destaque em questões
+    // que sejam cruciais para o valor calculado"): a linha em destaque, com o quanto a resposta mexe no honorário, e o
+    // de quanto a quanto ele vai no título da etiqueta; na revisão da carteira, também a lista no aviso de cima
+    function atualizarPesos(){
+      const agora = calcAtual ? calcAtual.honorario : 0;
+      const destaque = cruciais(pesoDasPerguntas(respostas, P, questoes, questaoVisivel), agora);
+      const por = new Map(destaque.map(p => [p.id, p]));
+      document.querySelectorAll('#prQuestionario .pr-q[data-qid]').forEach(d => {
+        const p = por.get(d.dataset.qid);
+        d.classList.toggle('pr-pesa', !!p);
+        const chip = d.querySelector('.pr-chip-peso');
+        if (!chip) return;
+        chip.hidden = !p;
+        chip.textContent = p ? 'pesa no preço: até ' + fmt(p.peso) : '';
+        chip.title = p ? 'Conforme a resposta, o honorário vai de ' + fmt(p.menor.valor) + ' (' + p.menor.opcao + ') a ' + fmt(p.maior.valor) + ' (' + p.maior.opcao + '). Agora: ' + fmt(agora) + '.' : '';
+      });
+      const el = document.getElementById('prCartPesa');
+      if (el && cart && !cart.mei) el.innerHTML = destaque.length
+        ? 'O que mais pesa no preço: ' + destaque.map(p => '<button type="button" data-ir="' + p.id + '">' + escHtml(rotuloCurto(p.id)) + '</button> (até ' + fmt(p.peso) + ')').join(' · ')
+        : '';
     }
     function renderRef(){
       const ref = Number(document.getElementById('prRef').value) || 0;
@@ -541,7 +569,8 @@
         if (qd.bloco !== bloco) { bloco = qd.bloco; html += `<div class="pr-bloco"><h2>${bloco}</h2></div>`; }
         const fonte = rev && rev.linha.pre.origem[qd.id];
         const sis = fonte ? `<span class="pr-chip-sis" title="Veio do sistema (${escHtml(FONTES[fonte] || fonte)}) — confira">${escHtml(FONTES[fonte] || fonte)}</span>` : '';
-        html += `<div class="pr-q" data-qid="${qd.id}"><label>${qd.id} · ${qd.pergunta}${qd.externa ? '<span class="pr-chip-cli">cliente</span>' : ''}${sis}${qd.ajuda ? `<small>${qd.ajuda}</small>` : ''}</label>${campoDe(qd)}</div>`;
+        const peso = temPeso(qd) ? '<span class="pr-chip-peso" hidden></span>' : '';
+        html += `<div class="pr-q" data-qid="${qd.id}"><label>${qd.id} · ${qd.pergunta}${peso}${qd.externa ? '<span class="pr-chip-cli">cliente</span>' : ''}${sis}${qd.ajuda ? `<small>${qd.ajuda}</small>` : ''}</label>${campoDe(qd)}</div>`;
       });
       el.innerHTML = html;
       el.querySelectorAll('[data-q]').forEach(inp => {
@@ -1781,7 +1810,8 @@
       return '<div class="pr-cart-banner"><div class="ct-topo"><span><b>Revisão de honorário</b> · ' + escHtml(l.cliente.nome_principal) + ' · hoje ' + hoje + '</span>'
         + '<button type="button" class="ct-revisar" data-cart="sair">Voltar à carteira</button></div>'
         + '<div class="pr-cart-faltam" id="prCartFaltam"></div>'
-        + '<div class="ct-nota" style="margin:6px 0 0;">A etiqueta verde marca o que veio do sistema — confira. Complete o que falta: o painel compara o motor com o de hoje, e a revisão grava sozinha.</div></div>';
+        + '<div class="pr-cart-faltam" id="prCartPesa"></div>'
+        + '<div class="ct-nota" style="margin:6px 0 0;">A etiqueta verde marca o que veio do sistema — confira. A azul, as respostas que mais mexem no preço. Complete o que falta: o painel compara o motor com o de hoje, e a revisão grava sozinha.</div></div>';
     }
     // o que falta responder (o que mexe no preço e está em branco) e as etiquetas do que veio do sistema
     function atualizarMarcasCarteira(){
