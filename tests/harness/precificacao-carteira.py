@@ -11,7 +11,8 @@ Confere:
      tarefas; o ex-cliente fora; os filtros;
   2. revisar: o questionário já preenchido (com a etiqueta de onde veio cada resposta), o que falta responder, o painel
      comparando com o de hoje; responder tira da lista do que falta; mudar a resposta do sistema tira a etiqueta; o que mais
-     pesa no preço em destaque (14/11/2026), com o quanto, e a lista no aviso de cima;
+     pesa no preço em destaque (14/11/2026), com o quanto, e a lista no aviso de cima (o faturamento e as quantidades
+     também têm a etiqueta; o regime, não);
   3. salvar a revisão: grava em revisoes_honorario (situação "estudo", o motor, o de hoje e de onde veio), nada em
      Propostas; volta à carteira com a revisão na linha;
   4. a situação: reajuste proposto; aceito com o valor e o mês — o boleto a emitir do mês troca na hora (e a base), a
@@ -19,7 +20,8 @@ Confere:
   5. o aceito pra um mês ainda não gerado: a tela Boletos, ao gerar o mês, põe o valor combinado no lugar do copiado e
      marca a revisão como aplicada;
   6. o MEI: a revisão na aba MEI (os dados do cadastro, o plano comparado com o de hoje), gravada com o plano;
-  7. "Nova" sai da revisão (o botão volta a ser de proposta);
+  7. "Nova" sai da revisão (o botão volta a ser de proposta); na Simulação, o número que mais pesa em destaque (os
+     funcionários, com o quanto cada um soma);
   8. o faturamento pela Receita: com a declaração do PGDAS que a ponte trouxe, o faturamento mensal sai dos 12 meses
      dela, com a etiqueta "Receita (PGDAS)" (sem ela, o da Reforma — o cenário 2); e os funcionários pelo Domínio (a
      ponte do PC, 02/11/2026): os do último dia do mês passado, com a etiqueta "Domínio";
@@ -241,8 +243,9 @@ def main():
         ok(erp['linha'] and erp['chip'] == 'pesa no preço: até R$ 220' and 'o honorário vai de R$ 430 (Possui integrado à contabilidade) a R$ 650 (Não possui). Agora: R$ 650.' in (erp['titulo'] or ''),
            f'a pergunta que mais pesa no preço fica em destaque, com o quanto e, no título, de quanto a quanto ({erp!r})')
         d6, a10 = peso('D6'), peso('A10')
-        ok(not d6['linha'] and d6['tem'] and d6['chip'] is None and not a10['linha'] and not a10['tem'] and not peso('C1')['tem'],
-           f'a que pesa pouco (o eSocial, R$ 30) fica sem destaque; o regime e as de número nem têm a etiqueta ({d6!r}, {a10!r})')
+        c1, a2m = peso('C1'), peso('A2M')
+        ok(not d6['linha'] and d6['tem'] and d6['chip'] is None and not a10['linha'] and not a10['tem'] and c1['tem'] and not c1['linha'] and a2m['tem'] and not a2m['linha'],
+           f'a que pesa pouco (o eSocial, R$ 30, e o faturamento, R$ 80 da faixa de baixo à de agora) fica sem destaque; os funcionários em branco também; o regime nem tem a etiqueta ({d6!r}, {a10!r}, {c1!r}, {a2m!r})')
         pesa = txt('#prCartPesa')
         ok(pesa == 'O que mais pesa no preço: Sistema ERP (até R$ 220)', f'no aviso de cima, a lista do que mais pesa ({pesa!r})')
         comp = txt('#prCartComp')
@@ -364,6 +367,13 @@ def main():
         p.click('#prSeg button[data-v="form"]'); p.click('#prLimpar'); p.wait_for_timeout(150)
         ok(p.is_visible('#prSalvar') and p.inner_text('#prSalvar') == 'Salvar proposta' and not p.query_selector('#prQuestionario .pr-cart-banner') and p.is_hidden('#prCartComp') and p.is_visible('#prOrc'),
            'o formulário volta a ser de proposta')
+        # o número também pesa (14/11/2026, o Samuel: "pq funcionarios e faturamento de fora?"): só com 10 funcionários, o
+        # honorário é R$ 200 (a base de R$ 80 e 10 × R$ 12); sem eles, R$ 80
+        p.fill('#prQuestionario [data-q="C1"]', '10'); p.wait_for_timeout(150)
+        c1 = peso('C1')
+        ok(c1['linha'] and c1['chip'] == 'pesa no preço: até R$ 120' and c1['titulo'] == 'Com 10, o honorário é R$ 200; sem nenhum, seria R$ 80. Cada um a mais soma R$ 12.',
+           f'na Simulação, o número também pesa: os funcionários, com o quanto cada um soma ({c1!r})')
+        p.fill('#prQuestionario [data-q="C1"]', ''); p.wait_for_timeout(100)
 
         print('8. O faturamento pela Receita')
         p.click('#segCarteira'); p.wait_for_selector(linha(CD) + ' [data-abrir]', timeout=8000)

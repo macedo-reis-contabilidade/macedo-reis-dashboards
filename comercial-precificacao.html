@@ -338,8 +338,9 @@
     import { tarefasDoKit, teraFuncionariosDaProposta } from './assets/js/transicao-kit.js';
     // o motor (o mesmo da aba Carteira) e a Carteira: o que o sistema já sabe de cada cliente da casa
     import { indexarParams as indexarParametros, calcularMotor, faturamentoAnual } from './assets/js/precificacao-motor.js';
-    // o que mais pesa no preço (14/11/2026): o motor refeito com cada opção de cada pergunta de escolha
-    import { pesoDasPerguntas, cruciais, temPeso } from './assets/js/precificacao-peso.js';
+    // o que mais pesa no preço (14/11/2026): o motor refeito com cada opção, com a faixa de baixo e a de cima do
+    // faturamento e sem cada quantidade
+    import { pesoDasPerguntas, cruciais, temPeso, tituloDoPeso } from './assets/js/precificacao-peso.js';
     import { respostasDoSistema, regimesDasQuestoes, ehMei, honorarioDeHoje, parcelasDeHonorario, parcelaDoCliente, faltamResponder, ultimaPorCliente, mesesDaVigencia,
       mesesLivres, mesBR, diferenca, SITUACOES, rotuloSituacao, FONTES, aplicarReajusteAgora, referenciaDaLinha, pagaMenosQueOMotor, resumoDaCarteira,
       ultimaDeclaracaoPorCliente, ordenarCarteira, proximaOrdem, ordemValida } from './assets/js/precificacao-carteira.js';
@@ -515,8 +516,9 @@
       atualizarPesos();
     }
     // as perguntas que mais pesam no preço desta empresa (14/11/2026, pedido do Samuel: "algum tipo de destaque em questões
-    // que sejam cruciais para o valor calculado"): a linha em destaque, com o quanto a resposta mexe no honorário, e o
-    // de quanto a quanto ele vai no título da etiqueta; na revisão da carteira, também a lista no aviso de cima
+    // que sejam cruciais para o valor calculado"; o faturamento e as quantidades desde a mesma tarde: "pq funcionarios e
+    // faturamento de fora?"): a linha em destaque, com o quanto a resposta mexe no honorário, e o de quanto a quanto ele
+    // vai no título da etiqueta (tituloDoPeso); na revisão da carteira, também a lista no aviso de cima
     function atualizarPesos(){
       const agora = calcAtual ? calcAtual.honorario : 0;
       const destaque = cruciais(pesoDasPerguntas(respostas, P, questoes, questaoVisivel), agora);
@@ -528,7 +530,7 @@
         if (!chip) return;
         chip.hidden = !p;
         chip.textContent = p ? 'pesa no preço: até ' + fmt(p.peso) : '';
-        chip.title = p ? 'Conforme a resposta, o honorário vai de ' + fmt(p.menor.valor) + ' (' + p.menor.opcao + ') a ' + fmt(p.maior.valor) + ' (' + p.maior.opcao + '). Agora: ' + fmt(agora) + '.' : '';
+        chip.title = p ? tituloDoPeso(p, agora) : '';
       });
       const el = document.getElementById('prCartPesa');
       if (el && cart && !cart.mei) el.innerHTML = destaque.length
