@@ -118,6 +118,38 @@ console.log('O robô pela IA (supabase/functions/whatsapp/robo.js):');
   chk('as filas da IA são os setores do banco', JSON.stringify(IA.FERRAMENTA_ROBO.input_schema.properties.setor.enum) === JSON.stringify(['fiscal', 'dp', 'contabil', 'societario', 'financeiro', 'comercial', 'sem_setor']));
 }
 
+console.log('O que o sistema tem da empresa do número confirmado (14/11/2026):');
+{
+  const d = IA.dadosDaEmpresa({ hoje: '2026-11-14',
+    cobrancas: [
+      { competencia: '2026-09', valor: 1300, status: 'pago', vencimento: '2026-10-10' },
+      { competencia: '2026-10', valor: 1320, itens_extras: [{ valor: 200 }, { valor: 50, ignorado: true }], status: 'emitido', vencimento: '2026-11-10' },
+      { competencia: '2026-08', valor: 1300, status: 'enviado', vencimento: '2026-09-10' },
+    ],
+    certificados: [{ tipo: 'A1', titular: 'PADARIA X', validade: '2026-12-01' }, { tipo: 'A3', titular: 'Fulano', validade: '2027-03-01', acompanhar: false }],
+    admissoes: [{ funcionario_nome: 'Ana', status: 'em_registro', data_inicio: '2026-11-17', criado_em: '2026-11-10T10:00:00Z' },
+      { funcionario_nome: 'Velha', status: 'registrada', criado_em: '2026-08-01T10:00:00Z' }, { funcionario_nome: 'Cancelada', status: 'cancelada', criado_em: '2026-11-10T10:00:00Z' }],
+    rescisoes: [{ funcionario_nome: 'Bia', status: 'recebida', ultimo_dia: '2026-11-12', data_acerto: '2026-11-21', criado_em: '2026-11-12T10:00:00Z' }] });
+  chk('o boleto: os 2 mais recentes, o total com os extras (fora o tirado do boleto)', d.includes('competência 10/2026: R$ 1.520,00, vence em 10/11/2026, emitido, ainda não enviado') && d.includes('09/2026') && !d.includes('08/2026'), d);
+  chk('o boleto marcado pago não diz "pago" (o robô nunca afirma se está pago)', !/pago/i.test(d), d);
+  chk('o certificado acompanhado, com quanto falta; o não acompanhado fica fora', d.includes('A1 de PADARIA X: válido até 01/12/2026 (faltam 17 dias)') && !d.includes('Fulano'), d);
+  chk('a admissão dos últimos 60 dias, fora a cancelada e a antiga', d.includes('Admissão de Ana, início em 17/11/2026: em registro') && !d.includes('Velha') && !d.includes('Cancelada'), d);
+  chk('a rescisão com o último dia e o pagamento', d.includes('Rescisão de Bia, último dia 12/11/2026, pagamento até 21/11/2026: recebida pelo escritório, a calcular'), d);
+  chk('sem nada, diz que não tem', IA.dadosDaEmpresa({ hoje: '2026-11-14' }).includes('Nenhum boleto'));
+  chk('o certificado vencido diz há quantos dias', IA.dadosDaEmpresa({ hoje: '2026-11-14', certificados: [{ titular: 'X', validade: '2026-11-13' }] }).includes('venceu há 1 dia'));
+  chk('reaisBr', IA.reaisBr(1234567.8) === 'R$ 1.234.567,80' && IA.reaisBr(0.5) === 'R$ 0,50');
+  const comNum = IA.contextoDaMensagem({ agora: T('2026-11-11T13:00:00Z'), empresa: 'Padaria', confirmado: true, dados: d });
+  chk('número confirmado: o bloco vai no contexto', comNum.includes('O QUE O SISTEMA TEM DESTA EMPRESA') && comNum.includes('R$ 1.520,00'));
+  chk('número não confirmado: o bloco não vai, mesmo se vier', !IA.contextoDaMensagem({ empresa: 'Padaria', confirmado: false, dados: d }).includes('R$ 1.520,00'));
+  chk('sem empresa: o bloco não vai', !IA.contextoDaMensagem({ confirmado: true, dados: d }).includes('R$ 1.520,00'));
+  const sist = IA.montarSistema()[0].text;
+  chk('as regras: responde do bloco e nunca afirma se o boleto está pago', sist.includes('O QUE O SISTEMA TEM DESTA EMPRESA') && /pago, em aberto ou atrasado: passa pro financeiro/.test(sist));
+  let pediu = null;
+  const chamar = async c => { pediu = c; return { content: [{ type: 'tool_use', name: 'responder', input: { texto: 'R$ 1.520,00, vence em 10/11.', passar: false } }] }; };
+  await IA.responderComoRobo({ chamar, historico: [{ direcao: 'entrada', texto: 'qual o valor do boleto?' }], agora: T('2026-11-11T13:00:00Z'), empresa: 'Padaria', confirmado: true, dados: d });
+  chk('responderComoRobo leva os dados até a IA', pediu && pediu.messages[0].content.includes('R$ 1.520,00'));
+}
+
 console.log('A função whatsapp roda o robô do repositório num commit fixado:');
 {
   const raiz = fileURLToPath(new URL('../', import.meta.url));
@@ -132,7 +164,7 @@ console.log('A função whatsapp roda o robô do repositório num commit fixado:
     for (const im of readFileSync(raiz + a, 'utf8').matchAll(/(?:import|export)\s[^'"]*?from\s*['"](\.{1,2}\/[^'"]+)['"]/g)) fila.push(posix.normalize(posix.join(posix.dirname(a), im[1])));
   }
   const ARQS = [...vistos];
-  chk('a trava segue os imports (o robô, as regras puras, o atendimento, a equipe)', ['supabase/functions/whatsapp/robo.js', 'assets/js/atendimento-robo.js', 'assets/js/atendimento.js', 'assets/js/equipe.js'].every(x => ARQS.includes(x)), ARQS);
+  chk('a trava segue os imports (o robô, as regras puras, o atendimento, a equipe)', ['supabase/functions/whatsapp/robo.js', 'assets/js/atendimento-robo.js', 'assets/js/atendimento.js', 'assets/js/equipe.js', 'assets/js/boletos-conta-azul.js'].every(x => ARQS.includes(x)), ARQS);
   if (shas.length) {
     const sha = shas[0][1];
     const atrasados = ARQS.filter(a => {

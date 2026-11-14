@@ -3,14 +3,17 @@
 // Projeto, whatsapp/fase1.md; o jeito do robô em whatsapp/robo.md, com as decisões wa-01 a wa-10).
 // Esta primeira parte é a triagem: a mensagem do cliente (por enquanto só no simulador da tela de atendimento) passa pela
 // IA, que cumprimenta, responde o que é de balcão (a lista aprovada, BALCAO de assets/js/atendimento-robo.js) e, no resto,
-// entende o assunto, escolhe a fila e deixa o resumo pra quem pega. Sem ferramentas ainda: o robô não lê boleto, guia
-// nem dado de empresa nenhuma — o que precisa do sistema, ele passa pra pessoa. A frase de quando passa (quem recebe,
+// entende o assunto, escolhe a fila e deixa o resumo pra quem pega. Desde 14/11/2026, com o número CONFIRMADO da empresa,
+// ele também responde o que o sistema tem dela (dadosDaEmpresa: o boleto do escritório do mês — o valor, o vencimento e
+// se já foi emitido ou enviado, nunca se está pago —, a validade do certificado digital e o andamento da admissão e da
+// rescisão), lido pela função na hora; o resto do que precisa do sistema, ele passa pra pessoa. A frase de quando passa (quem recebe,
 // no horário e fora dele, a reclamação pro Samuel) não é da IA: é a textoDaPassagem, a regra pura.
 // A resposta vem pela ferramenta "responder" (formato fixo, conferido por lerResposta). Puro: o chamador da API vem de
 // fora (o de supabase/functions/noticias/triagem.js) — testes no node em tests/atendimento-robo.test.mjs.
 // ============================================================
 import { SETORES, nomeDe, donoDoSetor } from '../../../assets/js/atendimento.js';
 import { BALCAO, APRESENTACAO, E_ROBO, emBrasilia, dentroDoHorario, voltaDaEquipe, textoDaPassagem } from '../../../assets/js/atendimento-robo.js';
+import { totalDoBoleto } from '../../../assets/js/boletos-conta-azul.js';
 
 export const MODELOS_ROBO = ['claude-sonnet-5-5', 'claude-sonnet-4-6'];
 export const MAX_TOKENS_ROBO = 6000;      // o modelo pensa antes de responder, e o pensamento conta no limite
@@ -30,9 +33,11 @@ ${Object.entries(BALCAO).map(([k, v]) => `  · ${k}: ${v}`).join('\n')}
 - "É robô?": a frase acima.
 - Agradecimento ou despedida: responda curto.
 - Mensagem que não dá pra entender: pergunte o que a pessoa precisa, numa frase.
+- Dado da empresa que está no bloco "O QUE O SISTEMA TEM DESTA EMPRESA" do contexto (só vem com o número confirmado): o valor e o vencimento do boleto do escritório e se ele já foi emitido ou enviado, a validade do certificado digital, em que pé está uma admissão ou uma rescisão. Responda SÓ o que está lá, como está, sem calcular nem deduzir; e o que o cliente pedir além disso (o arquivo, mudar a data, o porquê), passe pra quem cuida.
 
 O QUE VOCÊ PASSA PRA PESSOA (passar = true) — todo o resto, e em especial:
-- Pedido de dado da empresa (boleto, valor, se consta pago, guia, declaração, andamento, certificado): nesta versão você não consulta o sistema, então passa.
+- Pedido de dado da empresa que NÃO está no bloco "O QUE O SISTEMA TEM DESTA EMPRESA" do contexto (guia, declaração, imposto, nota, folha, o arquivo do boleto ou a segunda via), ou com o número não confirmado: passa.
+- Se o boleto está pago, em aberto ou atrasado: passa pro financeiro (o sistema não diz isso, e você nunca afirma).
 - Orientação ("posso…?", "como faço…?", "vale a pena…?") em imposto, folha, contrato ou empresa: NUNCA oriente.
 - Assunto sensível: demissão, cobrança da Receita, fiscalização, cancelamento do contrato, honorário, desconto.
 - Documento ou arquivo que o cliente mandou: agradeça e passe pra quem cuida.
@@ -93,14 +98,62 @@ export function mensagensDaConversa(historico = []) {
   return out;
 }
 
-// o que a IA precisa saber de agora, que não é do sistema (o sistema fica no cache): a hora e quem está falando
-export function contextoDaMensagem({ agora = new Date(), contato = null, empresa = null, confirmado = false } = {}) {
+// ---------- o que o sistema tem da empresa do número confirmado (14/11/2026) ----------
+// A função lê (cobrancas_mensais, certificados_digitais, admissoes, rescisoes do cliente_id) e passa aqui as linhas;
+// isto só formata, em texto pro contexto. Só com o número confirmado (quem chama confere, e contextoDaMensagem também).
+const SIT_BOLETO = { a_emitir: 'ainda não emitido', emitido: 'emitido, ainda não enviado', enviado: 'enviado' };
+const SIT_ADMISSAO = { respondida: 'recebida pelo escritório, a registrar', aguardando_empresa: 'esperando informações da empresa', em_registro: 'em registro', registrada: 'registrada' };
+const SIT_RESCISAO = { recebida: 'recebida pelo escritório, a calcular', em_andamento: 'em cálculo', concluida: 'concluída' };
+const dataBr = d => /^\d{4}-\d{2}-\d{2}/.test(String(d || '')) ? String(d).slice(0, 10).split('-').reverse().join('/') : '';
+const compBr = c => /^\d{4}-\d{2}$/.test(String(c || '')) ? String(c).slice(5) + '/' + String(c).slice(0, 4) : '';
+export function reaisBr(v) {
+  const c = Math.round((Number(v) || 0) * 100), neg = c < 0, a = Math.abs(c);
+  const int = String(Math.floor(a / 100)).replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+  return (neg ? '-' : '') + 'R$ ' + int + ',' + String(a % 100).padStart(2, '0');
+}
+const diasEntre = (de, ate) => Math.round((Date.parse(String(ate).slice(0, 10)) - Date.parse(String(de).slice(0, 10))) / 86400000);
+
+/**
+ * { cobrancas, certificados, admissoes, rescisoes, hoje: 'AAAA-MM-DD' } → o bloco em texto (sempre algum texto).
+ * O boleto: os 2 mais recentes pela competência, com o total (a mensalidade e os extras) — o "pago" não entra (o
+ * escritório quase nunca marca: o robô diria "em aberto" de um boleto pago). O certificado: os acompanhados.
+ * A admissão e a rescisão: as dos últimos 60 dias (pela data de criação), fora as canceladas.
+ */
+export function dadosDaEmpresa({ cobrancas = [], certificados = [], admissoes = [], rescisoes = [], hoje } = {}) {
+  const linhas = [];
+  const bol = (cobrancas || []).filter(c => c && compBr(c.competencia) && c.status !== 'cancelado')
+    .sort((a, b) => String(b.competencia).localeCompare(String(a.competencia))).slice(0, 2);
+  for (const c of bol) {
+    const sit = c.status === 'pago' ? 'já emitido' : (SIT_BOLETO[c.status] || 'emitido');
+    linhas.push(`Boleto do honorário do escritório, competência ${compBr(c.competencia)}: ${reaisBr(totalDoBoleto(c))}`
+      + (dataBr(c.vencimento) ? `, vence em ${dataBr(c.vencimento)}` : '') + `, ${sit}.`);
+  }
+  const cert = (certificados || []).filter(c => c && c.acompanhar !== false && dataBr(c.validade))
+    .sort((a, b) => String(a.validade).localeCompare(String(b.validade))).slice(0, 3);
+  for (const c of cert) {
+    const n = hoje ? diasEntre(hoje, c.validade) : null;
+    const quanto = n == null ? '' : n < 0 ? ` (venceu há ${-n} ${-n === 1 ? 'dia' : 'dias'})` : n === 0 ? ' (vence hoje)' : ` (faltam ${n} ${n === 1 ? 'dia' : 'dias'})`;
+    linhas.push(`Certificado digital ${c.tipo ? c.tipo + ' ' : ''}de ${limpo(c.titular, 80) || 'titular não informado'}: válido até ${dataBr(c.validade)}${quanto}. O escritório só lembra da renovação; quem renova é a certificadora.`);
+  }
+  const recente = r => !hoje || !r.criado_em || diasEntre(String(r.criado_em).slice(0, 10), hoje) <= 60;
+  for (const a of (admissoes || []).filter(a => a && a.status !== 'cancelada' && recente(a)).slice(0, 5))
+    linhas.push(`Admissão de ${limpo(a.funcionario_nome, 80) || 'funcionário sem nome'}` + (dataBr(a.data_inicio) ? `, início em ${dataBr(a.data_inicio)}` : '') + `: ${SIT_ADMISSAO[a.status] || 'recebida pelo escritório'}.`);
+  for (const r of (rescisoes || []).filter(r => r && r.status !== 'cancelada' && recente(r)).slice(0, 5))
+    linhas.push(`Rescisão de ${limpo(r.funcionario_nome, 80) || 'funcionário sem nome'}` + (dataBr(r.ultimo_dia) ? `, último dia ${dataBr(r.ultimo_dia)}` : '')
+      + (dataBr(r.data_acerto) ? `, pagamento até ${dataBr(r.data_acerto)}` : '') + `: ${SIT_RESCISAO[r.status] || 'recebida pelo escritório'}.`);
+  return linhas.length ? linhas.map(l => '- ' + l).join('\n') : '- Nenhum boleto, certificado acompanhado, admissão ou rescisão recente desta empresa no sistema.';
+}
+
+// o que a IA precisa saber de agora, que não é do sistema (o sistema fica no cache): a hora, quem está falando e, com o
+// número confirmado, o que o sistema tem da empresa (dados, o texto do dadosDaEmpresa)
+export function contextoDaMensagem({ agora = new Date(), contato = null, empresa = null, confirmado = false, dados = null } = {}) {
   const b = emBrasilia(agora), volta = voltaDaEquipe(agora);
   return [
     `Agora: ${b.dia.split('-').reverse().join('/')} às ${String(Math.floor(b.minutos / 60)).padStart(2, '0')}h${String(b.minutos % 60).padStart(2, '0')}, hora de Brasília — `
       + (dentroDoHorario(agora) ? 'a equipe está atendendo.' : `fora do horário (a equipe volta ${volta ? volta.texto : 'no próximo dia útil'}).`),
     'Quem escreve: ' + (contato ? limpo(contato, 80) : 'nome não informado') + '.',
     'Empresa do número: ' + (empresa ? limpo(empresa, 120) + (confirmado ? ' (número confirmado)' : ' (número ainda não confirmado: não fale de dado da empresa)') : 'desconhecida (não pergunte dado nenhum além do nome da empresa, se precisar)') + '.',
+    ...(empresa && confirmado && dados ? ['O QUE O SISTEMA TEM DESTA EMPRESA (lido agora; só pra este número):\n' + String(dados).slice(0, 3000)] : []),
   ].join('\n');
 }
 
@@ -142,8 +195,8 @@ export function mensagemFinal(r, agora = new Date()) {
 export const respostasDoRobo = historico => (historico || []).filter(m => m && m.direcao === 'saida' && m.autor === 'robo').length;
 
 // tudo junto: o histórico (com a mensagem nova) → a resposta do robô, pronta pra gravar
-export async function responderComoRobo({ chamar, historico, agora = new Date(), contato = null, empresa = null, confirmado = false }) {
-  const corpo = corpoDoRobo(historico, { agora, contato, empresa, confirmado });
+export async function responderComoRobo({ chamar, historico, agora = new Date(), contato = null, empresa = null, confirmado = false, dados = null }) {
+  const corpo = corpoDoRobo(historico, { agora, contato, empresa, confirmado, dados });
   if (!corpo) return null;
   const json = await chamar(corpo);
   if (json && json.stop_reason === 'max_tokens') throw Object.assign(new Error('a resposta da IA veio cortada'), { tipo: 'formato' });

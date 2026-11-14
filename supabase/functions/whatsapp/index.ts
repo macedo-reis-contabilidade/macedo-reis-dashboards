@@ -29,7 +29,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.0";
 // o robô (11/11/2026, a etapa 4): o código do repositório (o arquivo cru do GitHub) no commit fixado, como a função
 // noticias. Mudou robo.js ou um assets/js que ele importa? Publique, troque o commit das duas linhas, publique de novo e
 // reimplante — tests/atendimento-robo.test.mjs avisa quando o commit fixado ficou pra trás.
-import { responderComoRobo, MODELOS_ROBO } from "https://raw.githubusercontent.com/macedo-reis-contabilidade/macedo-reis-dashboards/fccaf889462c15ad6aaa696b48f5e915c90b9cb7/supabase/functions/whatsapp/robo.js";
+import { responderComoRobo, dadosDaEmpresa, MODELOS_ROBO } from "https://raw.githubusercontent.com/macedo-reis-contabilidade/macedo-reis-dashboards/fccaf889462c15ad6aaa696b48f5e915c90b9cb7/supabase/functions/whatsapp/robo.js";
 import { criarChamador } from "https://raw.githubusercontent.com/macedo-reis-contabilidade/macedo-reis-dashboards/fccaf889462c15ad6aaa696b48f5e915c90b9cb7/supabase/functions/noticias/triagem.js";
 
 const SETORES = ["fiscal", "dp", "contabil", "societario", "financeiro", "comercial"];
@@ -191,6 +191,27 @@ async function rodarRobo(sb: any, conversa: { id: string; cliente_id: string | n
     confirmado = (nums || []).some((n: { confirmado: boolean }) => n.confirmado);
   }
   const agora = new Date();
+  // o que o sistema tem da empresa (14/11/2026): só com o número confirmado; a leitura que falha deixa o robô sem o
+  // bloco (ele passa o pedido pra pessoa, como antes)
+  let dados: string | null = null;
+  if (conversa.cliente_id && confirmado) {
+    try {
+      const id = conversa.cliente_id, desde = new Date(agora.getTime() - 60 * 86400000).toISOString();
+      const [cob, cert, adm, res] = await Promise.all([
+        sb.from("cobrancas_mensais").select("competencia, valor, itens_extras, vencimento, status").eq("cliente_id", id).order("competencia", { ascending: false }).limit(2),
+        sb.from("certificados_digitais").select("titular, tipo, validade, acompanhar").eq("cliente_id", id).limit(10),
+        sb.from("admissoes").select("funcionario_nome, data_inicio, status, criado_em").eq("cliente_id", id).gte("criado_em", desde).order("criado_em", { ascending: false }).limit(5),
+        sb.from("rescisoes").select("funcionario_nome, ultimo_dia, data_acerto, status, criado_em").eq("cliente_id", id).gte("criado_em", desde).order("criado_em", { ascending: false }).limit(5),
+      ]);
+      const erro = [cob, cert, adm, res].find((x: { error: unknown }) => x.error);
+      if (erro) throw erro.error;
+      const hoje = new Date(agora.getTime() - 3 * 3600000).toISOString().slice(0, 10);
+      dados = dadosDaEmpresa({ cobrancas: cob.data || [], certificados: cert.data || [], admissoes: adm.data || [], rescisoes: res.data || [], hoje });
+    } catch (e) {
+      console.error("whatsapp robo, dados da empresa:", e && (e as Error).message ? (e as Error).message : e);
+      dados = null;
+    }
+  }
   // deno-lint-ignore no-explicit-any
   let r: any = null, falhou = "";
   const chave = Deno.env.get("ANTHROPIC_API_KEY") || "";
@@ -198,7 +219,7 @@ async function rodarRobo(sb: any, conversa: { id: string; cliente_id: string | n
   else {
     try {
       const chamar = criarChamador({ fetch, chave, modelos: MODELOS_ROBO, limiteMs: 60000 });
-      r = await responderComoRobo({ chamar, historico: hist || [], agora, contato, empresa, confirmado });
+      r = await responderComoRobo({ chamar, historico: hist || [], agora, contato, empresa, confirmado, dados });
     } catch (e) {
       console.error("whatsapp robo:", e && (e as Error).message ? (e as Error).message : e);
       falhou = "o assistente não conseguiu responder agora";
