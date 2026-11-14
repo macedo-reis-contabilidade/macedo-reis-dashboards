@@ -7,7 +7,7 @@ import { indexarParams, calcularMotor, faturamentoAnual } from '../assets/js/pre
 import { respostasDoSistema, regimesDasQuestoes, tipoSocietario, erpDaCarteira, honorarioDeHoje, nomeBase, nomesBatem, parcelasDeHonorario, parcelaDoCliente,
   faltamResponder, ultimaPorCliente, mesesDaVigencia, mesBR, diferenca, ehMei, rotuloSituacao, mesesLivres, reajustesDoMes, aplicarReajusteAgora,
   referenciaDaLinha, pagaMenosQueOMotor, resumoDaCarteira, ultimaDeclaracaoPorCliente, FONTES, respostasDoDominio, faixaDeNotas, rotatividade, faturamentoDoDominio,
-  ordenarCarteira, proximaOrdem, ordemValida, passoDaSituacao } from '../assets/js/precificacao-carteira.js';
+  ordenarCarteira, proximaOrdem, ordemValida, passoDaSituacao, mesesDaEmpresa } from '../assets/js/precificacao-carteira.js';
 
 let falhas = 0;
 const chk = (nome, cond, extra) => { if (!cond) falhas++; console.log((cond ? '  ✓ ' : '  ✗ ') + nome + (!cond && extra !== undefined ? ' → ' + extra : '')); };
@@ -148,6 +148,43 @@ chk('sem o dia de hoje, o Domínio não entra (os meses dependem dele)', !('C1' 
   const s8 = respostasDoSistema({ cliente: SIMPLES, obrigacoes: [], carteira: {}, dominio: FAT, receita: { competencia: '2026-09', receita_mes: 1, receita_12_meses: 912000.07 } },
     { regimesDaQuestao: REG, hoje: '2026-11-02' });
   chk('com o PGDAS, o declarado continua valendo', s8.respostas.A2M === 76000.01 && s8.origem.A2M === 'receita');
+}
+// as médias do Domínio começam no primeiro mês em que o número aparece (14/11/2026, a conferência da Carteira): a empresa
+// aberta há pouco e a que veio de outro escritório têm zero nos meses de antes, e a média dos 12 ficava com eles
+{
+  const zeraAntes = (desde, campos) => DOM.map(l => (l.competencia < desde ? { ...l, ...Object.fromEntries(campos.map(c => [c, 0])) } : l));
+  const nova = respostasDoDominio(zeraAntes('2026-07', ['notas_saida']), '2026-11-02');
+  chk('a loja que começou a vender em 07/2026: as notas emitidas pela média desde julho (160, não 40)', nova.respostas.B1 === '151-300', nova.respostas);
+  const recebidas = respostasDoDominio(zeraAntes('2026-04', ['notas_entrada']).map(l => (l.competencia >= '2026-04' ? { ...l, notas_entrada: 90 } : l)), '2026-11-02');
+  chk('as notas recebidas, cada uma desde o seu primeiro mês (90 desde abril, não 45)', recebidas.respostas.B2 === '51-150' && recebidas.respostas.B1 === '151-300', recebidas.respostas);
+  const buraco = respostasDoDominio(DOM.map(l => (l.competencia === '2026-03' ? { ...l, notas_saida: 0 } : l)), '2026-11-02');
+  chk('o mês sem nota depois do primeiro conta (é do movimento da empresa): 11 × 160 ÷ 12', buraco.respostas.B1 === '51-150', buraco.respostas);
+  const nenhuma = respostasDoDominio(DOM.map(l => ({ ...l, notas_entrada: 0 })), '2026-11-02');
+  chk('sem nenhuma nota recebida na janela: a média de todos, zero', nenhuma.respostas.B2 === '0-50');
+  const folha = DOM.map(l => (l.competencia < '2026-06' ? { ...l, funcionarios_ativos: 0, admissoes: 0, desligamentos: 0, afastados: 0 }
+    : l.competencia === '2026-06' ? { ...l, funcionarios_ativos: 3, admissoes: 3, desligamentos: 0 }
+    : l.competencia === '2026-07' ? { ...l, admissoes: 1, desligamentos: 0 } : l.competencia === '2026-08' ? { ...l, admissoes: 0, desligamentos: 0 }
+    : l.competencia === '2026-09' ? { ...l, admissoes: 0, desligamentos: 1 } : l));
+  chk('a rotatividade desde o primeiro mês com funcionário (5 em 4 meses = Média, não 5 em 12)', respostasDoDominio(folha, '2026-11-02').respostas.C4 === 'Média');
+}
+// a empresa aberta há menos de 12 meses: o RBT12 da declaração soma só os meses desde a abertura (14/11/2026)
+{
+  chk('os meses do RBT12 em que a empresa existia', mesesDaEmpresa('2026-03-31', '2026-09') === 6 && mesesDaEmpresa('2025-10-02', '2026-09') === 11
+    && mesesDaEmpresa('2025-09-15', '2026-09') === 12 && mesesDaEmpresa('2019-05-01', '2026-09') === 12 && mesesDaEmpresa(null, '2026-09') === 12
+    && mesesDaEmpresa('2026-10-01', '2026-09') === 12 && mesesDaEmpresa('2026-09-01', '2026-09') === 12 && mesesDaEmpresa('2026-03-31', null) === 12);
+  const vendas = DOM.map(l => ({ ...l, receita_simples: null, receita_bruta: l.competencia === '2026-07' ? 9000 : l.competencia === '2026-08' ? 10000 : l.competencia === '2026-09' ? 11000 : 0 }));
+  const declaracao = { competencia: '2026-09', receita_mes: 11000, receita_12_meses: 19000 };
+  const comDominio = respostasDoSistema({ cliente: { ...SIMPLES, data_abertura: '2026-03-31' }, obrigacoes: [], carteira: {}, dominio: vendas, receita: declaracao },
+    { regimesDaQuestao: REG, hoje: '2026-11-02' });
+  chk('aberta em 03/2026: o faturamento médio do Domínio desde o primeiro mês com venda (10 mil, não 19 mil ÷ 12)',
+    comDominio.respostas.A2M === 10000 && comDominio.origem.A2M === 'dominio', comDominio.respostas.A2M);
+  const semDominio = respostasDoSistema({ cliente: { ...SIMPLES, data_abertura: '2026-03-31' }, obrigacoes: [], carteira: {}, receita: declaracao },
+    { regimesDaQuestao: REG, hoje: '2026-11-02' });
+  chk('sem o Domínio: o RBT12 ÷ os 6 meses desde a abertura', semDominio.respostas.A2M === 3166.67 && semDominio.origem.A2M === 'receita', semDominio.respostas.A2M);
+  const antiga = respostasDoSistema({ cliente: { ...SIMPLES, data_abertura: '2015-02-10' }, obrigacoes: [], carteira: {}, dominio: vendas, receita: declaracao },
+    { regimesDaQuestao: REG, hoje: '2026-11-02' });
+  chk('aberta há anos (a que veio de outro escritório tem o histórico no PGDAS): o RBT12 ÷ 12, mesmo com o Domínio mais curto',
+    antiga.respostas.A2M === 1583.33 && antiga.origem.A2M === 'receita', antiga.respostas.A2M);
 }
 chk('MEI fica com a aba MEI', ehMei({ regime_tributario: 'MEI' }) && !ehMei({ regime_tributario: 'Simples Nacional' }) && !ehMei(null));
 chk('o que falta responder: só as que mexem no preço, em branco e visíveis', JSON.stringify(faltamResponder({ A2M: 1, B8: 'x', C1: '' }, id => id.startsWith('A') || id === 'C1'))

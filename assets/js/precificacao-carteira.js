@@ -56,7 +56,7 @@ export function regimesDasQuestoes(obrigacoesPrec) {
 
 // ============================================================
 // respostasDoSistema(dados, { regimesDaQuestao }) → { respostas, origem }
-//   dados: { cliente (o cadastro), socios (quantos), obrigacoes ([nomes das vinculadas e ativas]), fatorR (bool),
+//   dados: { cliente (o cadastro, com a data_abertura), socios (quantos), obrigacoes ([nomes das vinculadas e ativas]), fatorR (bool),
 //            regularizacoes ([status]), reforma ({ receita_mensal, rbt12, decisao } | null), carteira ({ sistemas, ramo }),
 //            hoje ({ valor, fonte } | null), receita ({ competencia, receita_mes, receita_12_meses } | null — a última
 //            declaração do PGDAS lida pela ponte da Receita, 23/10/2026: o faturamento dela vem antes do da Reforma),
@@ -80,10 +80,15 @@ export function respostasDoSistema(d, { regimesDaQuestao = new Map(), hoje = nul
   // o faturamento médio do mês: a declaração do PGDAS que a ponte da Receita leu (os 12 meses ÷ 12), senão o faturamento
   // do Domínio (a média dos meses fechados, 05/11/2026 — o Presumido e o Real não têm PGDAS), senão a ficha da Reforma
   const rc = d.receita || null;
-  const mensalRc = rc && Number(rc.receita_12_meses) > 0 ? Number(rc.receita_12_meses) / 12 : 0;
+  // a empresa aberta há menos de 12 meses (14/11/2026): o RBT12 da declaração soma só os meses desde a abertura, e ÷ 12
+  // ficava baixo — vale o faturamento médio do Domínio (desde o primeiro mês com faturamento) e, sem ele, o RBT12 ÷ os
+  // meses desde a abertura (mesesDaEmpresa)
+  const mesesRc = rc ? mesesDaEmpresa(c.data_abertura, rc.competencia) : 12;
+  const mensalRc = rc && Number(rc.receita_12_meses) > 0 ? Number(rc.receita_12_meses) / mesesRc : 0;
   const fatDom = d.dominio && hoje ? faturamentoDoDominio(d.dominio, hoje) : null;
   const mensal = rf ? (Number(rf.receita_mensal) > 0 ? Number(rf.receita_mensal) : Number(rf.rbt12) > 0 ? Number(rf.rbt12) / 12 : 0) : 0;
-  if (mensalRc > 0) por('A2M', Math.round(mensalRc * 100) / 100, 'receita');
+  if (mesesRc < 12 && fatDom) por('A2M', Math.round(fatDom.media * 100) / 100, 'dominio');
+  else if (mensalRc > 0) por('A2M', Math.round(mensalRc * 100) / 100, 'receita');
   else if (fatDom) por('A2M', Math.round(fatDom.media * 100) / 100, 'dominio');
   else por('A2M', mensal > 0 ? Math.round(mensal * 100) / 100 : null, 'reforma');
   por('A4', tipoSocietario(c.natureza_juridica, c.regime_tributario), 'cadastro');
@@ -139,6 +144,10 @@ export function respostasDoSistema(d, { regimesDaQuestao = new Map(), hoje = nul
 //           a 3, Média; acima de 3, Alta
 //   C5, C6  o pró-labore: os sócios com a folha calculada, o maior dos 3 meses mais recentes antes deste (a folha do
 //           mês passado pode ainda não ter sido calculada)
+// As médias (B1, B2 e C4) começam no primeiro mês em que o número aparece (14/11/2026, a conferência da Carteira com o
+// Samuel): a empresa aberta há pouco e a que veio de outro escritório têm zero no Domínio nos meses de antes, e a média dos
+// 12 ficava com eles (uma loja nova com mais de 200 notas por mês caía em "0-50") — como no faturamento (faturamentoDoDominio).
+// Sem nenhum mês com o número, todos (a média dá zero). Os zeros depois do primeiro mês contam: são do movimento da empresa.
 // linhas: as do cliente (mais de uma empresa do Domínio no mesmo mês — o mesmo documento duas vezes — fica com o maior
 // de cada número); null = o Domínio não disse, e a pergunta fica como estava. periodo: { de, ate, mes } ('AAAA-MM').
 // ============================================================
@@ -162,7 +171,10 @@ export function respostasDoDominio(linhas, hoje) {
   const janela = []; for (let m = de; m <= ate; m = mesMais(m, 1)) janela.push(m);
   const valores = (campo, meses) => meses.map(m => (porMes.get(m) || {})[campo]).filter(v => v != null);
   const media = vs => (vs.length ? vs.reduce((s, v) => s + v, 0) / vs.length : null);
-  const ns = media(valores('notas_saida', janela)), ne = media(valores('notas_entrada', janela));
+  // os meses da média: do primeiro em que o número aparece até o fim da janela (sem nenhum, a janela inteira)
+  const desdeOPrimeiro = tem => { const i = janela.findIndex(m => tem(porMes.get(m) || {})); return i < 0 ? janela : janela.slice(i); };
+  const ns = media(valores('notas_saida', desdeOPrimeiro(x => x.notas_saida > 0)));
+  const ne = media(valores('notas_entrada', desdeOPrimeiro(x => x.notas_entrada > 0)));
   if (ns != null) respostas.B1 = faixaDeNotas(ns);
   if (ne != null) respostas.B2 = faixaDeNotas(ne);
   // a folha: o mês passado, senão o mais recente da janela que tem número
@@ -172,7 +184,8 @@ export function respostasDoDominio(linhas, hoje) {
     respostas.C1 = f.funcionarios_ativos;
     if (f.afastados != null) respostas.C3 = f.afastados;
   }
-  const mov = janela.map(m => porMes.get(m) || {}).filter(x => x.admissoes != null && x.desligamentos != null).map(x => x.admissoes + x.desligamentos);
+  const mov = desdeOPrimeiro(x => x.funcionarios_ativos > 0 || x.admissoes > 0 || x.desligamentos > 0).map(m => porMes.get(m) || {})
+    .filter(x => x.admissoes != null && x.desligamentos != null).map(x => x.admissoes + x.desligamentos);
   if (mov.length) respostas.C4 = rotatividade(media(mov));
   const pl = valores('pro_labore', [mesPassado, ate, mesMais(mesHoje, -3)]);
   if (pl.length) { const n = Math.max(...pl); respostas.C5 = n > 0 ? 'Sim' : 'Não'; if (n > 0) respostas.C6 = n; }
@@ -205,6 +218,17 @@ export function faturamentoDoDominio(linhas, hoje) {
   }
   if (!vals.length) return null;
   return { media: vals.reduce((s, x) => s + x.v, 0) / vals.length, meses: vals.length, de: vals[0].m, ate: vals[vals.length - 1].m };
+}
+
+// mesesDaEmpresa(abertura, competencia) → de 1 a 12: os meses do RBT12 da declaração (os 12 antes do período de apuração)
+// em que a empresa já existia, contando o mês da abertura. Aberta antes deles, sem a data ou com a data depois do período
+// (o cadastro errado: a declaração tem receita de antes), 12.
+export function mesesDaEmpresa(abertura, competencia) {
+  const a = String(abertura || '').slice(0, 7), pa = String(competencia || '').slice(0, 7);
+  if (!/^\d{4}-\d{2}$/.test(a) || !/^\d{4}-\d{2}$/.test(pa)) return 12;
+  const n = s => { const [y, m] = s.split('-').map(Number); return y * 12 + m - 1; };
+  const meses = n(pa) - n(a);
+  return meses > 0 && meses < 12 ? meses : 12;
 }
 
 /** A última declaração do PGDAS com o faturamento, por cliente (receita_pgdas: { cliente_id, competencia, receita_mes,

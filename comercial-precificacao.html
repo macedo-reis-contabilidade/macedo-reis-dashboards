@@ -1614,7 +1614,7 @@
         const desdeDominio = (() => { const [a, m] = hoje.slice(0, 7).split('-').map(Number); const t = a * 12 + (m - 1) - 13; return Math.floor(t / 12) + '-' + String(t % 12 + 1).padStart(2, '0'); })();
         const tudo = async montar => { const { data, error } = await supabase.todasLinhas(montar); if (error) throw error; return data || []; };
         const [clis, socs, vincs, obrF, frs, regs, rts, cobM, cobC, revs, tars, parcelas, rcs, doms] = await Promise.all([
-          emLotes(l => supabase.from('clientes').select('id, nome_principal, nome_fantasia, documento, tipo_pessoa, regime_tributario, natureza_juridica, cnae_principal, logradouro, numero, bairro, cidade, uf, cep, telefone_principal').in('id', l)),
+          emLotes(l => supabase.from('clientes').select('id, nome_principal, nome_fantasia, documento, tipo_pessoa, regime_tributario, natureza_juridica, cnae_principal, data_abertura, logradouro, numero, bairro, cidade, uf, cep, telefone_principal').in('id', l)),
           emLotes(l => supabase.from('socios').select('cliente_id').in('cliente_id', l)),
           emLotes(l => supabase.from('cliente_obrigacoes').select('cliente_id, obrigacao_id').eq('ativo', true).in('cliente_id', l)),
           tudo(() => supabase.from('obrigacoes_fiscais').select('id, nome').order('id')),
