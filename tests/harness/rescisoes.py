@@ -59,8 +59,10 @@ def rescisoes_teste():
              tipo='pedido', aviso='trabalhado', data_base='2026-10-06', inicio_aviso='2026-10-07', ultimo_dia='2026-11-05', data_acerto='2026-11-13',
              responsavel='Vitória', status='recebida', respostas=resp1, criado_em=dia(-1) + 'T13:00:00Z',
              arquivos=arq1, drive_pasta_url='https://drive.google.com/drive/folders/PASTA1'),
+        # a r2 com as datas fixas, antes do pagamento da r1 (13/11/2026, fixo): com o pagamento em dia(-1), desde 14/11/2026 as duas
+        # empatavam, e a ordem da lista dependia do dia em que o teste rodava. Demissão em 02/11, pagamento até 12/11 (10 dias), já vencido.
         base(id='r2', cliente_id=None, empresa_nome='PADARIA NOVA DE TESTE LTDA', contato_nome='OUTRO CONTATO', funcionario_nome='SICRANO DE TESTE',
-             tipo='dispensa', aviso='indenizado', data_base=dia(-11), inicio_aviso=None, ultimo_dia=dia(-11), data_acerto=dia(-1),
+             tipo='dispensa', aviso='indenizado', data_base='2026-11-02', inicio_aviso=None, ultimo_dia='2026-11-02', data_acerto='2026-11-12',
              responsavel='Vitória', status='recebida', criado_em=dia(-12) + 'T12:00:00Z'),
         base(id='r3', cliente_id='c1', clientes=cli1, funcionario_nome='BELTRANO DE TESTE', tipo='dispensa', aviso='trabalhado', data_base=dia(-60),
              inicio_aviso=dia(-59), ultimo_dia=dia(-30), data_acerto=dia(-20), responsavel='Edna', status='concluida',
