@@ -23,7 +23,7 @@ export const ROTULOS = {
   transicao_atrasada: 'Transições atrasadas',
   cliente_sem_obrigacao: 'Clientes sem obrigação fiscal', obrigacao_sem_responsavel: 'Obrigações sem responsável', obrigacao_ex_cliente: 'Obrigações de ex-cliente',
   obrigacao_desligada: 'Obrigações comuns desligadas', obrigacao_sem_tarefa: 'Obrigações sem a tarefa do mês',
-  reforma_prazo: 'Prazo da opção da Reforma', noticia_prazo: 'Prazos das notícias chegando',
+  reforma_prazo: 'Prazo da opção da Reforma', reforma_cancelamento: 'Cancelamento da opção por fora', noticia_prazo: 'Prazos das notícias chegando',
   tarefa_responsavel: 'Tarefas sem responsável', tarefa_repetida: 'Tarefas repetidas', tarefa_ex_cliente: 'Tarefas de ex-cliente',
   recorrente_ex_cliente: 'Tarefas recorrentes de ex-cliente', rotina_sem_responsavel: 'Rotinas sem responsável',
   // a Receita pela ponte (Integra Contador, 23/10/2026): vigia_regras_receita()
