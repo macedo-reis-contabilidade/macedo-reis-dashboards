@@ -144,7 +144,12 @@ function q(table){
     if (self._patch && table === 'tarefas' && self._patch.status === 'concluida'
         && data.some(r => r.faturavel && !r.cliente_id && !r.faturavel_de && r.status !== 'concluida'))
       return (self._out = { data:null, error:{ code:'23502', message:'null value in column "cliente_id" of relation "faturaveis" violates not-null constraint' }, count:0 });
-    if (self._patch) { data.forEach(r => Object.assign(r, self._patch)); console.log('MOCK UPDATE', table, data.length); emitir(table, 'UPDATE', data); }
+    // o que o banco de verdade preenche sozinho ao mudar uma linha (o gatilho do "quem e quando" dos serviços digitais,
+    // tests/harness/servicos-digitais.py), o teste preenche por window.__mockAntesDeMudar(tabela, linha já mudada, como era, o que veio)
+    if (self._patch) {
+      data.forEach(r => { const era = { ...r }; Object.assign(r, self._patch); if (typeof window.__mockAntesDeMudar === 'function') window.__mockAntesDeMudar(table, r, era, self._patch); });
+      console.log('MOCK UPDATE', table, data.length); emitir(table, 'UPDATE', data);
+    }
     if (self._del) { data.forEach(r => rows.splice(rows.indexOf(r), 1)); console.log('MOCK DELETE', table, data.length); }
     return (self._out = { data: self._head ? null : copia(data), error:null, count: data.length });
   };

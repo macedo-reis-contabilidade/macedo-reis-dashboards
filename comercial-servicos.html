@@ -1,0 +1,1045 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Comercial — Serviços digitais — Macedo & Reis</title>
+  <link rel="icon" href="assets/favicon.ico">
+  <link rel="stylesheet" href="assets/css/style.css">
+  <script type="module" src="assets/js/auth-guard.js"></script>
+</head>
+<body>
+  <!-- Serviços digitais (15/11/2026, pedido do Samuel: "temos uma infinitude de serviços digitais simples pra vender
+       pelo escritório, penso em ir estruturando dentro do setor comercial"). A vitrine dos serviços, cada um com a
+       régua do que precisa ter antes de ir pro ar (as regras em assets/js/servicos-digitais.js), as vendas (o
+       pagamento, a entrega e a NFS-e de cada uma) e os números por mês. Nada se apaga: o serviço vira descartado e
+       a venda, cancelada. Quem e quando, o banco grava (o gatilho servicos_quem). A venda paga entra na tarefa das
+       NFS-e da Thalia ("Emitir as NFS-e dos serviços digitais"), uma linha por venda. -->
+  <div class="app-shell">
+    <header class="topbar">
+      <div class="topbar-brand">
+        <div class="topbar-logo"><img src="assets/logo-mr.png" alt="Macedo & Reis" width="32" height="32" style="display:block;object-fit:contain;"></div>
+        <div class="topbar-name">Macedo <span>&</span> Reis</div>
+      </div>
+      <div class="topbar-actions">
+        <div class="user-chip"><div class="user-avatar" id="userAvatar">—</div><span id="userName">Carregando…</span></div>
+        <button class="btn btn-ghost btn-sm" id="btnLogout">Sair</button>
+      </div>
+    </header>
+
+    <main class="content">
+      <div class="page-header">
+        <div class="breadcrumb">
+          <a href="index.html">Painel central</a>
+          <span class="breadcrumb-sep">/</span>
+          <a href="comercial.html">Comercial</a>
+          <span class="breadcrumb-sep">/</span>
+          <span>Serviços digitais</span>
+        </div>
+        <div class="eyebrow">Vitrine do escritório</div>
+        <h1>Serviços digitais</h1>
+        <p>Os serviços que o escritório vende ou oferece pela internet, cada um com a régua do que precisa ter antes de ir pro ar. As vendas ficam aqui, com o pagamento, a entrega e a NFS-e de cada uma.</p>
+      </div>
+
+      <section class="sv-guia" id="guia" aria-labelledby="guiaTitulo">
+        <h2 id="guiaTitulo">Por onde começar</h2>
+        <div id="guiaCorpo" class="sv-guia-corpo">Carregando…</div>
+      </section>
+
+      <div class="sv-abas" role="tablist" aria-label="Serviços digitais">
+        <button class="sv-aba" role="tab" id="tabVitrine" data-aba="vitrine" aria-controls="painelVitrine" aria-selected="true">Vitrine <span class="sv-aba-n" id="nVitrine"></span></button>
+        <button class="sv-aba" role="tab" id="tabVendas" data-aba="vendas" aria-controls="painelVendas" aria-selected="false">Vendas <span class="sv-aba-n" id="nVendas"></span></button>
+        <button class="sv-aba" role="tab" id="tabNumeros" data-aba="numeros" aria-controls="painelNumeros" aria-selected="false">Números</button>
+      </div>
+
+      <div id="aviso" class="sv-aviso" role="status" aria-live="polite" hidden></div>
+
+      <!-- VITRINE -->
+      <section id="painelVitrine" role="tabpanel" aria-labelledby="tabVitrine">
+        <div class="toolbar">
+          <div class="toolbar-filters">
+            <input type="text" id="busca" class="input input-search" placeholder="Buscar por nome, resumo ou público…" aria-label="Buscar serviço">
+          </div>
+          <div class="sv-toolbar-acoes">
+            <button class="btn btn-primary" id="btnNovoServico">+ Novo serviço</button>
+          </div>
+        </div>
+        <div id="vitrine"></div>
+      </section>
+
+      <!-- VENDAS -->
+      <section id="painelVendas" role="tabpanel" aria-labelledby="tabVendas" hidden>
+        <div class="toolbar">
+          <div class="toolbar-filters">
+            <select id="fServico" class="input sv-filtro" aria-label="Filtrar por serviço"><option value="">Todos os serviços</option></select>
+            <select id="fPagamento" class="input sv-filtro" aria-label="Filtrar pelo pagamento">
+              <option value="">Qualquer pagamento</option>
+              <option value="aguardando">Aguardando o pagamento</option>
+              <option value="pago">Pagas</option>
+              <option value="devolvido">Devolvidas</option>
+              <option value="cancelado">Canceladas</option>
+            </select>
+            <label class="sv-check"><input type="checkbox" id="fPendencia"> Só com pendência</label>
+          </div>
+          <div class="sv-toolbar-acoes">
+            <button class="btn btn-primary" id="btnNovaVenda">+ Registrar venda</button>
+          </div>
+        </div>
+        <div id="vendas"></div>
+      </section>
+
+      <!-- NÚMEROS -->
+      <section id="painelNumeros" role="tabpanel" aria-labelledby="tabNumeros" hidden>
+        <div id="numeros"></div>
+      </section>
+    </main>
+  </div>
+
+  <!-- A FICHA DO SERVIÇO -->
+  <div class="fa-modal-overlay" id="ovServico">
+    <div class="fa-modal sv-modal-largo" role="dialog" aria-modal="true" aria-labelledby="sTitulo">
+      <div class="fa-modal-head"><h3 id="sTitulo">Novo serviço</h3><button class="fa-modal-close" id="sClose" aria-label="Fechar">&times;</button></div>
+      <div class="fa-modal-body">
+        <div id="sMudou" class="sv-banner sv-banner-alerta" role="alert" hidden></div>
+        <div class="fa-field-row">
+          <label class="fa-field"><span>Nome *</span><input type="text" id="sNome" class="input" maxlength="120" placeholder="Como aparece na vitrine"></label>
+          <label class="fa-field"><span>Endereço curto *</span><input type="text" id="sSlug" class="input" maxlength="60" placeholder="ex.: cadastro-2027" autocomplete="off" spellcheck="false"></label>
+        </div>
+        <label class="fa-field"><span>Resumo</span><textarea id="sResumo" class="input" rows="3" maxlength="800" placeholder="O que é, o que a pessoa recebe e o que o serviço não faz"></textarea></label>
+        <label class="fa-field"><span>Pra quem</span><input type="text" id="sPublico" class="input" maxlength="400" placeholder="ex.: lojas do Simples Nacional no RS"></label>
+        <div class="fa-field-row sv-tres">
+          <label class="fa-field"><span>Modelo</span>
+            <select id="sModelo" class="input"><option value="pago">Pago</option><option value="gratis">Grátis</option></select>
+          </label>
+          <label class="fa-field" id="sPrecoCampo"><span>Preço (R$)</span><input type="text" id="sPreco" class="input" inputmode="decimal" placeholder="97,00 (em branco: a definir)"></label>
+          <label class="fa-field" id="sPrecoObsCampo"><span>Como se cobra</span><input type="text" id="sPrecoObs" class="input" maxlength="200" placeholder="ex.: por loja (um CNPJ), uma vez"></label>
+        </div>
+        <div class="fa-field-row">
+          <label class="fa-field"><span>Situação</span><select id="sSituacao" class="input"></select></label>
+          <label class="fa-field"><span>Responsável</span><select id="sResponsavel" class="input"></select></label>
+        </div>
+        <label class="fa-field" id="sMotivoCampo" hidden><span>Motivo *</span><textarea id="sMotivo" class="input" rows="2" maxlength="600" placeholder="Por que pausou, encerrou ou descartou"></textarea></label>
+        <div id="sFalta" class="sv-banner sv-banner-alerta" hidden></div>
+        <div class="fa-field-row">
+          <label class="fa-field"><span>Janela de venda até</span><input type="date" id="sJanela" class="input"></label>
+          <label class="fa-field"><span>Reavaliar em (o teste de parar)</span><input type="date" id="sParar" class="input"></label>
+        </div>
+        <label class="fa-field"><span>Critério de parar</span><input type="text" id="sCriterio" class="input" maxlength="300" placeholder="ex.: menos de 5 vendas até a data, encerra"></label>
+        <div class="fa-field-row">
+          <label class="fa-field"><span>Endereço da página</span><input type="text" id="sLinkPagina" class="input" maxlength="500" placeholder="https://… ou uma tela do sistema (mei.html)" autocomplete="off" spellcheck="false"></label>
+          <label class="fa-field"><span>Endereço do protótipo</span><input type="text" id="sLinkPrototipo" class="input" maxlength="500" placeholder="https://…" autocomplete="off" spellcheck="false"></label>
+        </div>
+        <div class="fa-field-row">
+          <label class="fa-field"><span>Quem assina</span><input type="text" id="sQuemAssina" class="input" maxlength="160" placeholder="A empresa e o contador que respondem pelo serviço"></label>
+          <label class="fa-field"><span>De onde veio a ideia</span><input type="text" id="sOrigem" class="input" maxlength="300"></label>
+        </div>
+        <div class="fa-field-row">
+          <label class="fa-field"><span>Observação interna</span><textarea id="sObs" class="input" rows="2" maxlength="4000" placeholder="Só a equipe vê"></textarea></label>
+          <label class="fa-field sv-campo-curto"><span>Ordem na vitrine</span><input type="number" id="sOrdem" class="input" min="-9999" max="9999" step="1" value="0"></label>
+        </div>
+
+        <div class="sv-regua-topo">
+          <h4>A régua</h4>
+          <span class="sv-regua-conta" id="sReguaConta"></span>
+        </div>
+        <p class="sv-regua-dica">O que o serviço precisa ter antes de ir pro ar. É a leitura das normas pelo escritório, com a base de cada item: não é parecer jurídico. O "Não" e o "Não se aplica" pedem o porquê na nota.</p>
+        <div id="sRegua"></div>
+
+        <div id="sMeta" class="sv-meta-ficha"></div>
+      </div>
+      <div class="fa-modal-foot">
+        <div id="sErro" class="sv-erro sv-erro-pe" role="alert"></div>
+        <button class="btn btn-ghost" id="sCancelar">Cancelar</button>
+        <button class="btn btn-primary" id="sSalvar">Salvar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- A VENDA -->
+  <div class="fa-modal-overlay" id="ovVenda">
+    <div class="fa-modal" role="dialog" aria-modal="true" aria-labelledby="vTitulo" style="max-width:600px;">
+      <div class="fa-modal-head"><h3 id="vTitulo">Registrar venda</h3><button class="fa-modal-close" id="vClose" aria-label="Fechar">&times;</button></div>
+      <div class="fa-modal-body">
+        <div id="vSemServico" class="sv-banner sv-banner-alerta" hidden>Nenhum serviço pago está no ar. A venda só entra depois que o serviço fecha a régua e vai pro ar.</div>
+        <label class="fa-field" id="vServicoCampo"><span>Serviço *</span><select id="vServico" class="input"></select></label>
+        <div id="vServicoFixo" class="sv-fixo" hidden></div>
+        <label class="fa-field"><span>Quem comprou *</span><input type="text" id="vNome" class="input" maxlength="160" placeholder="Nome ou razão social"></label>
+        <div class="fa-field-row">
+          <label class="fa-field"><span>CPF ou CNPJ</span><input type="text" id="vDoc" class="input" maxlength="20" autocomplete="off" placeholder="Vai na NFS-e"></label>
+          <label class="fa-field"><span>Valor (R$) *</span><input type="text" id="vValor" class="input" inputmode="decimal" placeholder="97,00"></label>
+        </div>
+        <div id="vCliente" class="sv-cliente" hidden></div>
+        <div class="fa-field-row">
+          <label class="fa-field"><span>E-mail</span><input type="email" id="vEmail" class="input" maxlength="200" autocomplete="off"></label>
+          <label class="fa-field"><span>WhatsApp</span><input type="text" id="vZap" class="input" maxlength="20" autocomplete="off" placeholder="(51) 99999-9999"></label>
+        </div>
+        <div class="fa-field-row sv-cidade">
+          <label class="fa-field"><span>Cidade</span><input type="text" id="vCidade" class="input" maxlength="80"></label>
+          <label class="fa-field"><span>UF</span><select id="vUf" class="input"><option value="">—</option></select></label>
+        </div>
+        <label class="fa-field"><span>Observação interna</span><textarea id="vObs" class="input" rows="2" maxlength="2000"></textarea></label>
+        <div id="vErro" class="sv-erro" role="alert"></div>
+      </div>
+      <div class="fa-modal-foot">
+        <button class="btn btn-ghost" id="vCancelar">Cancelar</button>
+        <button class="btn btn-primary" id="vSalvar">Registrar venda</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- A AÇÃO NA VENDA (confirmar pagamento, entregar, NFS-e, devolver, cancelar) -->
+  <div class="fa-modal-overlay" id="ovAcao">
+    <div class="fa-modal" role="dialog" aria-modal="true" aria-labelledby="aTitulo" style="max-width:520px;">
+      <div class="fa-modal-head"><h3 id="aTitulo">Confirmar pagamento</h3><button class="fa-modal-close" id="aClose" aria-label="Fechar">&times;</button></div>
+      <div class="fa-modal-body">
+        <div id="aQuem" class="sv-acao-quem"></div>
+        <div id="aAviso" class="sv-banner sv-banner-info" hidden></div>
+        <label class="fa-field" id="aNumeroCampo" hidden><span>Número da NFS-e *</span><input type="text" id="aNumero" class="input" maxlength="40" autocomplete="off"></label>
+        <label class="fa-field" id="aMotivoCampo" hidden><span id="aMotivoRotulo">Motivo *</span><textarea id="aMotivo" class="input" rows="2" maxlength="400"></textarea></label>
+        <label class="fa-field" id="aDataCampo"><span id="aDataRotulo">Dia do pagamento</span><input type="date" id="aData" class="input"></label>
+        <label class="fa-field" id="aPixCampo" hidden><span>Identificador do Pix (opcional)</span><input type="text" id="aPix" class="input" maxlength="80" autocomplete="off"></label>
+        <label class="fa-field" id="aObsCampo" hidden><span>Como foi entregue (opcional)</span><input type="text" id="aObs" class="input" maxlength="400" placeholder="ex.: planilha por e-mail"></label>
+        <label class="sv-check" id="aTarefaCampo" hidden><input type="checkbox" id="aTarefa" checked> Pôr na tarefa das NFS-e da Thalia</label>
+        <div id="aErro" class="sv-erro" role="alert"></div>
+      </div>
+      <div class="fa-modal-foot">
+        <button class="btn btn-ghost" id="aCancelar">Cancelar</button>
+        <button class="btn btn-primary" id="aConfirmar">Confirmar</button>
+      </div>
+    </div>
+  </div>
+
+  <script type="module">
+    import { supabase, getCurrentUser, signOut } from './assets/js/supabase.js';
+    import { nomePorEmail, EQUIPE } from './assets/js/equipe.js';
+    import { normalizarDocumento, formatDocumento, formatTelefone, ESTADOS_BR } from './assets/js/utils.js';
+    import { isoValida } from './assets/js/rescisao-datas.js';
+    import { criarTarefasAvulsas, excluirTarefasCriadas } from './assets/js/tarefas-acoes.js';
+    import { SITUACOES, PEDE_MOTIVO, PAGAMENTOS, ESTADOS, GRUPOS, REGUA, LIMITES, nomeDaSituacao, diaEmBrasilia, fmtData, rotuloDoMes, instanteDoDia,
+      fmtDinheiro, lerDinheiro, textoDoPreco, slugDe, linkSeguro, itensDaRegua, faltaPraIrProAr, progressoDaRegua, reguaParaGravar, proximoPasso,
+      janelaDoServico, conferirServico, aceitaVenda, conferirVenda, pendenciasDaVenda, textoDoArrependimento, dentroDoArrependimento, contasPorServico,
+      secoesDaVitrine, numerosPorMes, testeDeParar, guiaDoComeco, TITULO_TAREFA_NOTAS, linhaDaNota, descricaoDaTarefaNotas, temVendaNaTarefa,
+      juntarNaTarefaNotas, marcarNotaNaTarefa, desmarcarNotaNaTarefa, tirarDaTarefaNotas, prazoDaTarefaNotas } from './assets/js/servicos-digitais.js';
+
+    const $ = id => document.getElementById(id);
+    const esc = t => String(t == null ? '' : t).replace(/[&<>"']/g, m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m]));
+    const semAcento = s => String(s == null ? '' : s).normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+    const texto = v => String(v == null ? '' : v).trim();
+    const plural = (n, um, varios) => n + ' ' + (n === 1 ? um : varios);
+    const hojeBR = () => diaEmBrasilia(new Date());
+    const pessoa = e => nomePorEmail(e) || e || '';
+
+    const COLS_S = 'id, slug, nome, resumo, publico, modelo, preco, preco_obs, situacao, motivo, janela_ate, parar_em, parar_criterio, link_pagina, link_prototipo, quem_assina, responsavel, regua, origem, observacao, ordem, no_ar_desde, encerrado_em, criado_por, criado_em, atualizado_por, atualizado_em';
+    const COLS_V = 'id, numero, servico_id, cliente_id, comprador_nome, comprador_documento, comprador_email, comprador_whatsapp, comprador_cidade, comprador_uf, valor, origem, termos_versao, termos_aceitos_em, pagamento, pago_em, pago_por, pix_id, devolvido_em, devolvido_por, devolucao_motivo, entregue_em, entregue_por, entrega_obs, nfse_numero, nfse_em, nfse_por, tarefa_id, observacao, criado_por, criado_em, atualizado_por, atualizado_em';
+    const ABAS = ['vitrine', 'vendas', 'numeros'];
+    const MAX_GUIA = 5;
+    const DESFAZER_MS = 10 * 60 * 1000;
+
+    let servicos = [], vendas = [], clientes = null, quem = null, erroLeitura = false;
+    let aba = 'vitrine', busca = '';
+    const filtro = { servico: '', pagamento: '', pendencia: false };
+    let fichaDe = null, slugMexido = false;   // o serviço aberto na ficha (null = novo)
+    let vendaDe = null;                        // a venda aberta no formulário (null = nova)
+    let acao = null;                           // { tipo, venda }
+    let ultimo = null, relogio = null;         // o que dá pra desfazer
+    let foraAberta = false;
+    const voltarFoco = {};
+
+    // ---------- o banco ----------
+    function erroDoBanco(error, padrao = 'Não deu pra gravar agora. Tente de novo.') {
+      const c = error && error.code;
+      if (c === '23505') return 'Já existe um serviço com este endereço curto. Escolha outro.';
+      if (c === '23514') return 'O banco recusou o que foi enviado. Confira os campos e tente de novo.';
+      if (c === '42501') return 'Este login não pode gravar aqui.';
+      return padrao;
+    }
+
+    async function carregar() {
+      const [s, v] = await Promise.all([
+        supabase.from('servicos_digitais').select(COLS_S).order('ordem').order('nome'),
+        supabase.todasLinhas(() => supabase.from('servicos_vendas').select(COLS_V).order('numero', { ascending: false }))
+      ]);
+      erroLeitura = !!(s.error || v.error);
+      servicos = s.error ? [] : (s.data || []);
+      vendas = v.error ? [] : (v.data || []).sort((a, b) => Number(b.numero) - Number(a.numero));   // a mais nova em cima
+    }
+    const servicoDe = id => servicos.find(s => s.id === id) || null;
+    const trocarServico = linha => { const i = servicos.findIndex(s => s.id === linha.id); if (i >= 0) servicos[i] = linha; else servicos.push(linha); };
+    const trocarVenda = linha => { const i = vendas.findIndex(v => v.id === linha.id); if (i >= 0) vendas[i] = linha; else vendas.unshift(linha); };
+
+    // ---------- avisos e janelas ----------
+    function avisar(msg, { desfazer = false, alerta = false } = {}) {
+      const el = $('aviso');
+      clearTimeout(relogio);
+      if (!msg) { el.hidden = true; el.innerHTML = ''; return; }
+      el.className = 'sv-aviso' + (alerta ? ' sv-aviso-alerta' : '');
+      el.innerHTML = '<span>' + esc(msg) + '</span>' + (desfazer ? ' <button class="btn btn-ghost btn-sm" id="btnDesfazer">Desfazer</button>' : '');
+      el.hidden = false;
+      if (desfazer) { $('btnDesfazer').addEventListener('click', desfazer_); relogio = setTimeout(() => { ultimo = null; avisar(''); }, DESFAZER_MS); }
+    }
+    function abrirJanela(id, foco) {
+      voltarFoco[id] = document.activeElement;
+      $(id).classList.add('is-open');
+      if (foco) setTimeout(() => { const f = $(foco); if (f && !f.disabled) f.focus(); }, 30);
+    }
+    function fecharJanela(id) {
+      $(id).classList.remove('is-open');
+      const f = voltarFoco[id];
+      if (f && document.contains(f) && typeof f.focus === 'function') f.focus();
+      delete voltarFoco[id];
+    }
+    const ocupado = (botao, sim, rotulo) => { botao.disabled = sim; if (rotulo) botao.textContent = rotulo; };
+
+    // ---------- as abas ----------
+    function mostrarAba(a, { guardar = true } = {}) {
+      aba = ABAS.includes(a) ? a : 'vitrine';
+      for (const x of ABAS) {
+        const nome = x.charAt(0).toUpperCase() + x.slice(1);
+        $('tab' + nome).setAttribute('aria-selected', String(x === aba));
+        $('tab' + nome).tabIndex = x === aba ? 0 : -1;
+        $('painel' + nome).hidden = x !== aba;
+      }
+      if (guardar) endereco({ aba: aba === 'vitrine' ? null : aba });
+    }
+    function endereco(mudancas) {
+      const u = new URL(location.href);
+      for (const [k, v] of Object.entries(mudancas)) { if (v == null || v === '') u.searchParams.delete(k); else u.searchParams.set(k, v); }
+      history.replaceState(null, '', u.pathname + (u.searchParams.toString() ? '?' + u.searchParams.toString() : '') + u.hash);
+    }
+
+    // ---------- por onde começar ----------
+    function desenharGuia() {
+      const corpo = $('guiaCorpo');
+      if (erroLeitura) { corpo.innerHTML = '<span class="sv-alerta">Não deu pra ler os serviços agora. Recarregue a página.</span>'; return; }
+      const passos = guiaDoComeco(servicos, vendas, hojeBR());
+      const item = p => p.servico ? '<button class="sv-guia-item" data-servico="' + esc(p.servico) + '">' + esc(p.texto) + '</button>'
+        : p.aba ? '<button class="sv-guia-item" data-aba="' + esc(p.aba) + '">' + esc(p.texto) + '</button>'
+        : '<span class="sv-guia-texto">' + esc(p.texto) + '</span>';
+      corpo.innerHTML = '<ol>' + passos.slice(0, MAX_GUIA).map(p => '<li class="' + (p.tipo === 'alerta' ? 'sv-alerta' : '') + '">' + item(p) + '</li>').join('') + '</ol>'
+        + (passos.length > MAX_GUIA ? '<div class="sv-guia-mais">e mais ' + (passos.length - MAX_GUIA) + ' na vitrine.</div>' : '');
+    }
+
+    // ---------- a vitrine ----------
+    function cartaoHtml(s, contas, hoje) {
+      const p = progressoDaRegua(s), passo = proximoPasso(s, { hoje, vendas }), c = contas.get(s.id);
+      const pag = linkSeguro(s.link_pagina), prot = linkSeguro(s.link_prototipo), jan = janelaDoServico(s, hoje);
+      const pct = p.total ? Math.round(p.feitos / p.total * 100) : 0;
+      const numeros = s.modelo === 'pago' && c ? [c.pagas ? plural(c.pagas, 'venda', 'vendas') + ' · R$ ' + fmtDinheiro(c.receita) : '', c.aguardando ? plural(c.aguardando, 'aguardando o pagamento', 'aguardando o pagamento') : '',
+        c.pendentes ? plural(c.pendentes, 'com pendência', 'com pendência') : ''].filter(Boolean) : [];
+      return '<article class="sv-card sv-sit-' + esc(s.situacao) + '" data-slug="' + esc(s.slug) + '">'
+        + '<div class="sv-card-topo">'
+        + '<button class="sv-nome" data-abrir="' + esc(s.slug) + '">' + esc(s.nome) + '</button>'
+        + '<span class="sv-pill sv-pill-sit">' + esc(nomeDaSituacao(s.situacao)) + '</span>'
+        + '<span class="sv-pill sv-pill-preco' + (s.modelo === 'gratis' ? ' sv-pill-gratis' : '') + '">' + esc(textoDoPreco(s)) + '</span>'
+        + (s.modelo === 'pago' && s.preco_obs ? '<span class="sv-preco-obs">' + esc(s.preco_obs) + '</span>' : '')
+        + '</div>'
+        + (s.resumo ? '<p class="sv-resumo">' + esc(s.resumo) + '</p>' : '')
+        + '<div class="sv-meta">'
+        + (s.publico ? '<span><b>Pra quem:</b> ' + esc(s.publico) + '</span>' : '')
+        + (jan.estado !== 'sem' ? '<span class="' + (jan.estado === 'fechada' ? 'sv-alerta' : '') + '">' + esc(jan.texto) + '</span>' : '')
+        + (s.responsavel ? '<span><b>Com:</b> ' + esc(s.responsavel) + '</span>' : '')
+        + '</div>'
+        + '<div class="sv-regua-linha"><span class="sv-regua-n">Régua ' + p.feitos + ' de ' + p.total + '</span>'
+        + '<span class="sv-barra" role="img" aria-label="' + pct + '% da régua"><span style="width:' + pct + '%"></span></span></div>'
+        + '<div class="sv-passo' + (passo.alerta ? ' sv-alerta' : '') + '">' + esc(passo.texto) + '</div>'
+        + (pag || prot || numeros.length ? '<div class="sv-card-pe">'
+          + (pag ? '<a class="sv-link" href="' + esc(pag) + '" target="_blank" rel="noopener noreferrer">Abrir a página ↗</a>' : '')
+          + (prot ? '<a class="sv-link" href="' + esc(prot) + '" target="_blank" rel="noopener noreferrer">Abrir o protótipo ↗</a>' : '')
+          + (numeros.length ? '<span class="sv-vendas-n">' + esc(numeros.join(' · ')) + '</span>' : '')
+          + '</div>' : '')
+        + '</article>';
+    }
+    function desenharVitrine() {
+      const el = $('vitrine');
+      if (erroLeitura) { el.innerHTML = '<div class="empty-state">Não deu pra ler os serviços agora. Recarregue a página.</div>'; return; }
+      const termo = semAcento(busca.trim()), hoje = hojeBR(), contas = contasPorServico(vendas);
+      const bate = s => !termo || [s.nome, s.resumo, s.publico, s.slug, s.responsavel].some(x => semAcento(x).includes(termo));
+      const secoes = secoesDaVitrine(servicos.filter(bate));
+      $('nVitrine').textContent = servicos.length ? '(' + servicos.filter(s => !PEDE_MOTIVO.includes(s.situacao)).length + ')' : '';
+      if (!servicos.length) { el.innerHTML = '<div class="empty-state"><h3>A vitrine está vazia</h3><p>Cadastre a primeira ideia em "+ Novo serviço".</p></div>'; return; }
+      if (!secoes.some(x => x.itens.length)) { el.innerHTML = '<div class="empty-state">Nenhum serviço com "' + esc(busca.trim()) + '".</div>'; return; }
+      el.innerHTML = secoes.filter(x => x.itens.length).map(x => {
+        const cards = x.itens.map(s => cartaoHtml(s, contas, hoje)).join('');
+        return x.recolhida
+          ? '<details class="sv-fora" id="secFora"' + (foraAberta || termo ? ' open' : '') + '><summary>' + esc(x.titulo) + ' (' + x.itens.length + ')</summary><div class="sv-grade">' + cards + '</div></details>'
+          : '<section class="sv-secao" data-secao="' + esc(x.id) + '"><h2 class="sv-secao-titulo">' + esc(x.titulo) + ' <span>(' + x.itens.length + ')</span></h2><div class="sv-grade">' + cards + '</div></section>';
+      }).join('');
+      const fora = $('secFora');
+      // só o clique da pessoa fica guardado: a busca que abriu os recolhidos não os deixa abertos depois
+      if (fora) fora.addEventListener('toggle', () => { if (!semAcento(busca.trim())) foraAberta = fora.open; });
+    }
+
+    // ---------- as vendas ----------
+    function vendaHtml(v, hoje) {
+      const s = servicoDe(v.servico_id), pend = pendenciasDaVenda(v), arr = textoDoArrependimento(v, hoje);
+      const estado = v.pagamento === 'pago' ? 'Paga em ' + fmtData(v.pago_em) : v.pagamento === 'devolvido' ? 'Devolvida em ' + fmtData(v.devolvido_em)
+        : v.pagamento === 'cancelado' ? 'Cancelada' : 'Aguardando o pagamento';
+      const partes = [];
+      if (v.pagamento === 'pago' || v.pagamento === 'devolvido') {
+        if (v.entregue_em) partes.push('Entregue em ' + fmtData(v.entregue_em) + (v.entrega_obs ? ' (' + v.entrega_obs + ')' : ''));
+        if (v.nfse_numero) partes.push('NFS-e ' + v.nfse_numero + (v.nfse_em ? ' de ' + fmtData(v.nfse_em) : ''));
+      }
+      if (v.pagamento === 'devolvido' && v.devolucao_motivo) partes.push('Motivo: ' + v.devolucao_motivo);
+      if (v.pagamento === 'pago' && v.pago_por) partes.push('Confirmada por ' + pessoa(v.pago_por));
+      if (v.origem === 'pagina') partes.push('Pela página');
+      const b = (ac, rotulo, classe = 'btn-ghost') => '<button class="btn ' + classe + ' btn-sm" data-acao="' + ac + '" data-venda="' + esc(v.id) + '">' + rotulo + '</button>';
+      const botoes = v.pagamento === 'aguardando' ? b('pagar', 'Confirmar pagamento', 'btn-primary') + b('cancelar', 'Cancelar')
+        : v.pagamento === 'pago' ? (v.entregue_em ? '' : b('entregar', 'Marcar entregue', 'btn-primary')) + (!v.nfse_numero && Number(v.valor) > 0 ? b('nfse', 'Informar a NFS-e') : '') + b('devolver', 'Devolver')
+        : '';
+      return '<article class="sv-venda sv-pag-' + esc(v.pagamento) + '" data-venda="' + esc(v.id) + '">'
+        + '<div class="sv-venda-info">'
+        + '<div class="sv-venda-topo"><span class="sv-venda-n">Nº ' + esc(v.numero) + '</span>'
+        + '<span class="sv-venda-nome">' + esc(v.comprador_nome) + '</span>'
+        + (v.comprador_documento ? '<span class="sv-venda-doc">' + esc(formatDocumento(v.comprador_documento)) + '</span>' : '')
+        + (v.cliente_id ? '<a class="sv-pill sv-pill-cliente" href="clientes/editar.html?id=' + encodeURIComponent(v.cliente_id) + '" title="Abrir o cadastro">cliente do escritório</a>' : '')
+        + '</div>'
+        + '<div class="sv-venda-linha"><span>' + esc(s ? s.nome : 'Serviço fora da lista') + '</span><span class="sv-venda-valor">R$ ' + fmtDinheiro(v.valor) + '</span>'
+        + '<span class="sv-pill sv-pill-pag">' + esc(estado) + '</span>'
+        + pend.filter(x => x.chave !== 'pagamento').map(x => '<span class="sv-pill sv-pill-pend">' + esc(x.texto) + '</span>').join('')
+        + '</div>'
+        + (partes.length ? '<div class="sv-venda-det">' + esc(partes.join(' · ')) + '</div>' : '')
+        + (arr ? '<div class="sv-venda-arr">' + esc(arr) + '</div>' : '')
+        + (v.observacao ? '<div class="sv-venda-obs">' + esc(v.observacao) + '</div>' : '')
+        + '</div>'
+        + '<div class="sv-venda-acoes">' + botoes + b('editar', 'Editar') + '</div>'
+        + '</article>';
+    }
+    function desenharVendas() {
+      const el = $('vendas'), hoje = hojeBR();
+      const comPend = vendas.filter(v => pendenciasDaVenda(v).length).length;
+      $('nVendas').textContent = comPend ? '(' + plural(comPend, 'pendência', 'pendências') + ')' : vendas.length ? '(' + vendas.length + ')' : '';
+      // os serviços do filtro: os que têm venda e os que podem vender
+      const comVenda = new Set(vendas.map(v => v.servico_id));
+      const opcoes = servicos.filter(s => comVenda.has(s.id) || aceitaVenda(s));
+      $('fServico').innerHTML = '<option value="">Todos os serviços</option>' + opcoes.map(s => '<option value="' + esc(s.id) + '">' + esc(s.nome) + '</option>').join('');
+      if (filtro.servico && !opcoes.some(s => s.id === filtro.servico)) filtro.servico = '';
+      $('fServico').value = filtro.servico; $('fPagamento').value = filtro.pagamento; $('fPendencia').checked = filtro.pendencia;
+      if (erroLeitura) { el.innerHTML = '<div class="empty-state">Não deu pra ler as vendas agora. Recarregue a página.</div>'; return; }
+      const lista = vendas.filter(v => (!filtro.servico || v.servico_id === filtro.servico) && (!filtro.pagamento || v.pagamento === filtro.pagamento) && (!filtro.pendencia || pendenciasDaVenda(v).length));
+      if (!vendas.length) { el.innerHTML = '<div class="empty-state"><h3>Nenhuma venda ainda</h3><p>A venda entra aqui pelo "+ Registrar venda", de um serviço pago que está no ar.</p></div>'; return; }
+      if (!lista.length) { el.innerHTML = '<div class="empty-state">Nenhuma venda neste filtro.</div>'; return; }
+      el.innerHTML = lista.map(v => vendaHtml(v, hoje)).join('');
+    }
+
+    // ---------- os números ----------
+    function desenharNumeros() {
+      const el = $('numeros'), hoje = hojeBR();
+      if (erroLeitura) { el.innerHTML = '<div class="empty-state">Não deu pra ler os números agora. Recarregue a página.</div>'; return; }
+      const n = numerosPorMes(servicos, vendas, { hoje });
+      const cel = c => c.vendas || c.devolvidas ? '<b>' + c.vendas + '</b> · R$ ' + fmtDinheiro(c.receita) + (c.devolvidas ? '<span class="sv-dev"> · ' + plural(c.devolvidas, 'devolvida', 'devolvidas') + '</span>' : '') : '<span class="sv-zero">—</span>';
+      const noAr = servicos.filter(s => s.situacao === 'no_ar' && testeDeParar(s, vendas, hoje).estado !== 'fora');
+      const testes = noAr.length ? '<h2 class="sv-secao-titulo">O teste de parar</h2><ul class="sv-testes">' + noAr.map(s => {
+        const t = testeDeParar(s, vendas, hoje);
+        return '<li class="' + (t.estado === 'chegou' || t.estado === 'sem' ? 'sv-alerta' : '') + '"><button class="sv-guia-item" data-abrir="' + esc(s.slug) + '">' + esc(s.nome) + '</button>: ' + esc(t.texto) + '</li>';
+      }).join('') + '</ul>' : '';
+      if (!n.meses.length) { el.innerHTML = '<div class="empty-state"><h3>Ainda sem venda paga</h3><p>Os números aparecem aqui quando a primeira venda for confirmada.</p></div>' + testes; return; }
+      const t = n.totais.total;
+      el.innerHTML = '<p class="sv-num-resumo">No período: <b>' + plural(t.vendas, 'venda paga', 'vendas pagas') + '</b>, <b>R$ ' + fmtDinheiro(t.receita) + '</b>' + (t.devolvidas ? ' · ' + plural(t.devolvidas, 'devolvida', 'devolvidas') : '')
+        + (n.antes ? ' · antes de ' + esc(rotuloDoMes(n.meses[0])) + ': ' + plural(n.antes.vendas, 'venda', 'vendas') + ', R$ ' + fmtDinheiro(n.antes.receita) : '') + '. O mês é o do pagamento.</p>'
+        + '<div class="table-wrap sv-tabela-wrap"><table class="table sv-tabela"><thead><tr><th scope="col">Serviço</th>' + n.meses.map(m => '<th scope="col">' + esc(rotuloDoMes(m)) + '</th>').join('') + '<th scope="col">Total</th></tr></thead><tbody>'
+        + n.linhas.map(l => '<tr><th scope="row">' + esc(l.nome) + '</th>' + n.meses.map(m => '<td>' + cel(l.porMes[m]) + '</td>').join('') + '<td>' + cel(l.total) + '</td></tr>').join('')
+        + '</tbody><tfoot><tr><th scope="row">Total</th>' + n.meses.map(m => '<td>' + cel(n.totais.porMes[m]) + '</td>').join('') + '<td>' + cel(t) + '</td></tr></tfoot></table></div>' + testes;
+    }
+
+    function desenhar() { desenharGuia(); desenharVitrine(); desenharVendas(); desenharNumeros(); }
+
+    // ---------- a ficha do serviço ----------
+    const CAMPO_ID = { nome: 'sNome', slug: 'sSlug', preco: 'sPreco', preco_obs: 'sPrecoObs', situacao: 'sSituacao', motivo: 'sMotivo', janela_ate: 'sJanela', parar_em: 'sParar',
+      parar_criterio: 'sCriterio', link_pagina: 'sLinkPagina', link_prototipo: 'sLinkPrototipo', quem_assina: 'sQuemAssina', resumo: 'sResumo', publico: 'sPublico', origem: 'sOrigem', observacao: 'sObs', responsavel: 'sResponsavel' };
+
+    function montarRegua(s) {
+      const regua = s && s.regua && typeof s.regua === 'object' ? s.regua : {};
+      $('sRegua').innerHTML = GRUPOS.map(g => '<div class="sv-grupo"><h5>' + esc(g.nome) + '</h5>' + REGUA.filter(i => i.grupo === g.id).map(i => {
+        const gravado = regua[i.chave] && typeof regua[i.chave] === 'object' ? regua[i.chave] : {};
+        const quando = gravado.em ? 'Marcado' + (gravado.por ? ' por ' + gravado.por : '') + ' em ' + fmtData(gravado.em) + '.' : '';
+        return '<div class="sv-item" data-chave="' + esc(i.chave) + '"' + (i.soPago ? ' data-so-pago="1"' : '') + '>'
+          + '<div class="sv-item-topo"><span class="sv-item-rotulo">' + esc(i.rotulo) + '<span class="sv-item-info" hidden> · só informa: é por isso que é grátis</span></span>'
+          + '<select class="input sv-item-estado" aria-label="' + esc(i.rotulo) + ': estado">'
+          + Object.entries(ESTADOS).filter(([k]) => k !== 'na' || i.aceitaNa).map(([k, nome]) => '<option value="' + k + '">' + esc(nome) + '</option>').join('') + '</select></div>'
+          + '<textarea class="input sv-item-nota" rows="1" maxlength="' + LIMITES.nota + '" placeholder="Nota: o que foi conferido, o que falta" aria-label="' + esc(i.rotulo) + ': nota"></textarea>'
+          + '<div class="sv-item-ajuda">' + esc(i.ajuda) + ' <span class="sv-item-base">Base: ' + esc(i.base) + '.</span></div>'
+          + (quando ? '<div class="sv-item-quem">' + esc(quando) + '</div>' : '')
+          + '</div>';
+      }).join('') + '</div>').join('');
+      // o que veio do banco entra pelo .value (nunca como HTML)
+      for (const i of itensDaRegua({ modelo: 'pago', regua })) {
+        const linha = $('sRegua').querySelector('[data-chave="' + i.chave + '"]');
+        linha.querySelector('.sv-item-estado').value = i.estado;
+        linha.querySelector('.sv-item-nota').value = i.nota;
+      }
+    }
+    function lerRegua() {
+      const r = {};
+      $('sRegua').querySelectorAll('.sv-item').forEach(linha => { r[linha.dataset.chave] = { estado: linha.querySelector('.sv-item-estado').value, nota: linha.querySelector('.sv-item-nota').value.replace(/\s+/g, ' ') }; });
+      return r;
+    }
+    // a caixa da nota cresce com o texto (a nota inteira à vista); a que não está na tela volta à altura de uma linha
+    function ajustarNotas(so) {
+      (so ? [so] : [...$('sRegua').querySelectorAll('.sv-item-nota')]).forEach(c => {
+        c.style.height = '';
+        if (c.offsetParent !== null && c.scrollHeight > c.clientHeight) c.style.height = (c.scrollHeight + 2) + 'px';
+      });
+    }
+    function lerFicha() {
+      return { slug: fichaDe ? fichaDe.slug : $('sSlug').value, nome: $('sNome').value, resumo: $('sResumo').value, publico: $('sPublico').value, modelo: $('sModelo').value,
+        preco: $('sPreco').value, preco_obs: $('sPrecoObs').value, situacao: $('sSituacao').value, motivo: $('sMotivo').value, janela_ate: $('sJanela').value, parar_em: $('sParar').value,
+        parar_criterio: $('sCriterio').value, link_pagina: $('sLinkPagina').value, link_prototipo: $('sLinkPrototipo').value, quem_assina: $('sQuemAssina').value,
+        responsavel: $('sResponsavel').value, origem: $('sOrigem').value, observacao: $('sObs').value, ordem: $('sOrdem').value, regua: lerRegua() };
+    }
+    // o que muda na ficha conforme o que está escolhido: o grátis sem preço e sem os itens da venda paga, o motivo, a conta da régua e o que falta pro ar
+    function acompanharFicha() {
+      const f = lerFicha(), gratis = f.modelo === 'gratis';
+      $('sPrecoCampo').hidden = gratis; $('sPrecoObsCampo').hidden = gratis;
+      $('sMotivoCampo').hidden = !PEDE_MOTIVO.includes(f.situacao);
+      $('sRegua').querySelectorAll('.sv-item').forEach(linha => {
+        linha.hidden = gratis && linha.dataset.soPago === '1';
+        linha.querySelector('.sv-item-info').hidden = !(gratis && linha.dataset.chave === 'pode_cobrar');
+        linha.dataset.estado = linha.querySelector('.sv-item-estado').value;
+      });
+      const provisorio = { ...f, preco: gratis ? null : lerDinheiro(f.preco) };
+      const p = progressoDaRegua(provisorio);
+      $('sReguaConta').textContent = p.feitos + ' de ' + p.total + (p.fechada ? ' · fechada' : '');
+      const falta = f.situacao === 'no_ar' ? faltaPraIrProAr(provisorio) : [];
+      $('sFalta').hidden = !falta.length;
+      $('sFalta').textContent = falta.length ? 'Ainda não pode ir pro ar. Falta: ' + falta.map(x => x.rotulo).join(' · ') + '.' : '';
+      ajustarNotas();
+    }
+    function abrirFicha(s) {
+      fichaDe = s || null; slugMexido = false;
+      $('sTitulo').textContent = s ? s.nome : 'Novo serviço';
+      $('sSalvar').textContent = s ? 'Salvar' : 'Cadastrar serviço';
+      $('sErro').textContent = ''; $('sMudou').hidden = true;
+      $('sNome').value = s ? s.nome || '' : ''; $('sSlug').value = s ? s.slug || '' : ''; $('sSlug').disabled = !!s;
+      $('sResumo').value = s ? s.resumo || '' : ''; $('sPublico').value = s ? s.publico || '' : '';
+      $('sModelo').value = s && s.modelo === 'gratis' ? 'gratis' : 'pago';
+      $('sPreco').value = s && s.preco != null ? fmtDinheiro(s.preco) : ''; $('sPrecoObs').value = s ? s.preco_obs || '' : '';
+      $('sSituacao').innerHTML = SITUACOES.map(x => '<option value="' + x.id + '">' + esc(x.nome) + '</option>').join('');
+      $('sSituacao').value = s ? s.situacao : 'ideia';
+      const pessoas = EQUIPE.slice();
+      if (s && s.responsavel && !pessoas.includes(s.responsavel)) pessoas.push(s.responsavel);
+      $('sResponsavel').innerHTML = '<option value="">—</option>' + pessoas.map(n => '<option value="' + esc(n) + '">' + esc(n) + '</option>').join('');
+      $('sResponsavel').value = s ? s.responsavel || '' : (EQUIPE.includes(quem) ? quem : '');
+      $('sMotivo').value = s ? s.motivo || '' : '';
+      $('sJanela').value = s ? s.janela_ate || '' : ''; $('sParar').value = s ? s.parar_em || '' : ''; $('sCriterio').value = s ? s.parar_criterio || '' : '';
+      $('sLinkPagina').value = s ? s.link_pagina || '' : ''; $('sLinkPrototipo').value = s ? s.link_prototipo || '' : '';
+      $('sQuemAssina').value = s ? s.quem_assina || '' : ''; $('sOrigem').value = s ? s.origem || '' : '';
+      $('sObs').value = s ? s.observacao || '' : ''; $('sOrdem').value = s ? Number(s.ordem) || 0 : 0;
+      montarRegua(s);
+      $('sMeta').textContent = s ? ['Criado' + (s.criado_por ? ' por ' + pessoa(s.criado_por) : '') + ' em ' + fmtData(s.criado_em), s.atualizado_em ? 'atualizado' + (s.atualizado_por ? ' por ' + pessoa(s.atualizado_por) : '') + ' em ' + fmtData(s.atualizado_em) : '',
+        s.no_ar_desde ? 'no ar desde ' + fmtData(s.no_ar_desde) : '', s.encerrado_em ? 'encerrado em ' + fmtData(s.encerrado_em) : ''].filter(Boolean).join(' · ') + '.' : '';
+      acompanharFicha();
+      endereco({ s: s ? s.slug : null });
+      abrirJanela('ovServico', 'sNome');
+      ajustarNotas();
+    }
+    function fecharFicha() { fecharJanela('ovServico'); fichaDe = null; endereco({ s: null }); }
+
+    async function salvarFicha() {
+      const erroEl = $('sErro'); erroEl.textContent = '';
+      $('ovServico').querySelectorAll('[aria-invalid]').forEach(x => x.removeAttribute('aria-invalid'));
+      const { ok, erros, valor } = conferirServico(lerFicha(), { novo: !fichaDe });
+      if (!ok) {
+        erroEl.textContent = Object.values(erros).join(' ');
+        const primeiro = Object.keys(erros)[0];
+        const campo = primeiro.startsWith('regua.') ? $('sRegua').querySelector('[data-chave="' + primeiro.slice(6) + '"] .sv-item-nota') : $(CAMPO_ID[primeiro] || '');
+        Object.keys(erros).forEach(k => { const c = k.startsWith('regua.') ? $('sRegua').querySelector('[data-chave="' + k.slice(6) + '"] .sv-item-nota') : $(CAMPO_ID[k] || ''); if (c) c.setAttribute('aria-invalid', 'true'); });
+        if (campo && !campo.disabled) campo.focus();
+        return;
+      }
+      const linha = { ...valor, regua: reguaParaGravar(fichaDe ? fichaDe.regua : {}, valor.regua, quem, new Date().toISOString()) };
+      const botao = $('sSalvar'), rotulo = botao.textContent;
+      ocupado(botao, true, 'Salvando…');
+      try {
+        if (!fichaDe) {
+          const { data, error } = await supabase.from('servicos_digitais').insert(linha).select(COLS_S).single();
+          if (error || !data) { erroEl.textContent = erroDoBanco(error); return; }
+          trocarServico(data);
+          fecharFicha(); desenhar(); avisar('Serviço "' + data.nome + '" cadastrado.');
+          return;
+        }
+        delete linha.slug;   // o endereço curto não muda depois de criado
+        const { data, error } = await supabase.from('servicos_digitais').update(linha).eq('id', fichaDe.id).eq('atualizado_em', fichaDe.atualizado_em).select(COLS_S);
+        if (error) { erroEl.textContent = erroDoBanco(error); return; }
+        if (!data || !data.length) { await fichaMudou(); return; }
+        trocarServico(data[0]);
+        fecharFicha(); desenhar(); avisar('Serviço "' + data[0].nome + '" salvo.');
+      } finally { ocupado(botao, false, rotulo); }
+    }
+    // alguém salvou este serviço depois que a ficha abriu: não grava por cima, mostra como ficou
+    async function fichaMudou() {
+      const id = fichaDe.id;
+      const { data } = await supabase.from('servicos_digitais').select(COLS_S).eq('id', id);
+      const agora = data && data[0];
+      if (agora) { trocarServico(agora); desenhar(); }
+      const el = $('sMudou');
+      el.innerHTML = 'Este serviço foi alterado' + (agora && agora.atualizado_por ? ' por ' + esc(pessoa(agora.atualizado_por)) : '') + ' enquanto a ficha estava aberta. Nada foi gravado. '
+        + '<button class="btn btn-ghost btn-sm" id="sRecarregar">Ver como ficou</button>';
+      el.hidden = false;
+      $('sRecarregar').addEventListener('click', () => { if (agora) abrirFicha(agora); else fecharFicha(); });
+      el.scrollIntoView({ block: 'nearest' });
+    }
+
+    // ---------- a venda ----------
+    async function lerClientes() {
+      if (clientes) return clientes;
+      const { data, error } = await supabase.todosClientes('id, nome_principal, documento');
+      clientes = error ? [] : (data || []);
+      return clientes;
+    }
+    function clienteDoDocumento() {
+      const doc = normalizarDocumento($('vDoc').value), el = $('vCliente');
+      const c = doc && clientes ? clientes.find(x => normalizarDocumento(x.documento) === doc) : null;
+      el.hidden = !c;
+      el.textContent = c ? 'É cliente do escritório: ' + c.nome_principal + '.' : '';
+      return c ? c.id : null;
+    }
+    function abrirVenda(v) {
+      vendaDe = v || null;
+      const vendaveis = servicos.filter(aceitaVenda), s = v ? servicoDe(v.servico_id) : null, travada = !!v && v.pagamento !== 'aguardando';
+      $('vTitulo').textContent = v ? 'Venda nº ' + v.numero : 'Registrar venda';
+      $('vSalvar').textContent = v ? 'Salvar' : 'Registrar venda';
+      $('vErro').textContent = '';
+      $('vSemServico').hidden = !!v || vendaveis.length > 0;
+      $('vServicoCampo').hidden = !!v; $('vServicoFixo').hidden = !v;
+      $('vServicoFixo').textContent = v ? (s ? s.nome : 'Serviço fora da lista') + ' · ' + (PAGAMENTOS[v.pagamento] || '') : '';
+      const noAr = vendaveis.filter(x => x.situacao === 'no_ar'), antes = vendaveis.filter(x => x.situacao !== 'no_ar');
+      const op = x => '<option value="' + esc(x.id) + '">' + esc(x.nome) + '</option>';
+      $('vServico').innerHTML = (vendaveis.length === 1 ? '' : '<option value="">Escolha…</option>') + noAr.map(op).join('') + (antes.length ? '<optgroup label="Fora do ar (venda de antes)">' + antes.map(op).join('') + '</optgroup>' : '');
+      $('vNome').value = v ? v.comprador_nome || '' : ''; $('vDoc').value = v && v.comprador_documento ? formatDocumento(v.comprador_documento) : '';
+      $('vEmail').value = v ? v.comprador_email || '' : ''; $('vZap').value = v && v.comprador_whatsapp ? formatTelefone(v.comprador_whatsapp.replace(/^55(?=\d{10,11}$)/, '')) : '';
+      $('vCidade').value = v ? v.comprador_cidade || '' : '';
+      $('vUf').innerHTML = '<option value="">—</option>' + ESTADOS_BR.map(u => '<option value="' + u + '">' + u + '</option>').join('');
+      $('vUf').value = v ? v.comprador_uf || '' : 'RS';
+      $('vObs').value = v ? v.observacao || '' : '';
+      $('vValor').disabled = travada;
+      $('vValor').title = travada ? 'O valor não muda depois do pagamento.' : '';
+      $('vSalvar').disabled = !v && !vendaveis.length;
+      const preco = () => { const x = servicoDe($('vServico').value); $('vValor').value = x && x.preco != null ? fmtDinheiro(x.preco) : ''; };
+      if (v) $('vValor').value = fmtDinheiro(v.valor); else preco();
+      $('vServico').onchange = preco;
+      $('vCliente').hidden = true;
+      lerClientes().then(clienteDoDocumento);
+      abrirJanela('ovVenda', v ? 'vNome' : (vendaveis.length === 1 ? 'vNome' : 'vServico'));
+    }
+    async function salvarVenda() {
+      const erroEl = $('vErro'); erroEl.textContent = '';
+      const dados = { servico_id: vendaDe ? vendaDe.servico_id : $('vServico').value, comprador_nome: $('vNome').value, comprador_documento: $('vDoc').value, comprador_email: $('vEmail').value,
+        comprador_whatsapp: $('vZap').value, comprador_cidade: $('vCidade').value, comprador_uf: $('vUf').value, valor: $('vValor').value, observacao: $('vObs').value };
+      const { ok, erros, valor } = conferirVenda(dados, vendaDe ? {} : { servicos });
+      if (!ok) {
+        erroEl.textContent = Object.values(erros).join(' ');
+        const id = { servico_id: 'vServico', comprador_nome: 'vNome', comprador_documento: 'vDoc', comprador_email: 'vEmail', comprador_whatsapp: 'vZap', comprador_cidade: 'vCidade', comprador_uf: 'vUf', valor: 'vValor', observacao: 'vObs' }[Object.keys(erros)[0]];
+        if (id && !$(id).disabled) $(id).focus();
+        return;
+      }
+      await lerClientes();
+      const linha = { ...valor, cliente_id: clienteDoDocumento() };
+      const botao = $('vSalvar'), rotulo = botao.textContent;
+      ocupado(botao, true, 'Salvando…');
+      try {
+        if (!vendaDe) {
+          const { data, error } = await supabase.from('servicos_vendas').insert({ ...linha, origem: 'manual' }).select(COLS_V).single();
+          if (error || !data) { erroEl.textContent = erroDoBanco(error); return; }
+          trocarVenda(data);
+          fecharJanela('ovVenda'); desenhar(); avisar('Venda nº ' + data.numero + ' registrada. Falta confirmar o pagamento.');
+          return;
+        }
+        delete linha.servico_id;
+        if (vendaDe.pagamento !== 'aguardando') delete linha.valor;
+        const r = await mudarVenda(vendaDe, linha);
+        if (r.erro) { erroEl.textContent = erroDoBanco(r.erro); return; }
+        if (r.conflito) { erroEl.textContent = 'Esta venda mudou enquanto a janela estava aberta. Nada foi gravado: feche, veja como ficou e tente de novo.'; desenhar(); return; }
+        fecharJanela('ovVenda'); desenhar(); avisar('Venda nº ' + r.linha.numero + ' salva.');
+      } finally { ocupado(botao, false, rotulo); }
+    }
+    // toda mudança na venda confere que ela segue como a tela leu (o atualizado_em): mudou, não grava e relê
+    async function mudarVenda(v, patch) {
+      const { data, error } = await supabase.from('servicos_vendas').update(patch).eq('id', v.id).eq('atualizado_em', v.atualizado_em).select(COLS_V);
+      if (error) return { erro: error };
+      if (!data || !data.length) {
+        const { data: agora } = await supabase.from('servicos_vendas').select(COLS_V).eq('id', v.id);
+        if (agora && agora[0]) trocarVenda(agora[0]);
+        return { conflito: true };
+      }
+      trocarVenda(data[0]);
+      return { linha: data[0] };
+    }
+
+    // ---------- a tarefa das NFS-e da Thalia ----------
+    const cabeNoFiltro = t => typeof t === 'string' && t.length > 0 && encodeURIComponent(t).length <= 6000;
+    // grava a descrição nova só se a tarefa segue aberta e, quando cabe no endereço, com a descrição que a tela leu
+    async function gravarDescricao(tarefa, descricao) {
+      let q = supabase.from('tarefas').update({ descricao }).eq('id', tarefa.id).neq('status', 'concluida');
+      if (cabeNoFiltro(tarefa.descricao)) q = q.eq('descricao', tarefa.descricao);
+      const { data, error } = await q.select('id');
+      return { erro: !!error, gravou: !error && !!data && data.length > 0 };
+    }
+    const lerTarefa = async id => { const { data } = await supabase.from('tarefas').select('id, descricao, status').eq('id', id); return data && data[0] ? data[0] : null; };
+    const historico = (tarefaId, descricao) => supabase.from('tarefa_historico').insert({ tarefa_id: tarefaId, descricao, autor: quem });
+
+    async function porNaTarefaDasNotas(v) {
+      const linha = linhaDaNota(v, servicoDe(v.servico_id));
+      const { data: ja, error } = await supabase.from('tarefas').select('id, descricao, status').eq('setor', 'fiscal').eq('titulo', TITULO_TAREFA_NOTAS);
+      if (error) return { erro: true };
+      const comALinha = (ja || []).find(t => temVendaNaTarefa(t.descricao, v.numero));
+      if (comALinha) return { tarefaId: comALinha.id, jaEstava: true };
+      let aberta = (ja || []).find(t => t.status !== 'concluida') || null;
+      for (let vez = 0; aberta && vez < 2; vez++) {
+        const { descricao, entrou } = juntarNaTarefaNotas(aberta.descricao, linha, v.numero);
+        if (!entrou) return { tarefaId: aberta.id, jaEstava: true };
+        const r = await gravarDescricao(aberta, descricao);
+        if (r.erro) return { erro: true };
+        if (r.gravou) { await historico(aberta.id, 'Venda nº ' + v.numero + ' dos serviços digitais na lista.'); return { tarefaId: aberta.id, juntou: true }; }
+        aberta = await lerTarefa(aberta.id);          // mudou no meio: lê de novo e tenta mais uma vez
+        if (aberta && aberta.status === 'concluida') aberta = null;
+      }
+      const r = await criarTarefasAvulsas(supabase, { setor: 'fiscal', titulo: TITULO_TAREFA_NOTAS, descricao: descricaoDaTarefaNotas([linha]), responsavel: 'Thalia',
+        prazo: prazoDaTarefaNotas(hojeBR()), prioridade: 'alta', autor: quem, historico: 'Tarefa criada pela venda de um serviço digital.' });
+      return r.erro || !r.ids.length ? { erro: true } : { tarefaId: r.ids[0], criou: true };
+    }
+    // a nota informada marca a linha da venda na tarefa (se ela segue aberta); o desfazer desmarca
+    async function mexerNaLinha(tarefaId, como, frase) {
+      for (let vez = 0; vez < 2; vez++) {
+        const t = await lerTarefa(tarefaId);
+        if (!t || t.status === 'concluida') return false;
+        const r = como(t.descricao);
+        if (!r.mudou) return false;
+        const g = await gravarDescricao(t, r.descricao);
+        if (g.erro) return false;
+        if (g.gravou) { await historico(t.id, frase); return true; }
+      }
+      return false;
+    }
+    // o desfazer do pagamento: a linha sai; a tarefa que fica sem venda nenhuma, ainda pendente, sai também
+    async function tirarDaTarefa(tarefaId, numero) {
+      const t = await lerTarefa(tarefaId);
+      if (!t || t.status === 'concluida') return;
+      const r = tirarDaTarefaNotas(t.descricao, numero);
+      if (!r.tirou) return;
+      if (!r.sobram && t.status === 'pendente') { await excluirTarefasCriadas(supabase, [t.id]); return; }
+      const g = await gravarDescricao(t, r.descricao);
+      if (g.gravou) await historico(t.id, 'Venda nº ' + numero + ' saiu da lista: o pagamento foi desfeito.');
+    }
+
+    // ---------- as ações na venda ----------
+    const ACOES = {
+      pagar: { titulo: 'Confirmar pagamento', botao: 'Confirmar pagamento', data: 'Dia do pagamento' },
+      entregar: { titulo: 'Marcar entregue', botao: 'Marcar entregue', data: 'Dia da entrega' },
+      nfse: { titulo: 'Informar a NFS-e', botao: 'Gravar a NFS-e', data: 'Dia da nota' },
+      devolver: { titulo: 'Devolver', botao: 'Registrar a devolução', data: 'Dia da devolução' },
+      cancelar: { titulo: 'Cancelar a venda', botao: 'Cancelar a venda', data: null }
+    };
+    function abrirAcao(tipo, v) {
+      const a = ACOES[tipo], s = servicoDe(v.servico_id), hoje = hojeBR();
+      acao = { tipo, venda: v };
+      $('aTitulo').textContent = a.titulo; $('aConfirmar').textContent = a.botao; $('aErro').textContent = '';
+      $('aQuem').textContent = 'Venda nº ' + v.numero + ' · ' + (s ? s.nome : 'Serviço fora da lista') + ' · ' + v.comprador_nome + ' · R$ ' + fmtDinheiro(v.valor);
+      $('aDataCampo').hidden = !a.data; $('aDataRotulo').textContent = a.data || ''; $('aData').value = hoje; $('aData').max = hoje;
+      $('aPixCampo').hidden = tipo !== 'pagar'; $('aPix').value = '';
+      $('aTarefaCampo').hidden = !(tipo === 'pagar' && Number(v.valor) > 0); $('aTarefa').checked = true;
+      $('aObsCampo').hidden = tipo !== 'entregar'; $('aObs').value = '';
+      $('aNumeroCampo').hidden = tipo !== 'nfse'; $('aNumero').value = '';
+      $('aMotivoCampo').hidden = !(tipo === 'devolver' || tipo === 'cancelar'); $('aMotivo').value = '';
+      $('aMotivoRotulo').textContent = tipo === 'devolver' ? 'Motivo da devolução *' : 'Motivo (opcional)';
+      const avisos = [];
+      if (tipo === 'devolver') {
+        if (dentroDoArrependimento(v, hoje)) avisos.push('Dentro do prazo de arrependimento (CDC, art. 49): a devolução é do valor inteiro.');
+        if (v.nfse_numero) avisos.push('Esta venda tem a NFS-e ' + v.nfse_numero + ': a nota precisa ser cancelada. Avise a Thalia.');
+        avisos.push('O sistema só registra: o dinheiro volta pelo banco.');
+      }
+      if (tipo === 'cancelar') avisos.push('A venda que não foi paga fica cancelada (nada se apaga).');
+      if (tipo === 'entregar' && !v.pago_em) avisos.push('Esta venda ainda não tem pagamento confirmado.');
+      $('aAviso').hidden = !avisos.length; $('aAviso').textContent = avisos.join(' ');
+      abrirJanela('ovAcao', tipo === 'nfse' ? 'aNumero' : tipo === 'devolver' || tipo === 'cancelar' ? 'aMotivo' : 'aData');
+    }
+    async function confirmarAcao() {
+      if (!acao) return;
+      const { tipo, venda: v } = acao, erroEl = $('aErro'), hoje = hojeBR(), dia = $('aData').value;
+      erroEl.textContent = '';
+      if (ACOES[tipo].data && (!isoValida(dia) || dia > hoje)) { erroEl.textContent = 'Escolha um dia até hoje.'; $('aData').focus(); return; }
+      const motivo = texto($('aMotivo').value);
+      let patch, antes, frase;
+      if (tipo === 'pagar') {
+        patch = { pagamento: 'pago', pago_em: instanteDoDia(dia, hoje), pix_id: texto($('aPix').value) || null };
+        antes = { pagamento: 'aguardando', pix_id: v.pix_id || null, tarefa_id: v.tarefa_id || null };
+        frase = 'Pagamento da venda nº ' + v.numero + ' confirmado';
+      } else if (tipo === 'entregar') {
+        patch = { entregue_em: instanteDoDia(dia, hoje), entrega_obs: texto($('aObs').value) || null };
+        antes = { entregue_em: null, entrega_obs: v.entrega_obs || null };
+        frase = 'Venda nº ' + v.numero + ' marcada como entregue';
+      } else if (tipo === 'nfse') {
+        const numero = texto($('aNumero').value);
+        if (!numero) { erroEl.textContent = 'Diga o número da NFS-e.'; $('aNumero').focus(); return; }
+        patch = { nfse_numero: numero, nfse_em: dia };
+        antes = { nfse_numero: null, nfse_em: null };
+        frase = 'NFS-e ' + numero + ' gravada na venda nº ' + v.numero;
+      } else if (tipo === 'devolver') {
+        if (!motivo) { erroEl.textContent = 'Diga o motivo da devolução.'; $('aMotivo').focus(); return; }
+        patch = { pagamento: 'devolvido', devolucao_motivo: motivo, devolvido_em: instanteDoDia(dia, hoje) };
+        antes = { pagamento: 'pago' };
+        frase = 'Devolução da venda nº ' + v.numero + ' registrada';
+      } else {
+        const nota = 'Cancelada em ' + fmtData(hoje) + (motivo ? ': ' + motivo : '') + '.';
+        patch = { pagamento: 'cancelado', observacao: [texto(v.observacao), nota].filter(Boolean).join('\n').slice(0, LIMITES.obs_venda) };
+        antes = { pagamento: 'aguardando', observacao: v.observacao || null };
+        frase = 'Venda nº ' + v.numero + ' cancelada';
+      }
+      const botao = $('aConfirmar'), rotulo = botao.textContent;
+      ocupado(botao, true, 'Gravando…');
+      try {
+        let r = await mudarVenda(v, patch);
+        if (r.erro) { erroEl.textContent = erroDoBanco(r.erro); return; }
+        if (r.conflito) { erroEl.textContent = 'Esta venda mudou enquanto a janela estava aberta. Nada foi gravado: feche e veja como ficou.'; desenhar(); return; }
+        const feito = { tipo, id: v.id, numero: v.numero, antes, tarefa: null };
+        if (tipo === 'pagar' && $('aTarefa').checked && Number(v.valor) > 0) {
+          const t = await porNaTarefaDasNotas(r.linha);
+          if (t.erro) frase += ' · a tarefa das NFS-e não foi atualizada: avise a Thalia';
+          else {
+            if (t.criou) frase += ' · tarefa das NFS-e criada pra Thalia';
+            else if (t.juntou) frase += ' · a venda entrou na tarefa das NFS-e da Thalia';
+            if (t.criou || t.juntou) feito.tarefa = t.tarefaId;
+            if (t.tarefaId && t.tarefaId !== r.linha.tarefa_id) { const r2 = await mudarVenda(r.linha, { tarefa_id: t.tarefaId }); if (r2.linha) r = r2; }
+          }
+        }
+        if (tipo === 'nfse' && r.linha.tarefa_id) {
+          const marcou = await mexerNaLinha(r.linha.tarefa_id, d => { const x = marcarNotaNaTarefa(d, v.numero, patch.nfse_numero); return { descricao: x.descricao, mudou: x.marcou }; },
+            'NFS-e ' + patch.nfse_numero + ' informada na venda nº ' + v.numero + '.');
+          if (marcou) { frase += ' · a linha da tarefa da Thalia foi marcada'; feito.tarefa = r.linha.tarefa_id; }
+        }
+        feito.atualizado_em = r.linha.atualizado_em;
+        ultimo = feito;
+        fecharJanela('ovAcao'); acao = null; desenhar();
+        avisar(frase + '.', { desfazer: true });
+      } finally { ocupado(botao, false, rotulo); }
+    }
+    // o desfazer volta só a venda que continua como a ação deixou (ninguém mexeu depois)
+    async function desfazer_() {
+      const u = ultimo;
+      if (!u) return;
+      const v = vendas.find(x => x.id === u.id);
+      ultimo = null;
+      if (!v || v.atualizado_em !== u.atualizado_em) { avisar('Não deu pra desfazer: a venda nº ' + u.numero + ' mudou depois.', { alerta: true }); return; }
+      const r = await mudarVenda(v, u.antes);
+      if (r.erro || r.conflito) { desenhar(); avisar('Não deu pra desfazer: a venda nº ' + u.numero + ' mudou depois.', { alerta: true }); return; }
+      if (u.tarefa && u.tipo === 'pagar') await tirarDaTarefa(u.tarefa, u.numero);
+      if (u.tarefa && u.tipo === 'nfse') await mexerNaLinha(u.tarefa, d => { const x = desmarcarNotaNaTarefa(d, u.numero); return { descricao: x.descricao, mudou: x.desmarcou }; }, 'NFS-e da venda nº ' + u.numero + ' desfeita: a linha voltou.');
+      desenhar();
+      avisar('Desfeito: a venda nº ' + u.numero + ' voltou ao que era.');
+    }
+
+    // ---------- os cliques ----------
+    document.querySelector('.sv-abas').addEventListener('click', e => { const b = e.target.closest('[data-aba]'); if (b) mostrarAba(b.dataset.aba); });
+    document.querySelector('.sv-abas').addEventListener('keydown', e => {
+      if (e.key !== 'ArrowRight' && e.key !== 'ArrowLeft') return;
+      const i = (ABAS.indexOf(aba) + (e.key === 'ArrowRight' ? 1 : ABAS.length - 1)) % ABAS.length;
+      mostrarAba(ABAS[i]); $('tab' + ABAS[i].charAt(0).toUpperCase() + ABAS[i].slice(1)).focus();
+    });
+    const abrirPeloSlug = slug => { const s = servicos.find(x => x.slug === slug); if (s) abrirFicha(s); };
+    $('guia').addEventListener('click', e => {
+      const b = e.target.closest('.sv-guia-item');
+      if (!b) return;
+      if (b.dataset.servico) abrirPeloSlug(b.dataset.servico);
+      else if (b.dataset.aba === 'vendas') { filtro.pendencia = true; filtro.pagamento = ''; filtro.servico = ''; desenharVendas(); mostrarAba('vendas'); }
+    });
+    $('vitrine').addEventListener('click', e => {
+      if (e.target.closest('a')) return;                       // o link da página abre a página, não a ficha
+      const alvo = e.target.closest('[data-abrir]') || e.target.closest('.sv-card');
+      if (alvo && !window.getSelection().toString()) abrirPeloSlug(alvo.dataset.abrir || alvo.dataset.slug);
+    });
+    $('numeros').addEventListener('click', e => { const b = e.target.closest('[data-abrir]'); if (b) abrirPeloSlug(b.dataset.abrir); });
+    $('vendas').addEventListener('click', e => {
+      const b = e.target.closest('[data-acao]');
+      if (!b) return;
+      const v = vendas.find(x => x.id === b.dataset.venda);
+      if (!v) return;
+      if (b.dataset.acao === 'editar') abrirVenda(v); else abrirAcao(b.dataset.acao, v);
+    });
+    $('busca').addEventListener('input', e => { busca = e.target.value; desenharVitrine(); });
+    $('fServico').addEventListener('change', e => { filtro.servico = e.target.value; desenharVendas(); });
+    $('fPagamento').addEventListener('change', e => { filtro.pagamento = e.target.value; desenharVendas(); });
+    $('fPendencia').addEventListener('change', e => { filtro.pendencia = e.target.checked; desenharVendas(); });
+    $('btnNovoServico').addEventListener('click', () => abrirFicha(null));
+    $('btnNovaVenda').addEventListener('click', () => abrirVenda(null));
+
+    $('sClose').addEventListener('click', fecharFicha); $('sCancelar').addEventListener('click', fecharFicha); $('sSalvar').addEventListener('click', salvarFicha);
+    $('sNome').addEventListener('input', () => { if (!fichaDe && !slugMexido) $('sSlug').value = slugDe($('sNome').value); });
+    $('sSlug').addEventListener('input', () => { slugMexido = true; });
+    $('ovServico').addEventListener('change', acompanharFicha);
+    $('sRegua').addEventListener('input', e => { if (e.target.classList.contains('sv-item-nota')) ajustarNotas(e.target); });
+    $('sRegua').addEventListener('keydown', e => { if (e.key === 'Enter' && e.target.classList.contains('sv-item-nota')) e.preventDefault(); });   // a nota é uma linha só
+    window.addEventListener('resize', () => { if ($('ovServico').classList.contains('is-open')) ajustarNotas(); });
+    $('sPreco').addEventListener('input', acompanharFicha); $('sQuemAssina').addEventListener('input', acompanharFicha); $('sLinkPagina').addEventListener('input', acompanharFicha);
+    $('vClose').addEventListener('click', () => fecharJanela('ovVenda')); $('vCancelar').addEventListener('click', () => fecharJanela('ovVenda')); $('vSalvar').addEventListener('click', salvarVenda);
+    $('vDoc').addEventListener('input', clienteDoDocumento);
+    $('aClose').addEventListener('click', () => { fecharJanela('ovAcao'); acao = null; }); $('aCancelar').addEventListener('click', () => { fecharJanela('ovAcao'); acao = null; });
+    $('aConfirmar').addEventListener('click', confirmarAcao);
+    $('btnLogout').addEventListener('click', signOut);
+
+    // ---------- a abertura ----------
+    (async () => {
+      const user = await getCurrentUser();
+      if (user) {
+        quem = nomePorEmail(user.email) || user.user_metadata?.full_name || user.email || null;
+        const n = user.user_metadata?.full_name || nomePorEmail(user.email) || user.email?.split('@')[0] || 'Usuário';
+        $('userName').textContent = n; $('userAvatar').textContent = n.charAt(0).toUpperCase();
+      }
+      const p = new URLSearchParams(location.search);
+      mostrarAba(p.get('aba'), { guardar: false });
+      await carregar();
+      desenhar();
+      if (p.get('s')) abrirPeloSlug(p.get('s'));
+    })();
+  </script>
+
+  <style>
+    .sv-guia { background:var(--fill-1); border:1px solid var(--line); border-radius:14px; padding:14px 18px; margin-bottom:20px; }
+    .sv-guia h2 { margin:0 0 8px; font-size:12px; text-transform:uppercase; letter-spacing:.07em; color:var(--brand-light); font-weight:700; }
+    .sv-guia-corpo { font-size:14px; color:var(--text-2); }
+    .sv-guia ol { list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:4px; counter-reset:passo; }
+    .sv-guia li { display:flex; gap:8px; align-items:baseline; counter-increment:passo; }
+    .sv-guia li::before { content:counter(passo) '.'; color:var(--text-muted); min-width:1.1em; }
+    .sv-guia-item { background:none; border:none; padding:2px 0; color:var(--text); font:inherit; text-align:left; cursor:pointer; }
+    .sv-guia-item:hover, .sv-guia-item:focus-visible { color:var(--brand-light); text-decoration:underline; }
+    .sv-guia-texto { color:var(--text); }
+    .sv-guia-mais { margin-top:6px; font-size:13px; color:var(--text-muted); }
+    .sv-alerta, .sv-alerta .sv-guia-item { color:var(--warn); }
+
+    .sv-abas { display:flex; gap:4px; border-bottom:1px solid var(--line); margin-bottom:18px; flex-wrap:wrap; }
+    .sv-aba { background:none; border:none; border-bottom:2px solid transparent; margin-bottom:-1px; padding:10px 16px; color:var(--text-muted); font:inherit; font-size:14px; font-weight:600; cursor:pointer; }
+    .sv-aba:hover { color:var(--text); }
+    .sv-aba[aria-selected="true"] { color:var(--text); border-bottom-color:var(--brand-primary); }
+    .sv-aba-n { font-weight:400; color:var(--text-muted); font-size:13px; }
+
+    .sv-aviso { display:flex; align-items:center; gap:12px; flex-wrap:wrap; background:rgba(63,176,122,.10); border:1px solid rgba(63,176,122,.4); color:var(--text); border-radius:10px; padding:9px 14px; font-size:14px; margin-bottom:16px; }
+    .sv-aviso-alerta { background:rgba(227,179,65,.12); border-color:rgba(227,179,65,.45); }
+    .sv-aviso[hidden] { display:none; }
+    .sv-toolbar-acoes { display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
+    .sv-filtro { max-width:260px; }
+    .sv-check { display:flex; gap:8px; align-items:center; font-size:14px; color:var(--text); cursor:pointer; }
+
+    .sv-secao { margin-bottom:26px; }
+    .sv-secao-titulo { font-size:13px; text-transform:uppercase; letter-spacing:.07em; color:var(--brand-light); margin:0 0 10px; font-weight:700; }
+    .sv-secao-titulo span { color:var(--text-muted); font-weight:400; }
+    .sv-grade { display:grid; grid-template-columns:repeat(auto-fill, minmax(340px, 1fr)); gap:12px; }
+    .sv-card { --sit:var(--text-muted); background:var(--fill-1); border:1px solid var(--line); border-left:3px solid var(--sit); border-radius:14px; padding:14px 16px; cursor:pointer; display:flex; flex-direction:column; gap:8px; transition:border-color .15s; min-width:0; }
+    .sv-card:hover { border-color:rgba(138,174,200,.45); border-left-color:var(--sit); }
+    .sv-sit-no_ar { --sit:var(--ok); } .sv-sit-preparo { --sit:var(--warn); } .sv-sit-estudo { --sit:var(--brand-light); } .sv-sit-pausado { --sit:var(--orange); }
+    .sv-card-topo { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+    .sv-nome { background:none; border:none; padding:0; margin:0; font:inherit; font-size:15.5px; font-weight:700; color:var(--text); cursor:pointer; text-align:left; }
+    .sv-nome:hover, .sv-nome:focus-visible { text-decoration:underline; }
+    .sv-pill { font-size:12px; padding:2px 10px; border-radius:999px; border:1px solid var(--line-strong); color:var(--text-2); white-space:nowrap; text-decoration:none; }
+    .sv-pill-sit { color:var(--sit); border-color:var(--sit); }
+    .sv-pill-preco { font-weight:600; color:var(--text); }
+    .sv-pill-gratis { color:var(--ok); border-color:rgba(63,176,122,.45); }
+    .sv-preco-obs { font-size:12.5px; color:var(--text-muted); }
+    .sv-resumo { margin:0; font-size:13.5px; line-height:1.5; color:var(--text-2); display:-webkit-box; -webkit-line-clamp:3; -webkit-box-orient:vertical; overflow:hidden; }
+    .sv-meta { display:flex; gap:4px 16px; flex-wrap:wrap; font-size:13px; color:var(--text-muted); }
+    .sv-meta b { font-weight:600; color:var(--text-2); }
+    .sv-regua-linha { display:flex; align-items:center; gap:10px; font-size:13px; color:var(--text-2); }
+    .sv-regua-n { white-space:nowrap; font-weight:600; }
+    .sv-barra { flex:1; height:6px; border-radius:999px; background:var(--fill-3); overflow:hidden; min-width:60px; }
+    .sv-barra > span { display:block; height:100%; background:var(--sit); border-radius:999px; }
+    .sv-passo { font-size:13px; color:var(--text-2); line-height:1.45; }
+    .sv-card-pe { display:flex; gap:6px 14px; flex-wrap:wrap; align-items:center; font-size:13px; margin-top:auto; padding-top:2px; }
+    .sv-link { color:var(--brand-light); text-decoration:none; }
+    .sv-link:hover { text-decoration:underline; }
+    .sv-vendas-n { color:var(--text-muted); }
+    .sv-fora { margin-bottom:26px; }
+    .sv-fora summary { cursor:pointer; font-size:13px; text-transform:uppercase; letter-spacing:.07em; color:var(--text-muted); font-weight:700; margin-bottom:10px; }
+    .sv-fora .sv-card { opacity:.85; }
+
+    .sv-venda { display:flex; gap:14px; align-items:center; background:var(--fill-1); border:1px solid var(--line); border-radius:14px; padding:12px 16px; margin-bottom:10px; }
+    .sv-venda-info { flex:1; min-width:0; display:flex; flex-direction:column; gap:5px; }
+    .sv-venda-topo, .sv-venda-linha { display:flex; align-items:center; gap:6px 10px; flex-wrap:wrap; }
+    .sv-venda-n { font-size:12.5px; color:var(--text-muted); font-weight:600; }
+    .sv-venda-nome { font-weight:600; color:var(--text); font-size:15px; }
+    .sv-venda-doc { font-size:13px; color:var(--text-muted); }
+    .sv-venda-linha { font-size:13.5px; color:var(--text-2); }
+    .sv-venda-valor { font-weight:600; color:var(--text); }
+    .sv-pill-pag { color:var(--text-2); }
+    .sv-pag-pago .sv-pill-pag { color:var(--ok); border-color:rgba(63,176,122,.45); }
+    .sv-pag-aguardando .sv-pill-pag { color:var(--warn); border-color:rgba(227,179,65,.45); }
+    .sv-pag-devolvido .sv-pill-pag, .sv-pag-cancelado .sv-pill-pag { color:var(--text-muted); }
+    .sv-pag-cancelado, .sv-pag-devolvido { opacity:.8; }
+    .sv-pill-pend { color:var(--warn); border-color:rgba(227,179,65,.45); background:rgba(227,179,65,.10); }
+    .sv-pill-cliente { color:var(--brand-light); border-color:rgba(91,130,166,.4); }
+    .sv-venda-det, .sv-venda-obs { font-size:13px; color:var(--text-muted); }
+    .sv-venda-obs { font-style:italic; white-space:pre-line; }
+    .sv-venda-arr { font-size:13px; color:var(--warn); }
+    .sv-venda-acoes { display:flex; gap:8px; flex-wrap:wrap; justify-content:flex-end; }
+
+    .sv-num-resumo { font-size:14px; color:var(--text-2); margin:0 0 14px; }
+    .sv-tabela-wrap { overflow-x:auto; margin-bottom:22px; }
+    .sv-tabela th, .sv-tabela td { white-space:nowrap; text-align:right; padding:12px 16px; font-size:13.5px; }
+    .sv-tabela tbody th { font-weight:500; color:var(--text); border-bottom:1px solid var(--border-soft); }
+    .sv-tabela tbody tr:last-child th { border-bottom:none; }
+    .sv-tabela th[scope="row"], .sv-tabela thead th:first-child { text-align:left; white-space:normal; }
+    .sv-tabela tfoot th, .sv-tabela tfoot td { border-top:1px solid var(--line-strong); font-weight:600; }
+    .sv-zero { color:var(--text-dim); }
+    .sv-dev { color:var(--text-muted); }
+    .sv-testes { margin:0 0 20px; padding-left:20px; font-size:14px; color:var(--text-2); display:flex; flex-direction:column; gap:4px; }
+
+    .fa-modal-overlay { position:fixed; inset:0; background:var(--overlay); display:none; align-items:center; justify-content:center; padding:20px; z-index:100; }
+    .fa-modal-overlay.is-open { display:flex; }
+    .fa-modal { width:100%; max-width:520px; max-height:calc(100vh - 40px); overflow:auto; background:var(--surface); border:1px solid var(--fill-3); border-radius:16px; }
+    .sv-modal-largo { max-width:880px; }
+    .sv-modal-largo .fa-modal-head { position:sticky; top:0; z-index:2; background:var(--surface); border-radius:16px 16px 0 0; }
+    .sv-modal-largo .fa-modal-foot { position:sticky; bottom:0; z-index:2; background:var(--surface); border-radius:0 0 16px 16px; align-items:center; }
+    /* o campo que ganha o foco (o que falta preencher) não fica atrás do título nem do rodapé presos */
+    .sv-modal-largo .input, .sv-modal-largo .sv-item { scroll-margin:84px 0 96px; }
+    .sv-erro-pe { flex:1; min-width:200px; }
+    .fa-modal-head { display:flex; align-items:center; justify-content:space-between; padding:18px 22px; border-bottom:1px solid var(--line); }
+    .fa-modal-head h3 { margin:0; color:var(--text); font-size:18px; }
+    .fa-modal-close { background:none; border:none; color:var(--text-muted); font-size:26px; line-height:1; cursor:pointer; padding:0 4px; }
+    .fa-modal-close:hover { color:var(--text); }
+    .fa-modal-body { padding:22px; display:flex; flex-direction:column; gap:14px; }
+    .fa-field { display:flex; flex-direction:column; gap:6px; min-width:0; }
+    .fa-field > span { font-size:13px; color:var(--brand-light); }
+    .fa-field-row { display:grid; grid-template-columns:1fr 1fr; gap:14px; }
+    .fa-field-row.sv-tres { grid-template-columns:1fr 1fr 2fr; }
+    .fa-field-row.sv-cidade { grid-template-columns:3fr 1fr; }
+    .fa-field-row:has(.sv-campo-curto) { grid-template-columns:3fr 1fr; }
+    .fa-modal-foot { display:flex; justify-content:flex-end; gap:10px; padding:16px 22px; border-top:1px solid var(--line); flex-wrap:wrap; }
+    .fa-modal textarea.input { resize:vertical; font-family:inherit; }
+    .fa-modal [hidden] { display:none; }
+    .fa-modal [aria-invalid="true"] { border-color:var(--err); }
+
+    .sv-banner { border-radius:10px; padding:9px 12px; font-size:13.5px; border:1px solid; line-height:1.5; }
+    .sv-banner-alerta { background:rgba(227,179,65,.12); border-color:rgba(227,179,65,.4); color:var(--warn); }
+    .sv-banner-info { background:var(--fill-1); border-color:var(--line-strong); color:var(--text-2); }
+    .sv-erro { color:var(--err); font-size:13.5px; line-height:1.5; }
+    .sv-erro:empty { display:none; }
+    .sv-fixo, .sv-acao-quem { font-size:14px; color:var(--text-2); line-height:1.5; }
+    .sv-cliente { font-size:13px; color:var(--ok); }
+    .sv-meta-ficha { font-size:12.5px; color:var(--text-dim); }
+    .sv-meta-ficha:empty { display:none; }
+
+    .sv-regua-topo { display:flex; align-items:baseline; gap:12px; margin-top:6px; padding-top:14px; border-top:1px solid var(--line); }
+    .sv-regua-topo h4 { margin:0; font-size:16px; color:var(--text); }
+    .sv-regua-conta { font-size:13px; color:var(--text-muted); }
+    .sv-regua-dica { margin:0; font-size:13px; color:var(--text-muted); line-height:1.5; }
+    .sv-grupo { display:flex; flex-direction:column; gap:10px; margin-bottom:6px; }
+    .sv-grupo h5 { margin:8px 0 0; font-size:12px; text-transform:uppercase; letter-spacing:.07em; color:var(--brand-light); }
+    .sv-item { border:1px solid var(--line); border-left:3px solid var(--text-dim); border-radius:10px; padding:10px 12px; display:flex; flex-direction:column; gap:7px; }
+    .sv-item[data-estado="ok"], .sv-item[data-estado="na"] { border-left-color:var(--ok); }
+    .sv-item[data-estado="nao"] { border-left-color:var(--err); }
+    .sv-item-topo { display:flex; align-items:center; gap:10px; justify-content:space-between; }
+    .sv-item-rotulo { font-size:14px; font-weight:600; color:var(--text); }
+    .sv-item-info { font-weight:400; color:var(--text-muted); }
+    .sv-item-estado { width:auto; min-width:150px; flex:none; }
+    .fa-modal textarea.sv-item-nota { resize:none; overflow:hidden; line-height:1.45; min-height:0; }
+    .sv-item-ajuda { font-size:12.5px; color:var(--text-muted); line-height:1.5; }
+    .sv-item-base { color:var(--text-dim); }
+    .sv-item-quem { font-size:12px; color:var(--text-dim); }
+
+    @media (max-width:720px) {
+      .fa-field-row, .fa-field-row.sv-tres, .fa-field-row.sv-cidade, .fa-field-row:has(.sv-campo-curto) { grid-template-columns:1fr; }
+      .sv-grade { grid-template-columns:1fr; }
+      .sv-venda { flex-direction:column; align-items:stretch; }
+      .sv-venda-acoes { justify-content:flex-start; }
+      .sv-item-topo { flex-direction:column; align-items:stretch; }
+      .sv-filtro { max-width:100%; }
+    }
+  </style>
+</body>
+</html>

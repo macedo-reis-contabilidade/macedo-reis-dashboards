@@ -15,6 +15,7 @@
     a[href="comercial-carteira.html"]     .dashboard-card-icon { background: rgba(197,216,232,.15); color:#C5D8E8; }
     a[href="comercial-precificacao.html"] .dashboard-card-icon { background: rgba(82,180,198,.16); color:#52B4C6; }
     a[href="comercial-transicao.html"] .dashboard-card-icon { background: rgba(127,191,142,.16); color:#7FBF8E; }
+    a[href="comercial-servicos.html"] .dashboard-card-icon { background: rgba(224,164,88,.16); color:#E0A458; }
     a[href="comercial-tarefas.html"] .dashboard-card-icon { background: rgba(138,174,200,.16); color:#8AAEC8; }
     a[href="comercial-relatorios.html"] .dashboard-card-icon { background: rgba(133,151,224,.16); color:#8597E0; }
     a[href="comercial-reunioes.html"] .dashboard-card-icon { background: rgba(164,143,224,.16); color:#A48FE0; }
@@ -55,7 +56,7 @@
         </div>
         <div class="eyebrow">Setor</div>
         <h1>Comercial</h1>
-        <p>Módulos do setor: carteira, precificação, tarefas, relatórios, reuniões.</p>
+        <p>Módulos do setor: carteira, precificação, transição, serviços digitais, tarefas, relatórios, reuniões.</p>
       </div>
 
       <div class="dashboard-grid">
@@ -84,6 +85,15 @@
           <h3>Transição de clientes</h3>
           <p>Da proposta fechada ao cliente regular: setores, prazos e responsáveis numa sala só.</p>
           <div class="dashboard-card-footer"><span>Acessar →</span><span class="badge card-status st-load" data-mod="comercial-transicao.html">·</span></div>
+        </a>
+
+        <a href="comercial-servicos.html" class="dashboard-card">
+          <div class="dashboard-card-icon">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 0 1-8 0"/></svg>
+          </div>
+          <h3>Serviços digitais</h3>
+          <p>A vitrine do que o escritório vende pela internet: a régua de cada serviço, as vendas e os números.</p>
+          <div class="dashboard-card-footer"><span>Acessar →</span><span class="badge card-status st-load" data-mod="comercial-servicos.html">·</span></div>
         </a>
 
         <a href="comercial-tarefas.html" class="dashboard-card">
@@ -120,6 +130,7 @@
   <script type="module">
     import { supabase, getCurrentUser, signOut } from './assets/js/supabase.js';
     import { hojeLocal } from './assets/js/utils.js';   // dia no fuso local (toISOString é UTC)
+    import { seloDoCard } from './assets/js/servicos-digitais.js';
     const user = await getCurrentUser();
     if (user) { const el = document.getElementById('userName'); if (el) el.textContent = user.email; const av = document.getElementById('userAvatar'); if (av) av.textContent = (user.email || '?').charAt(0).toUpperCase(); }
     const btnOut = document.getElementById('btnLogout');
@@ -151,6 +162,9 @@
         const { count: trans } = await supabase.from('transicoes')
           .select('id', { count: 'exact', head: true }).eq('status', 'em_andamento');
         setBadge('comercial-transicao.html', (trans ?? 0) + ' em andamento');
+        // Serviços digitais: quantos no ar ou, sem nenhum, quantos em preparo (a leitura que falha deixa o traço)
+        const { data: servs, error: eServs } = await supabase.from('servicos_digitais').select('situacao');
+        setBadge('comercial-servicos.html', eServs ? '—' : seloDoCard(servs || []));
         ["comercial-relatorios.html", "comercial-reunioes.html"].forEach(h => setBadge(h, '—'));
       } catch (e) { console.error(e); }
     }
