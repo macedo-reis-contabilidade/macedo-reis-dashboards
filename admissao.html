@@ -11,7 +11,12 @@
      a empresa se identifica, preenche e envia; a admissão nasce no módulo (dp-admissoes.html) e na agenda do DP.
      Só fala com o sistema pela Edge Function admissao-link (formulário, envio e anexos, que vão pro Drive em
      BANCO DE INFORMAÇÕES > SETOR DP E RH > ADMISSÕES > EMPRESA > FUNCIONÁRIO). O modelo é editado no módulo;
-     ?previa=1 mostra o modelo em edição, guardado pelo módulo no navegador. -->
+     ?previa=1 mostra o modelo em edição, guardado pelo módulo no navegador.
+     17/11/2026 (pedido da Vitória): o formulário só é enviado completo — o botão de enviar fica desligado até todas as
+     informações obrigatórias estarem preenchidas e todos os documentos obrigatórios, anexados; em cima do botão, a lista
+     do que falta, e cada item leva ao campo. As regras (assets/js/admissao-form.js) leem do modelo: a lista de documentos
+     com anexo obrigatório tem um lugar de anexar por documento (frente e verso, dois) e a pergunta com "só quando"
+     aparece conforme a resposta de outra. -->
 <style>
   * { box-sizing:border-box; margin:0; padding:0; }
   body { font-family:-apple-system, 'Segoe UI', Roboto, Arial, sans-serif; background:#EEF2F6; color:#1a2330; padding:0 0 60px; }
@@ -32,6 +37,7 @@
   .rot { font-size:12px; color:#5c6878; font-weight:600; text-transform:uppercase; letter-spacing:.04em; margin:6px 0 4px; }
   .nota { font-size:12.5px; color:#5c6878; background:#F4F7FA; border-left:3px solid #8AAEC8; padding:8px 10px; border-radius:0 8px 8px 0; margin-top:6px; line-height:1.5; }
   .campo { margin-bottom:16px; }
+  .campo[hidden] { display:none; }
   .campo > label, .campo > .lbl { display:block; font-size:13.5px; color:#33404f; font-weight:600; margin-bottom:6px; }
   .campo small.ajuda { display:block; font-weight:400; color:#8a94a3; font-size:12px; margin-top:2px; }
   .campo input[type=text], .campo input[type=tel], .campo input[type=date], .campo input[type=time], .campo textarea { width:100%; font:inherit; font-size:15px; padding:11px 12px; border:1.5px solid #D5DEE7; border-radius:10px; background:#FBFCFE; color:#1a2330; }
@@ -43,6 +49,7 @@
   .op small { display:block; color:#7a8595; font-size:12px; margin-top:2px; }
   .op:has(input:checked) { border-color:#5B82A6; background:#EEF4FA; }
   .ciente { display:flex; gap:10px; align-items:flex-start; padding:12px; border:1.5px solid #D5DEE7; border-radius:10px; background:#FBFCFE; cursor:pointer; font-size:14.5px; font-weight:600; color:#33404f; }
+  .campo > label.ciente { display:flex; margin-bottom:0; }   /* a regra do rótulo do campo (display:block) ganhava, e a caixa colava no texto */
   .ciente input { margin-top:2px; width:20px; height:20px; accent-color:#3A5878; flex:none; }
   .obr::after { content:' *'; color:#C0564F; }
   .falta input[type=text], .falta input[type=tel], .falta input[type=date], .falta input[type=time], .falta textarea, .falta .op, .falta .ciente { border-color:#C0564F; }
@@ -51,7 +58,34 @@
   .botao { width:100%; font:inherit; font-size:16px; font-weight:700; padding:14px; border:none; border-radius:12px; background:#3A5878; color:#fff; cursor:pointer; }
   .botao.sec { background:#fff; color:#3A5878; border:1.5px solid #3A5878; margin-top:16px; }
   .botao:active { transform:scale(.99); }
-  .botao[disabled] { opacity:.6; }
+  .botao[disabled] { opacity:.5; cursor:not-allowed; }
+  .obrig { background:#FFF9E8; border:1.5px solid #E0B040; }
+  .obrig h3 { font-size:15px; color:#6B4E00; line-height:1.35; margin-bottom:6px; }
+  .obrig p, .obrig li { font-size:13.5px; color:#4a3d16; line-height:1.5; }
+  .obrig ul { margin:2px 0 8px 18px; }
+  .obrig .rot { color:#6B4E00; }
+  .obrig .ast { color:#C0564F; }
+  .tag-obr { display:inline-block; font-size:11px; font-weight:700; letter-spacing:0; text-transform:none; color:#A8423B; background:#FBE9E7; border-radius:99px; padding:2px 8px; white-space:nowrap; }
+  .tag-obr.ok { color:#2E7D5B; background:#E3F4EC; }
+  .vaga { margin-top:10px; padding:12px; border:1.5px dashed #D9A520; border-radius:10px; background:#FFFCF2; }
+  .vaga.feito { border:1.5px solid #6FB08F; background:#F3FAF6; }
+  .vaga.dispensado { border:1.5px solid #D5DEE7; background:#F7FAFC; }
+  .vaga.dispensado .anexo-btn { display:none; }
+  .vaga.falta { border-color:#C0564F; background:#FDF3F2; }
+  .vaga-tit { display:flex; flex-wrap:wrap; align-items:center; gap:6px 8px; font-size:14px; font-weight:600; color:#33404f; margin-bottom:8px; line-height:1.4; }
+  .vaga-par { margin-top:10px; padding:12px; border:1.5px solid #E3EAF1; border-radius:10px; }
+  .vaga-par .vaga-tit { margin-bottom:0; }
+  .lados { display:grid; grid-template-columns:repeat(auto-fit, minmax(150px, 1fr)); gap:8px; }
+  .lado-rot { display:flex; flex-wrap:wrap; align-items:center; gap:6px; font-size:12px; color:#5c6878; font-weight:700; text-transform:uppercase; letter-spacing:.04em; margin-bottom:8px; }
+  .mesmo { display:flex; gap:8px; align-items:flex-start; font-size:13px; color:#4a5565; margin-top:10px; cursor:pointer; line-height:1.4; }
+  .mesmo input { width:17px; height:17px; margin-top:1px; accent-color:#3A5878; flex:none; }
+  .mesmo:has(input:disabled) { opacity:.55; cursor:default; }
+  .pend { font-size:13.5px; color:#6B4E00; background:#FFF9E8; border:1.5px solid #E0B040; border-radius:10px; padding:12px; margin-bottom:12px; line-height:1.45; }
+  .pend.ok { color:#2E7D5B; background:#F3FAF6; border-color:#6FB08F; }
+  .pend ul { list-style:none; margin-top:8px; display:flex; flex-direction:column; gap:5px; }
+  .pend-item { display:block; width:100%; text-align:left; font:inherit; font-size:13.5px; line-height:1.4; background:#fff; border:1px solid #EBD9A8; border-radius:8px; padding:8px 10px; color:#33404f; cursor:pointer; }
+  .pend-item b { color:#A8423B; }
+  .pend-item:focus-visible, .anexo-btn:focus-within { outline:2px solid #5B82A6; outline-offset:2px; }
   .erro { color:#C0564F; font-size:13px; margin-top:10px; min-height:18px; text-align:center; }
   .aviso { text-align:center; padding:30px 20px; }
   .aviso .ic { font-size:42px; }
@@ -59,8 +93,8 @@
   .aviso.ok h2 { color:#2E7D5B; }
   .aviso p { font-size:14px; color:#4a5565; line-height:1.6; white-space:pre-line; }
   .anexo { margin-top:12px; padding:12px; border:1.5px dashed #C9D5E2; border-radius:10px; background:#F7FAFC; }
-  .anexo-btn { display:inline-flex; align-items:center; gap:8px; padding:10px 14px; border-radius:10px; background:#fff; border:1.5px solid #5B82A6; color:#3A5878; font-weight:700; font-size:14.5px; cursor:pointer; }
-  .anexo-btn input { display:none; }
+  .anexo-btn { position:relative; display:inline-flex; align-items:center; gap:8px; padding:10px 14px; border-radius:10px; background:#fff; border:1.5px solid #5B82A6; color:#3A5878; font-weight:700; font-size:14.5px; cursor:pointer; }
+  .anexo-btn input { position:absolute; width:1px; height:1px; opacity:0; overflow:hidden; pointer-events:none; }
   .anexo-lista { margin-top:8px; display:flex; flex-direction:column; gap:6px; }
   .anexo-lista:empty { display:none; }
   .anexo-item { display:flex; gap:8px; align-items:center; font-size:13px; color:#33404f; background:#fff; border:1px solid #E3EAF1; border-radius:8px; padding:6px 8px; }
@@ -90,6 +124,7 @@
 
 <script type="module">
   import { supabase } from './assets/js/supabase.js';
+  import { IDENT, itensDe, anexoObrigatorio, pedeFrenteEVerso, vagasDeAnexo, blocosVisiveis, pendencias, respostasDoEnvio, obrigatoriosDoModelo } from './assets/js/admissao-form.js';
 
   const RODAPE_PADRAO = 'Macedo e Reis Contabilidade Ltda · Rua Luiz Volkart, 35, 1º andar – Centro – Três Coroas/RS · CEP 95660-000 · (51) 3546-1385 · rh@macedoereis.com.br';
   const PRIVACIDADE = 'As informações vão direto para o Departamento Pessoal da Macedo & Reis e são usadas só para o registro do(a) funcionário(a).';
@@ -98,15 +133,14 @@
   const PARTE = 2 * 1024 * 1024;                       // anexos sobem em partes de 2 MB (múltiplo de 256 KB, exigência do Drive)
   const MAX_ARQ = 25 * 1024 * 1024, MAX_QTD = 20, MAX_TOTAL = 100 * 1024 * 1024;
   const PREVIA = new URLSearchParams(location.search).get('previa') === '1';
+  const VERBO = { preencher: 'Preencher', escolher: 'Escolher', marcar: 'Marcar', anexar: 'Anexar' };
   const app = document.getElementById('app');
   const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c]));
   const tam = n => n >= 1048576 ? (n / 1048576).toLocaleString('pt-BR', { maximumFractionDigits: 1 }) + ' MB' : Math.max(1, Math.round(n / 1024)) + ' KB';
-  // a empresa e quem está preenchendo: fixos (o sistema acha a empresa no cadastro pelo nome; CNPJ e contato o escritório já tem)
-  const IDENT = [
-    { k: 'empresa', rot: 'Empresa (razão social)', tipo: 'text' },
-    { k: 'contato', rot: 'Seu nome', tipo: 'text' },
-  ];
-  let modelo = null, anexos = {};
+  // a empresa e quem está preenchendo (IDENT, fixos): o sistema acha a empresa no cadastro pelo nome; CNPJ e contato o escritório já tem
+  // anexos: os arquivos de cada lugar de anexar ({ chave da vaga: [File] }); vagas: os lugares de anexar do modelo, na ordem da tela;
+  // ultimas: o que falta pra enviar, pela última conta; sinal: a lista que está desenhada (não redesenha a mesma)
+  let modelo = null, anexos = {}, vagas = [], ultimas = [], enviando = false, sinal = null;
   const email = () => (modelo && modelo.email) || EMAIL_PADRAO;
   const chamar = (body, headers) => supabase.functions.invoke(FUNCAO, headers ? { body, headers } : { body });
 
@@ -141,21 +175,28 @@
     return `<input type="text" name="${nome}" id="f${i}">`;
   }
 
-  // ---------- anexos (por lista de documentos) ----------
-  const todosAnexos = () => Object.keys(anexos).sort((a, b) => a - b).flatMap(k => anexos[k].map(f => ({ file: f, grupo: (modelo.blocos[k] || {}).titulo || 'Documentos' })));
-  function pintarAnexos(i) {
-    const el = document.getElementById('anx' + i);
-    if (!el) return;
-    el.innerHTML = (anexos[i] || []).map((f, n) => `<div class="anexo-item"><span>📄 ${esc(f.name)}</span><small>${tam(f.size)}</small><button type="button" data-tira="${i}:${n}" title="Tirar">✕</button></div>`).join('');
-    el.querySelectorAll('[data-tira]').forEach(b => b.addEventListener('click', () => {
-      const [k, n] = b.dataset.tira.split(':').map(Number);
-      anexos[k].splice(n, 1); pintarAnexos(k);
-    }));
+  // ---------- anexos: na lista comum, um lugar pra lista inteira; na de anexo obrigatório, um por documento ----------
+  const todosAnexos = () => vagas.flatMap(v => (anexos[v.chave] || []).map(f => ({ file: f, grupo: v.grupo })));
+  const botaoAnexar = (chave, texto, nome) => `<label class="anexo-btn">📎 ${esc(texto)}<input type="file" multiple data-anexo="${chave}"${nome ? ` aria-label="${esc(nome)}"` : ''}></label>`
+    + `<div class="anexo-lista" id="anx${chave}"></div><div class="anexo-erro" id="anxErr${chave}"></div>`;
+  const etiqueta = chave => `<span class="tag-obr" data-st="${chave}">obrigatório</span>`;
+  function vagaHtml(i, n, item) {
+    const par = `${i}-${n}`;
+    if (!pedeFrenteEVerso(item)) return `<div class="vaga" data-vaga="${par}"><div class="vaga-tit"><span>${esc(item)}</span>${etiqueta(par)}</div>${botaoAnexar(par, 'Anexar', 'Anexar: ' + item)}</div>`;
+    return `<div class="vaga-par"><div class="vaga-tit"><span>${esc(item)}</span></div><div class="lados">`
+      + `<div class="vaga" data-vaga="${par}-f"><div class="lado-rot">Frente ${etiqueta(par + '-f')}</div>${botaoAnexar(par + '-f', 'Anexar', 'Anexar a frente: ' + item)}</div>`
+      + `<div class="vaga" data-vaga="${par}-v"><div class="lado-rot">Verso ${etiqueta(par + '-v')}</div>${botaoAnexar(par + '-v', 'Anexar', 'Anexar o verso: ' + item)}</div></div>`
+      + `<label class="mesmo"><input type="checkbox" data-mesmo="${par}"><span>A frente e o verso estão no mesmo arquivo</span></label></div>`;
   }
-  function adicionarAnexos(i, files) {
-    const erro = document.getElementById('anxErr' + i);
-    erro.textContent = '';
-    const lista = anexos[i] || (anexos[i] = []);
+  function pintarAnexos(chave) {
+    const el = document.getElementById('anx' + chave);
+    if (!el) return;
+    el.innerHTML = (anexos[chave] || []).map((f, n) => `<div class="anexo-item"><span>📄 ${esc(f.name)}</span><small>${tam(f.size)}</small><button type="button" data-tira="${chave}:${n}" title="Tirar" aria-label="Tirar ${esc(f.name)}">✕</button></div>`).join('');
+  }
+  function adicionarAnexos(chave, files) {
+    const erro = document.getElementById('anxErr' + chave);
+    if (erro) erro.textContent = '';
+    const lista = anexos[chave] || (anexos[chave] = []);
     const recusados = [];
     for (const f of files) {
       const atuais = todosAnexos();
@@ -165,19 +206,29 @@
       if (atuais.reduce((s, a) => s + a.file.size, 0) + f.size > MAX_TOTAL) { recusados.push(`${f.name} passa do total de 100 MB`); continue; }
       lista.push(f);
     }
-    if (recusados.length) erro.textContent = 'Não anexado: ' + recusados.join('; ') + '. Se precisar, mande por e-mail para ' + email() + '.';
-    pintarAnexos(i);
+    const obrigatoria = (vagas.find(v => v.chave === chave) || {}).obrigatoria;
+    if (recusados.length && erro) erro.textContent = 'Não anexado: ' + recusados.join('; ') + '. '
+      + (obrigatoria ? 'Se não conseguir anexar, fale com o escritório: ' : 'Se precisar, mande por e-mail para ') + email() + '.';
+    pintarAnexos(chave);
   }
 
   function desenhar(ident = {}) {
     const blocos = Array.isArray(modelo.blocos) ? modelo.blocos : [];
-    anexos = {};
+    anexos = {}; vagas = vagasDeAnexo(blocos); ultimas = []; enviando = false; sinal = null;
     let html = '';
     if (PREVIA) html += '<div class="card previa"><b>Prévia</b> — é assim que a empresa vê o formulário. Nada do que for preenchido aqui é enviado.</div>';
     html += '<div class="card cab">'
       + `<h2>${esc(modelo.titulo || 'Registro de funcionário(a)')}</h2>`
       + (modelo.introducao ? `<div class="intro">${esc(modelo.introducao)}</div>` : '')
       + '</div>';
+    const ob = obrigatoriosDoModelo(blocos);
+    if (ob.anexos.length || ob.campos.length) {
+      html += '<div class="card obrig" id="obrigatorios"><h3>⚠️ O formulário só é enviado completo</h3>'
+        + '<p>Sem os documentos e as informações abaixo, o botão de enviar não é liberado.</p>'
+        + (ob.anexos.length ? `<div class="rot">Anexar</div><ul>${ob.anexos.map(x => '<li>' + esc(x) + '</li>').join('')}</ul>` : '')
+        + (ob.campos.length ? `<div class="rot">Preencher</div><p>Todos os campos com <b class="ast">*</b>: ${esc(ob.campos.join(', '))}.</p>` : '')
+        + '</div>';
+    }
     html += '<div class="card"><h3 class="bloco">Empresa</h3>' + IDENT.map(c =>
       `<div class="campo" data-id="${c.k}"><label for="id_${c.k}"><span class="obr">${esc(c.rot)}</span>${c.ajuda ? `<small class="ajuda">${esc(c.ajuda)}</small>` : ''}</label>`
       + `<input type="${c.tipo}" id="id_${c.k}" value="${esc(ident[c.k] || '')}">`
@@ -190,11 +241,17 @@
       if (b.tipo === 'documentos') {
         abre(b.titulo);
         if (b.texto) html += `<div class="txt">${textoHtml(b.texto)}</div>`;
-        const itens = (b.itens || []).filter(x => String(x).trim());
+        const itens = itensDe(b);
+        if (anexoObrigatorio(b)) {
+          html += '<div class="txt"><p>Anexe cada documento no lugar dele. <b>Sem todos, o formulário não é enviado.</b></p></div>'
+            + itens.map((item, n) => vagaHtml(i, n, item)).join('');
+          if (b.nota) html += `<div class="nota">${esc(b.nota)}</div>`;
+          html += `<div class="anexo-email">Vale PDF, foto ou qualquer arquivo, até 25 MB cada. Não conseguiu anexar? Fale com o escritório: <b>${esc(email())}</b>.</div>`;
+          return;
+        }
         if (itens.length) html += `<div class="txt">${b.texto ? '<div class="rot">Documentos</div>' : ''}<ul>${itens.map(x => '<li>' + esc(x) + '</li>').join('')}</ul></div>`;
         if (b.nota) html += `<div class="nota">${esc(b.nota)}</div>`;
-        html += `<div class="anexo"><label class="anexo-btn">📎 Anexar arquivos<input type="file" multiple data-anexo="${i}"></label>`
-          + `<div class="anexo-lista" id="anx${i}"></div><div class="anexo-erro" id="anxErr${i}"></div>`
+        html += `<div class="anexo">${botaoAnexar(String(i), 'Anexar arquivos')}`
           + `<div class="anexo-email">Anexe aqui (PDF, foto ou qualquer arquivo) ou envie para <b>${esc(email())}</b>.</div></div>`;
         return;
       }
@@ -209,44 +266,112 @@
       if (b.tipo === 'pergunta') {
         const tag = b.formato === 'escolha' ? 'div class="lbl"' : `label for="f${i}"`;
         const fecha = b.formato === 'escolha' ? 'div' : 'label';
-        html += `<div class="campo" data-i="${i}"><${tag}><span class="${b.obrigatoria ? 'obr' : ''}">${esc(b.rotulo)}</span>${b.ajuda ? `<small class="ajuda">${esc(b.ajuda)}</small>` : ''}</${fecha}>${campoDe(b, i)}<div class="falta-msg">Preencha este campo.</div></div>`;
+        html += `<div class="campo" data-i="${i}"><${tag}><span class="${b.obrigatoria ? 'obr' : ''}">${esc(b.rotulo)}</span>${b.ajuda ? `<small class="ajuda">${esc(b.ajuda)}</small>` : ''}</${fecha}>${campoDe(b, i)}<div class="falta-msg">${b.formato === 'escolha' ? 'Escolha uma opção.' : 'Preencha este campo.'}</div></div>`;
       }
     });
     if (aberto) html += '</div>';
-    html += '<div class="card"><button class="botao" id="btnEnviar">Enviar informações</button><div class="erro" id="msgErro"></div>'
+    html += '<div class="card" id="cardEnviar"><div class="pend" id="pendencias"></div>'
+      + '<button class="botao" id="btnEnviar" aria-describedby="pendencias" disabled>Enviar informações</button><div class="erro" id="msgErro"></div>'
       + '<div class="progresso" id="progresso"></div><div class="barra" id="barra" hidden><div></div></div></div>';
     app.innerHTML = html;
-    app.querySelectorAll('.campo').forEach(c => { c.addEventListener('input', () => c.classList.remove('falta')); c.addEventListener('change', () => c.classList.remove('falta')); });
-    app.querySelectorAll('[data-anexo]').forEach(inp => inp.addEventListener('change', () => { adicionarAnexos(+inp.dataset.anexo, [...inp.files]); inp.value = ''; }));
-    document.getElementById('btnEnviar').addEventListener('click', enviar);
+    atualizar();
   }
 
+  // ---------- o que está preenchido e o que falta ----------
   const lerIdent = () => Object.fromEntries(IDENT.map(c => [c.k, (document.getElementById('id_' + c.k) || {}).value?.trim() || '']));
 
-  function coletar() {
-    const blocos = Array.isArray(modelo.blocos) ? modelo.blocos : [];
-    const respostas = [], faltam = [];
-    const ident = lerIdent();
-    IDENT.forEach(c => { if (!ident[c.k]) faltam.push(app.querySelector(`.campo[data-id="${c.k}"]`)); });
-    let secao = '';
-    blocos.forEach((b, i) => {
+  function estado() {
+    const valores = {}, marcados = {}, mesmo = {};
+    (Array.isArray(modelo.blocos) ? modelo.blocos : []).forEach((b, i) => {
       if (!b) return;
-      if (b.tipo === 'secao' || b.tipo === 'documentos') { secao = b.titulo || secao; return; }
-      const el = app.querySelector(`.campo[data-i="${i}"]`);
       if (b.tipo === 'pergunta') {
-        let v = '';
-        if (b.formato === 'escolha') v = (app.querySelector(`input[name="q${i}"]:checked`) || {}).value || '';
-        else v = ((app.querySelector(`[name="q${i}"]`) || {}).value || '').trim();
-        if (b.obrigatoria && !v) faltam.push(el);
-        respostas.push({ id: b.id, rotulo: b.rotulo, tipo: b.formato || 'texto', secao, valor: v });
+        valores[i] = b.formato === 'escolha' ? ((app.querySelector(`input[name="q${i}"]:checked`) || {}).value || '') : ((app.querySelector(`[name="q${i}"]`) || {}).value || '').trim();
       }
-      if (b.tipo === 'declaracao') {
-        const marcado = !!(app.querySelector(`input[name="q${i}"]`) || {}).checked;
-        if (b.obrigatoria && !marcado) faltam.push(el);
-        respostas.push({ id: b.id, rotulo: b.rotulo || 'Ciente', tipo: 'declaracao', secao: b.titulo || secao, valor: marcado ? 'Sim' : 'Não', texto: b.texto || '' });
-      }
+      if (b.tipo === 'declaracao') marcados[i] = !!(app.querySelector(`input[name="q${i}"]`) || {}).checked;
     });
-    return { ident, respostas, faltam: [...new Set(faltam.filter(Boolean))] };
+    app.querySelectorAll('[data-mesmo]').forEach(c => { mesmo[c.dataset.mesmo] = c.checked; });
+    return { ident: lerIdent(), valores, marcados, mesmo, anexos: Object.fromEntries(vagas.map(v => [v.chave, (anexos[v.chave] || []).length])) };
+  }
+
+  function pintarPendencias(faltam) {
+    const el = document.getElementById('pendencias');
+    if (!el) return;
+    const novo = faltam.map(f => f.chave).join('|');
+    if (novo === sinal) return;
+    sinal = novo;
+    if (!faltam.length) { el.className = 'pend ok'; el.innerHTML = '<b>✓ Tudo preenchido e anexado.</b> Pode enviar.'; return; }
+    el.className = 'pend';
+    el.innerHTML = `<b>${faltam.length === 1 ? 'Falta 1 item para liberar o envio:' : 'Faltam ' + faltam.length + ' itens para liberar o envio:'}</b><ul>`
+      + faltam.map(f => `<li><button type="button" class="pend-item" data-ir="${esc(f.chave)}"><b>${VERBO[f.acao] || 'Preencher'}:</b> ${esc(f.rotulo)}</button></li>`).join('') + '</ul>';
+  }
+
+  // refaz a conta a cada mudança: esconde e mostra a pergunta que depende de outra, pinta os lugares de anexar,
+  // a lista do que falta e liga o botão só com tudo preenchido e anexado
+  function atualizar() {
+    const est = estado();
+    const ve = blocosVisiveis(modelo.blocos, est.valores);
+    app.querySelectorAll('.campo[data-i]').forEach(c => { c.hidden = !ve[+c.dataset.i]; });
+    app.querySelectorAll('[data-mesmo]').forEach(c => {       // com o verso já anexado, a caixa "no mesmo arquivo" não se aplica
+      const temVerso = (anexos[c.dataset.mesmo + '-v'] || []).length > 0;
+      if (temVerso && c.checked) { c.checked = false; est.mesmo[c.dataset.mesmo] = false; }
+      c.disabled = temVerso;
+    });
+    const faltam = pendencias(modelo, est);
+    const falta = new Set(faltam.map(f => f.chave));
+    vagas.filter(v => v.obrigatoria).forEach(v => {
+      const el = app.querySelector(`[data-vaga="${v.chave}"]`), st = app.querySelector(`[data-st="${v.chave}"]`);
+      const n = (anexos[v.chave] || []).length, dispensa = !n && v.lado === 'v' && !!est.mesmo[v.par];
+      if (el) { el.classList.toggle('feito', n > 0); el.classList.toggle('dispensado', dispensa); if (!falta.has(v.chave)) el.classList.remove('falta'); }
+      if (st) { st.textContent = n ? '✓ anexado' : dispensa ? 'no arquivo da frente' : 'obrigatório'; st.classList.toggle('ok', n > 0 || dispensa); }
+    });
+    app.querySelectorAll('.campo.falta').forEach(c => { if (!falta.has(c.dataset.id || ('q' + c.dataset.i))) c.classList.remove('falta'); });
+    pintarPendencias(faltam);
+    const btn = document.getElementById('btnEnviar');
+    if (btn && !enviando) btn.disabled = faltam.length > 0;
+    ultimas = faltam;
+    return { est, faltam };
+  }
+
+  // leva ao campo ou ao lugar de anexar que falta, marcado em vermelho
+  function irPara(f) {
+    const el = f.tipo === 'ident' ? app.querySelector(`.campo[data-id="${f.chave}"]`)
+      : f.tipo === 'anexo' ? app.querySelector(`[data-vaga="${f.chave}"]`) : app.querySelector(`.campo[data-i="${f.bloco}"]`);
+    if (!el) return;
+    el.classList.add('falta');
+    el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    const foco = el.querySelector('input, textarea');
+    if (foco) foco.focus({ preventScroll: true });
+  }
+
+  // os cliques e as mudanças do formulário, ligados uma vez só (a tela é redesenhada no "Enviar outro funcionário")
+  function ligar() {
+    const mudou = e => {
+      const t = e.target;
+      if (t && t.matches && t.matches('[data-anexo]')) {
+        if (e.type !== 'change') return;
+        adicionarAnexos(t.dataset.anexo, [...t.files]); t.value = '';
+      }
+      if (document.getElementById('btnEnviar')) atualizar();
+    };
+    app.addEventListener('input', mudou);
+    app.addEventListener('change', mudou);
+    app.addEventListener('click', e => {
+      const tira = e.target.closest('[data-tira]');
+      if (tira) {
+        const s = tira.dataset.tira, c = s.lastIndexOf(':'), chave = s.slice(0, c);
+        (anexos[chave] || []).splice(+s.slice(c + 1), 1); pintarAnexos(chave); atualizar();
+        return;
+      }
+      const ir = e.target.closest('[data-ir]');
+      if (ir) { const f = ultimas.find(x => x.chave === ir.dataset.ir); if (f) irPara(f); return; }
+      if (e.target.closest('#btnEnviar')) enviar();
+    });
+    // saiu de um campo obrigatório sem preencher: fica marcado
+    app.addEventListener('focusout', e => {
+      const c = e.target.closest && e.target.closest('.campo');
+      if (!c || c.contains(e.relatedTarget) || !document.getElementById('btnEnviar')) return;
+      if (ultimas.some(f => f.chave === (c.dataset.id || ('q' + c.dataset.i)))) c.classList.add('falta');
+    });
   }
 
   function progresso(texto, fracao) {
@@ -275,25 +400,27 @@
   }
 
   async function enviar() {
+    if (enviando) return;
     const erro = document.getElementById('msgErro');
     const btn = document.getElementById('btnEnviar');
-    app.querySelectorAll('.campo.falta').forEach(c => c.classList.remove('falta'));
-    const { ident, respostas, faltam } = coletar();
+    // o botão só liga com tudo preenchido; a conta de novo, na hora do clique, é a garantia
+    const { est, faltam } = atualizar();
     if (faltam.length) {
-      faltam.forEach(c => c.classList.add('falta'));
-      erro.textContent = faltam.length === 1 ? 'Falta 1 campo obrigatório (marcado em vermelho).' : `Faltam ${faltam.length} campos obrigatórios (marcados em vermelho).`;
-      faltam[0].scrollIntoView({ behavior: 'smooth', block: 'center' });
+      erro.textContent = faltam.length === 1 ? 'Falta 1 item obrigatório.' : `Faltam ${faltam.length} itens obrigatórios.`;
+      irPara(faltam[0]);
       return;
     }
     if (PREVIA) { erro.textContent = 'Prévia: tudo preenchido. Na prévia nada é enviado.'; return; }
     erro.textContent = '';
+    const ident = est.ident, respostas = respostasDoEnvio(modelo, est);
     const lista = todosAnexos();
-    btn.disabled = true; btn.textContent = 'Enviando…';
+    enviando = true; btn.disabled = true; btn.textContent = 'Enviando…';
     progresso(lista.length ? 'Enviando as informações…' : '', null);
     const { data, error } = await chamar({ acao: 'enviar', empresa: ident.empresa, contato: ident.contato, respostas,
       arquivos: lista.map(a => ({ nome: a.file.name, tamanho: a.file.size, tipo: a.file.type || 'application/octet-stream', grupo: a.grupo })) });
     if (error || !data || data.error) {
-      btn.disabled = false; btn.textContent = 'Enviar informações'; progresso('', null);
+      enviando = false; btn.textContent = 'Enviar informações'; progresso('', null);
+      atualizar();
       erro.textContent = (data && data.error) ? data.error : 'Não foi possível enviar agora (' + ((error && error.message) || 'erro de conexão') + '). Tente novamente.';
       return;
     }
@@ -338,6 +465,7 @@
       aviso('⚠️', PREVIA ? 'Prévia indisponível' : 'Formulário indisponível', PREVIA ? 'Abra a prévia pelo módulo Admissões, no botão "Ver como a empresa vê".' : 'Fale com o escritório, por favor.');
       return;
     }
+    ligar();
     desenhar();
   }
   function rodape() {

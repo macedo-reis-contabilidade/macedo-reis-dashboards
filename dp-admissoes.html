@@ -152,7 +152,7 @@
 
       <section id="secForm" hidden>
         <div class="ad-ed-topo">
-          <p>Este é o formulário que a empresa recebe pelo link. As mudanças valem para os próximos preenchimentos; as respostas já recebidas ficam como foram enviadas.</p>
+          <p>Este é o formulário que a empresa recebe pelo link. As mudanças valem para os próximos preenchimentos; as respostas já recebidas ficam como foram enviadas. <b>O link só envia completo:</b> a empresa precisa responder toda pergunta marcada como obrigatória e anexar cada documento das listas com anexo obrigatório.</p>
           <span class="ad-sub" id="edInfo"></span>
         </div>
         <div class="ad-sec">Quem recebe as admissões na agenda</div>
@@ -173,7 +173,7 @@
         </div>
         <div class="ad-sec">E-mail indicado junto dos anexos</div>
         <input class="ad-in" id="edEmail" style="max-width:320px" placeholder="rh@macedoereis.com.br">
-        <div class="ad-nota">Aparece em cada lista de documentos: "Anexe aqui (PDF, foto ou qualquer arquivo) ou envie para …". Os anexos vão pro Drive em ADMISSÕES › empresa › funcionário.</div>
+        <div class="ad-nota">Aparece em cada lista de documentos: "Anexe aqui (PDF, foto ou qualquer arquivo) ou envie para …". Na lista com anexo obrigatório, o e-mail aparece só pra quem não conseguir anexar. Os anexos vão pro Drive em ADMISSÕES › empresa › funcionário.</div>
         <div class="ad-sec">Mensagem do WhatsApp que vai com o link</div>
         <textarea class="ad-in" id="edConvite" rows="4"></textarea>
         <div class="ad-nota">{link} é trocado pelo link do formulário.</div>
@@ -234,12 +234,17 @@
   <script type="module">
     import { supabase, getCurrentUser, signOut } from './assets/js/supabase.js';
     import { hojeLocal, formatDocumento, formatTelefone } from './assets/js/utils.js';   // dia no fuso local (toISOString é UTC)
+    import { opcoesDe, condicaoDe, problemaDoModelo, arquivosDoItem } from './assets/js/admissao-form.js';   // o que é obrigatório no link (17/11/2026)
 
     // ---------------------------------------------------------------------------------------------
     // Modelo do formulário: nasce do PDF "Documentos e informações necessárias para registro de funcionário(a)"
     // (ficha 2026 do DP). Fica no banco (admissao_modelos) na primeira abertura e daí em diante é editado na aba
     // "Formulário da empresa". Os ids 'nome' e 'data_inicio' alimentam a admissão quando a empresa envia; o nome da
     // empresa e de quem preenche são campos fixos do link (admissao.html), fora do modelo.
+    // 17/11/2026 (pedido da Vitória): o link só envia completo. Duas marcas do modelo dizem o que é exigido além das
+    // perguntas obrigatórias (as regras em assets/js/admissao-form.js): na lista de documentos, anexo_obrigatorio = um
+    // lugar de anexar por documento, e sem arquivo em cada um o envio não é liberado ("frente e verso" no nome do
+    // documento pede os dois lados); na pergunta, so_se { id, valor } = só aparece com aquela resposta de outra pergunta.
     // ---------------------------------------------------------------------------------------------
     const op = (...l) => l.map(texto => ({ texto }));
     const MODELO_PADRAO = {
@@ -253,17 +258,24 @@
       blocos: [
         { tipo: 'pergunta', id: 'nome', rotulo: 'Nome completo do(a) funcionário(a)', formato: 'texto', obrigatoria: true },
         { tipo: 'pergunta', id: 'data_inicio', rotulo: 'Data de início', formato: 'data', obrigatoria: true },
-        { tipo: 'documentos', titulo: 'Documentos', texto: '', condicional: false,
-          itens: ['Exame Médico admissional (ASO)', 'RG, CPF e Título eleitoral', 'Endereço Completo', 'Carteira de trabalho (caso seja digital somente n° do PIS)'],
+        { tipo: 'documentos', titulo: 'Documentos obrigatórios', texto: '', condicional: false, anexo_obrigatorio: true,
+          itens: ['Exame médico admissional (ASO)', 'Documento com foto (RG ou CNH), frente e verso', 'Comprovante de endereço'],
           nota: 'O exame médico preferencialmente deve ser marcado pela própria empresa, porém em caso de dúvidas o escritório auxilia.' },
+        { tipo: 'documentos', titulo: 'Outros documentos', texto: '', condicional: false,
+          itens: ['CPF e Título eleitoral', 'Carteira de trabalho (caso seja digital somente n° do PIS)'], nota: '' },
         { tipo: 'secao', titulo: 'Informações importantes' },
         { tipo: 'pergunta', id: 'salario', rotulo: 'Salário mensal ou por hora', formato: 'texto', obrigatoria: true },
         { tipo: 'pergunta', id: 'funcao', rotulo: 'Função', formato: 'texto', obrigatoria: true },
-        { tipo: 'pergunta', id: 'horario', rotulo: 'Horário de trabalho', formato: 'texto', obrigatoria: true },
+        { tipo: 'pergunta', id: 'horario', rotulo: 'Horário diário de trabalho', formato: 'texto', obrigatoria: true, ajuda: 'Entrada e saída. Ex.: 08:00 às 12:00 e 13:30 às 18:00' },
+        { tipo: 'pergunta', id: 'dias_trabalho', rotulo: 'Dias de trabalho', formato: 'texto', obrigatoria: true, ajuda: 'Ex.: segunda a sexta' },
+        { tipo: 'pergunta', id: 'dias_folga', rotulo: 'Dias de folga', formato: 'texto', obrigatoria: true, ajuda: 'Ex.: sábado e domingo' },
         { tipo: 'pergunta', id: 'intervalo', rotulo: 'Intervalo', formato: 'texto', obrigatoria: true },
         { tipo: 'pergunta', id: 'tipo_contrato', rotulo: 'Tipo de Contrato', formato: 'escolha', obrigatoria: true, opcoes: [
           { texto: 'Experiência', ajuda: 'podendo ser renovado uma vez, não ultrapassando 90 dias no total' },
           { texto: 'Indeterminado', ajuda: 'sem renovações, em caso de demissão haverá aviso prévio trabalhado ou indenizado.' }] },
+        { tipo: 'pergunta', id: 'prazo_experiencia', rotulo: 'Prazo do contrato de experiência', formato: 'escolha', obrigatoria: true, so_se: { id: 'tipo_contrato', valor: 'Experiência' },
+          opcoes: op('30 + 30 dias', '30 + 60 dias', '45 + 45 dias', '60 + 30 dias', '90 dias (sem prorrogação)', 'Outro prazo') },
+        { tipo: 'pergunta', id: 'prazo_experiencia_outro', rotulo: 'Qual o prazo do contrato de experiência?', formato: 'texto', obrigatoria: true, so_se: { id: 'prazo_experiencia', valor: 'Outro prazo' } },
         // limite do salário-família de 2026: Portaria Interministerial MPS/MF nº 13/2026, art. 4º (no PDF estava o de 2024, R$ 1.819,26)
         { tipo: 'documentos', titulo: 'Documentos e informações para salário família', condicional: true,
           texto: 'Quem tem direito?\n- trabalhadores que tenham filho(s) menores de 14 anos e que recebam até R$ 1.980,38 bruto.',
@@ -496,7 +508,8 @@
         if (!d) return;
         const g = (d.grupo || 'Documentos') + (d.condicional ? ' (se houver)' : '');
         if (g !== grupo) { grupo = g; html += `<div class="g">${esc(g)}</div>`; }
-        html += `<label><input type="checkbox" data-doc="${i}"${d.recebido ? ' checked' : ''}> ${esc(d.item)}</label>`;
+        const n = arquivosDoItem(a.arquivos, d.item);   // o documento anexado no lugar dele (lista com anexo obrigatório)
+        html += `<label><input type="checkbox" data-doc="${i}"${d.recebido ? ' checked' : ''}> ${esc(d.item)}${n ? ` <span class="ad-sub">· 📎 ${n === 1 ? '1 arquivo anexado' : n + ' arquivos anexados'}</span>` : ''}</label>`;
       });
       return html;
     }
@@ -622,29 +635,48 @@
     function resumoBloco(b) {
       if (b.tipo === 'pergunta') {
         const f = (FORMATOS.find(x => x[0] === b.formato) || FORMATOS[0])[1];
-        return (b.rotulo || '(sem pergunta)') + ' · ' + f.toLowerCase() + (b.formato === 'escolha' ? ` · ${(b.opcoes || []).length} opções` : '') + (b.obrigatoria ? ' · obrigatória' : '');
+        return (b.rotulo || '(sem pergunta)') + ' · ' + f.toLowerCase() + (b.formato === 'escolha' ? ` · ${(b.opcoes || []).length} opções` : '') + (b.obrigatoria ? ' · obrigatória' : '')
+          + (b.so_se ? ` · só com a resposta "${(condicaoDe(b) || {}).valor || '?'}"` : '');
       }
       if (b.tipo === 'secao') return b.titulo || '(sem título)';
       if (b.tipo === 'texto') return linhas(b.texto)[0] || '(texto vazio)';
-      if (b.tipo === 'documentos') return (b.titulo || 'Documentos') + ` · ${(b.itens || []).length} itens` + (b.condicional ? ' · só se houver' : '');
+      if (b.tipo === 'documentos') return (b.titulo || 'Documentos') + ` · ${(b.itens || []).length} itens` + (b.anexo_obrigatorio ? ' · anexo obrigatório' : '') + (b.condicional ? ' · só se houver' : '');
       if (b.tipo === 'declaracao') return (b.titulo || 'Declaração') + (b.obrigatoria ? ' · obrigatória' : '');
       return '';
     }
 
-    function corpoBloco(b) {
+    // "Mostrar esta pergunta": sempre, ou só com uma resposta de uma pergunta de escolha que vem antes dela
+    function condicaoHtml(b, i) {
+      const c = b.so_se && typeof b.so_se === 'object' ? b.so_se : null;
+      const antes = rascunho.blocos.filter((x, j) => j < i && x && x.tipo === 'pergunta' && x.formato === 'escolha' && x.id && String(x.rotulo || '').trim());
+      if (!antes.length && !c) return '';
+      const dona = c ? rascunho.blocos.find(x => x && x.tipo === 'pergunta' && x.id === c.id) : null;
+      const ops = dona ? opcoesDe(dona) : [];
+      const valores = c ? [...new Set([...ops, ...(c.valor && !ops.includes(c.valor) ? [c.valor] : [])])] : [];
+      return `<div class="ad-f-row"><label class="ad-f"><span>Mostrar esta pergunta</span><select class="ad-in" data-k="so_se_id"><option value="">sempre</option>`
+        + antes.map(x => `<option value="${esc(x.id)}"${c && c.id === x.id ? ' selected' : ''}>só quando "${esc(x.rotulo)}" for…</option>`).join('')
+        + (c && !antes.some(x => x.id === c.id) ? `<option value="${esc(c.id)}" selected>(a pergunta de que ela depende não está mais acima)</option>` : '')
+        + '</select></label>'
+        + (c ? `<label class="ad-f"><span>…esta resposta</span><select class="ad-in" data-k="so_se_valor">${valores.map(o => `<option value="${esc(o)}"${o === c.valor ? ' selected' : ''}>${esc(o)}</option>`).join('')}</select></label>` : '')
+        + '</div>';
+    }
+
+    function corpoBloco(b, i) {
       const inp = (k, v, ph = '') => `<input class="ad-in" data-k="${k}" value="${esc(v || '')}" placeholder="${esc(ph)}">`;
       const area = (k, v, rows = 3) => `<textarea class="ad-in" data-k="${k}" rows="${rows}">${esc(v || '')}</textarea>`;
       const chk = (k, v, txt) => `<label class="ad-chk"><input type="checkbox" data-k="${k}"${v ? ' checked' : ''}> ${txt}</label>`;
       if (b.tipo === 'pergunta') return `<label class="ad-f"><span>Pergunta</span>${inp('rotulo', b.rotulo)}</label>`
         + `<div class="ad-f-row"><label class="ad-f"><span>Tipo de resposta</span><select class="ad-in" data-k="formato">${FORMATOS.map(([v, l]) => `<option value="${v}"${b.formato === v ? ' selected' : ''}>${l}</option>`).join('')}</select></label>${chk('obrigatoria', b.obrigatoria, 'Obrigatória')}</div>`
         + `<label class="ad-f"><span>Explicação embaixo da pergunta (opcional)</span>${inp('ajuda', b.ajuda)}</label>`
-        + (b.formato === 'escolha' ? `<label class="ad-f"><span>Opções — uma por linha. Pra explicar uma opção, use "|": Experiência | até 90 dias</span>${area('opcoes', opcoesTexto(b.opcoes), 4)}</label>` : '');
+        + (b.formato === 'escolha' ? `<label class="ad-f"><span>Opções — uma por linha. Pra explicar uma opção, use "|": Experiência | até 90 dias</span>${area('opcoes', opcoesTexto(b.opcoes), 4)}</label>` : '')
+        + condicaoHtml(b, i);
       if (b.tipo === 'secao') return `<label class="ad-f"><span>Título da seção</span>${inp('titulo', b.titulo)}</label>`;
       if (b.tipo === 'texto') return `<label class="ad-f"><span>Texto — linhas começando com "* " ou "- " viram lista</span>${area('texto', b.texto, 4)}</label>`;
       if (b.tipo === 'documentos') return `<label class="ad-f"><span>Título</span>${inp('titulo', b.titulo)}</label>`
         + `<label class="ad-f"><span>Texto antes da lista (opcional)</span>${area('texto', b.texto, 2)}</label>`
         + `<label class="ad-f"><span>Documentos — um por linha (viram a lista de conferência na ficha de cada admissão)</span>${area('itens', (b.itens || []).join('\n'), 4)}</label>`
         + `<label class="ad-f"><span>Observação depois da lista (opcional)</span>${area('nota', b.nota, 2)}</label>`
+        + chk('anexo_obrigatorio', b.anexo_obrigatorio, 'Anexo obrigatório — cada documento ganha o seu lugar de anexar, e a empresa só consegue enviar o formulário com um arquivo em cada um. Documento com "frente e verso" no nome pede os dois lados')
         + chk('condicional', b.condicional, 'Só quando se aplica (ex.: salário família) — não entra na conta de documentos recebidos');
       if (b.tipo === 'declaracao') return `<label class="ad-f"><span>Título</span>${inp('titulo', b.titulo)}</label>`
         + `<label class="ad-f"><span>Texto da declaração — linhas com "* " viram lista</span>${area('texto', b.texto, 5)}</label>`
@@ -668,7 +700,7 @@
         + `<div class="ad-bl-cab" data-acao="abrir"><span class="t">${TIPOS_BL[b.tipo] || b.tipo}</span><span class="r">${esc(resumoBloco(b))}</span>`
         + `<button data-acao="sobe" title="Subir"${i === 0 ? ' disabled' : ''}>↑</button><button data-acao="desce" title="Descer"${i === n - 1 ? ' disabled' : ''}>↓</button>`
         + `<button class="del" data-acao="tira" title="Tirar do formulário">✕</button></div>`
-        + (edAbertos.has(b) ? `<div class="ad-bl-corpo">${corpoBloco(b)}</div>` : '')
+        + (edAbertos.has(b) ? `<div class="ad-bl-corpo">${corpoBloco(b, i)}</div>` : '')
         + '</div>').join('');
     }
 
@@ -697,6 +729,13 @@
     });
 
     function lerCampo(b, k, el) {
+      if (k === 'so_se_id') {       // de qual pergunta ela depende: nasce com a primeira opção de lá
+        if (!el.value) { delete b.so_se; return; }
+        const dona = rascunho.blocos.find(x => x && x.tipo === 'pergunta' && x.id === el.value);
+        b.so_se = { id: el.value, valor: (b.so_se && b.so_se.id === el.value && b.so_se.valor) || opcoesDe(dona)[0] || '' };
+        return;
+      }
+      if (k === 'so_se_valor') { if (b.so_se) b.so_se.valor = el.value; return; }
       if (el.type === 'checkbox') b[k] = el.checked;
       else if (k === 'opcoes') b.opcoes = lerOpcoes(el.value);
       else if (k === 'itens') b.itens = linhas(el.value);
@@ -714,6 +753,7 @@
       const card = el.closest('.ad-bl'); const b = rascunho.blocos[+card.dataset.i];
       lerCampo(b, el.dataset.k, el);
       if (el.dataset.k === 'formato') { if (b.formato === 'escolha' && !(b.opcoes || []).length) b.opcoes = [{ texto: 'Sim' }, { texto: 'Não' }]; renderBlocos(); }
+      else if (el.dataset.k === 'so_se_id') renderBlocos();
       else card.querySelector('.r').textContent = resumoBloco(b);
       marcarSujo(true);
     });
@@ -747,7 +787,7 @@
         if (b.id) { if (ids.has(b.id)) return 'Pergunta repetida ' + onde + '.'; ids.add(b.id); }
       }
       if (!c.blocos.some(b => b.tipo === 'pergunta' || b.tipo === 'declaracao')) return 'O formulário precisa de pelo menos uma pergunta.';
-      return '';
+      return problemaDoModelo(c.blocos);   // a pergunta que depende de outra e a lista com anexo obrigatório
     }
 
     $('edSalvar').onclick = async () => {
