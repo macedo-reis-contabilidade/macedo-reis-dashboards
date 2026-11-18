@@ -277,7 +277,13 @@ const authFalso = {
 };
 export const supabase = { from: q, auth: authFalso,
   rpc: async (nome, args) => (typeof window.__mockRpc === 'function' ? window.__mockRpc(nome, args || {}) : { data: [], error:null }) };
-supabase.todosClientes = async () => ({ data: DATA.clientes, error:null });
+// o filtro de quem chama (q => q.in('status', …)) só vale com window.__mockFiltrarClientes = true (tests/harness/
+// obrigacoes-transicao.py, 18/11/2026): os outros testes semeiam empresas sem status nem tipo e contam com todas
+supabase.todosClientes = async (cols, filtro) => {
+  if (!window.__mockFiltrarClientes || typeof filtro !== 'function') return { data: DATA.clientes, error:null };
+  const r = await filtro(q('clientes').select(cols));
+  return { data: r.data || [], error: r.error || null };
+};
 supabase.channel = canal;
 supabase.removeChannel = async c => {
   const i = CANAIS.indexOf(c);

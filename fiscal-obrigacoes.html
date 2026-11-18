@@ -580,9 +580,11 @@
       document.getElementById('vincVoltar').textContent = n === 2 ? 'Voltar' : 'Cancelar';
     }
 
+    // a empresa em transição também se vincula (18/11/2026, pedido do Samuel: a Esmero, em transição, não aparecia no
+    // "+ Vincular cliente" do PGDAS — a lista era só a do status "ativo"); a inativa segue fora
     async function garantirClientes(){
       if (clientesTodos) return;
-      const { data, error } = await supabase.todosClientes('id, nome_principal, tipo_pessoa', q => q.eq('status', 'ativo'));
+      const { data, error } = await supabase.todosClientes('id, nome_principal, tipo_pessoa, status', q => q.in('status', ['ativo', 'em_transicao']));
       if (!error) clientesTodos = data || [];
     }
 
@@ -623,7 +625,7 @@
         const ja = new Map(vinculos.filter(v => v.obrigacao_id === vincCtx.obrigacaoId).map(v => [v.cliente_id, v]));
         html = clientesTodos.filter(c => !q || norm(c.nome_principal).includes(q)).map(c => {
           const v = ja.get(c.id), off = !!(v && v.ativo);
-          return `<div class="vm-item ${off ? 'off' : ''}" data-id="${off ? '' : c.id}">${escR(c.nome_principal)}${off ? '<span class="vm-extra">já vinculado</span>' : v ? religar + 'desligado · religar</span>' : '<span class="vm-extra">' + escR(c.tipo_pessoa) + '</span>'}</div>`;
+          return `<div class="vm-item ${off ? 'off' : ''}" data-id="${off ? '' : c.id}">${escR(c.nome_principal)}${off ? '<span class="vm-extra">já vinculado</span>' : v ? religar + 'desligado · religar</span>' : '<span class="vm-extra">' + escR(c.tipo_pessoa) + (c.status === 'em_transicao' ? ' · em transição' : '') + '</span>'}</div>`;
         }).join('');
       } else {
         const ja = new Map(vinculos.filter(v => v.cliente_id === vincCtx.clienteId).map(v => [v.obrigacao_id, v]));
