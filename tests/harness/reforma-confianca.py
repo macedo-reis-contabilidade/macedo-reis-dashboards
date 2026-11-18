@@ -140,6 +140,9 @@ def main():
         p = ctx.new_page()
         p.on('pageerror', lambda e: erros.append(str(e)))
         p.add_init_script("(() => { const g = Storage.prototype.getItem; Storage.prototype.getItem = function (k) { return String(k).startsWith('mr_tour_') ? 'ok' : g.call(this, k); }; })()")
+        # o detalhe técnico aberto (17/11/2026: ele abre recolhido, por baixo do resultado explicado, e a escolha de deixar aberto
+        # fica no navegador): este teste lê o veredito técnico, os retratos e o mês a mês
+        p.add_init_script("try { localStorage.setItem('mr_reforma_detalhe', '1'); } catch (e) {}")
         p.add_init_script(SEMEAR)
         p.add_init_script(REGIMES)
         p.route('**/cdnjs.cloudflare.com/ajax/libs/xlsx/**', lambda r: r.fulfill(body=LEITOR_CSV, content_type='application/javascript'))

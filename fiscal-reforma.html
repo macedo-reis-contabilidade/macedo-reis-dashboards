@@ -150,6 +150,7 @@
     .rt-tm tr.tot td { font-weight:700; color:var(--text); }
     .rt-nota { font-size:11px; color:var(--text-dim); margin-top:10px; line-height:1.45; }
     .rt-refs { font-size:10.5px; color:var(--text-dim); margin-top:4px; }
+    #dOpcao[hidden] { display:none; }   /* o display do .btn vencia o hidden: o botão aparecia em toda ficha (17/11/2026) */
     .rt-dec { display:flex; gap:18px; align-items:center; margin-bottom:10px; font-size:13px; color:var(--text); flex-wrap:wrap; }
     .rt-dec label { display:flex; gap:6px; align-items:center; cursor:pointer; }
     .rg-obs { width:100%; background:var(--fill-1); border:1px solid var(--fill-3); border-radius:10px; color:var(--text); padding:9px 11px; font:inherit; font-size:13px; min-height:56px; resize:vertical; }
@@ -184,6 +185,121 @@
     .dom-campo b { color:var(--text); font-variant-numeric:tabular-nums; white-space:nowrap; }
     .dom-campo .of { display:block; font-size:10.5px; color:var(--text-dim); font-weight:400; }
     .dom-aviso { background:rgba(232,161,92,.1); color:var(--text); border-radius:8px; padding:7px 10px; font-size:11.5px; margin-top:8px; line-height:1.5; }
+
+    /* A SIMULAÇÃO EXPLICADA (17/11/2026, pedido do Samuel): o resultado do bloco B em palavras e em reais, por cima do
+       detalhe técnico (os retratos, o veredito com a confiança e o mês a mês de sempre, agora recolhidos). Azul é sempre
+       "tudo no DAS" e bronze é sempre "CBS e IBS por fora" — as duas cores da logo, aqui como categoria, não como estado
+       (o estado segue em verde, amarelo e vermelho). As duas foram conferidas contra o fundo do painel nos dois temas
+       (3:1 ou mais de contraste e distantes entre si pra quem não distingue cores); a faixa "depende dos clientes" é o
+       bronze hachurado, pra não depender só da cor. */
+    .rx { --rx-dentro:#4F8AD0; --rx-fora:#BE8847; --rx-fora-fundo:#2A2217; --rx-cor:var(--rx-dentro);
+      margin-top:14px; background:var(--surface); border:1px solid var(--border); border-radius:14px; overflow:hidden; font-size:13.5px; line-height:1.5; color:var(--text); }
+    :root[data-theme="light"] .rx { --rx-dentro:#3A70B4; --rx-fora:#B9792A; --rx-fora-fundo:#FBF2E4; }
+    .rx[data-chave="fora"], .rx[data-chave="se"] { --rx-cor:var(--rx-fora); }
+    .rx[data-chave="semconc"] { --rx-cor:var(--err); }
+    .rx [hidden] { display:none !important; }   /* o .btn e as caixas com display próprio não podem vencer o hidden */
+    .rx-chave { flex:none; display:inline-block; width:12px; height:12px; border-radius:3px; background:var(--rx-dentro); }
+    .rx-chave.fora { background:var(--rx-fora); }
+    .rx-chave.se { background:repeating-linear-gradient(135deg, var(--rx-fora) 0 3px, var(--rx-fora-fundo) 3px 6px); }
+    /* o veredito */
+    .rx-verd { padding:18px 20px 16px; border-left:4px solid var(--rx-cor); }
+    .rx-rot { font-size:12px; color:var(--text-muted); margin-bottom:4px; }
+    .rx-titulo { display:flex; align-items:center; gap:10px; font:600 1.6rem/1.12 var(--font-display); letter-spacing:-.01em; color:var(--text); text-wrap:balance; }
+    .rx-titulo .rx-chave { width:.6em; height:.6em; border-radius:.14em; background:var(--rx-cor); }
+    .rx[data-chave="se"] .rx-titulo .rx-chave { background:repeating-linear-gradient(135deg, var(--rx-fora) 0 3px, var(--rx-fora-fundo) 3px 6px); }
+    .rx-tags { display:flex; flex-wrap:wrap; gap:6px; margin-top:8px; }
+    .rx-tags:empty { display:none; }
+    .rx-tag { font-size:11.5px; font-weight:700; border-radius:999px; padding:2px 10px; background:color-mix(in srgb, var(--warn) 16%, transparent); color:var(--warn); }
+    .rx p.rx-porque { margin-top:10px; font-size:14.5px; max-width:70ch; }
+    .rx-porque b, .rx-formula b { font-weight:700; font-variant-numeric:tabular-nums; white-space:nowrap; }
+    .rx p.rx-nota { margin-top:6px; color:var(--text-muted); max-width:70ch; }
+    .rx-nota:empty { display:none; }
+    /* o que pode mudar o resultado (amarelo) e, sem conclusão, o que impede a conclusão (vermelho) */
+    .rx-atencao { --rx-at:var(--warn); margin-top:12px; padding:10px 14px; border-radius:10px; background:color-mix(in srgb, var(--rx-at) 10%, transparent); font-size:12.5px; max-width:96ch; display:grid; gap:5px; }
+    .rx-atencao.rx-falta { --rx-at:var(--err); }
+    .rx-at-t { font-weight:700; color:var(--rx-at); }
+    .rx-atencao ul { margin:0; padding-left:18px; display:grid; gap:5px; }
+    /* as seções: para quem vende e os dois caminhos */
+    .rx-sec { padding:14px 20px 16px; border-top:1px solid var(--line); display:grid; gap:10px; min-width:0; }
+    .rx-sec-topo { display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:6px 16px; }
+    .rx-h { font:700 13.5px/1.3 var(--font-body); color:var(--text); }
+    .rx-regua { position:relative; height:30px; }
+    .rx-zonas { position:absolute; left:0; right:0; top:9px; height:12px; display:flex; gap:2px; }
+    .rx-zona { min-width:0; height:100%; background:var(--rx-dentro); }
+    .rx-zona:first-child { border-radius:6px 0 0 6px; }
+    .rx-zona:last-child { border-radius:0 6px 6px 0; }
+    .rx-zona:only-child { border-radius:6px; }
+    .rx-zona.fora { background:var(--rx-fora); }
+    .rx-zona.se { background:repeating-linear-gradient(135deg, var(--rx-fora) 0 4px, var(--rx-fora-fundo) 4px 8px); }
+    .rx-pino { position:absolute; top:6px; width:18px; height:18px; margin-left:-9px; box-sizing:border-box; border-radius:50%; background:var(--surface); border:2px solid var(--text); box-shadow:0 1px 4px rgba(0,0,0,.35); }
+    .rx-vira { position:absolute; top:23px; width:0; height:0; margin-left:-5px; border-left:5px solid transparent; border-right:5px solid transparent; border-bottom:7px solid var(--text); }
+    .rx-regua-pe { display:flex; justify-content:space-between; gap:12px; font-size:11.5px; color:var(--text-muted); margin-top:-4px; }
+    .rx-legenda { list-style:none; margin:0; padding:0; display:flex; flex-wrap:wrap; gap:4px 16px; font-size:12.5px; }
+    .rx-legenda li { display:flex; align-items:center; gap:7px; }
+    .rx-legenda .rx-bola { flex:none; width:12px; height:12px; box-sizing:border-box; border-radius:50%; border:2px solid var(--text); }
+    .rx-legenda .rx-tri { flex:none; width:0; height:0; border-left:5px solid transparent; border-right:5px solid transparent; border-bottom:7px solid var(--text); }
+    .rx p.rx-depois { font-weight:600; max-width:80ch; }
+    .rx-alterna { display:inline-flex; border:1px solid var(--line-strong); border-radius:999px; padding:2px; }
+    .rx-alterna button { appearance:none; border:0; background:none; font:600 12px/1 var(--font-body); color:var(--text-muted); padding:6px 12px; border-radius:999px; cursor:pointer; }
+    .rx-alterna button[aria-pressed="true"] { background:var(--fill-3); color:var(--text); }
+    .rx-alterna button:focus-visible, .rx-det > summary:focus-visible { outline:2px solid var(--text); outline-offset:-2px; }
+    .rx-guias { display:grid; gap:12px; grid-template-columns:repeat(auto-fit, minmax(min(100%, 17rem), 1fr)); }
+    .rx-guia { border:1px solid var(--border); border-radius:12px; padding:14px 16px 12px; display:flex; flex-direction:column; gap:6px; min-width:0; }
+    .rx-guia-topo { display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:6px 8px; }
+    .rx-guia h6 { display:flex; align-items:center; gap:8px; font:700 14px/1.25 var(--font-body); color:var(--text); }
+    .rx p.rx-sub { font-size:12px; color:var(--text-muted); margin-bottom:4px; max-width:96ch; }
+    .rx-h + .rx-sub { margin-top:2px; margin-bottom:0; }
+    .rx-selo { font-size:11px; font-weight:700; border-radius:999px; padding:2px 9px; white-space:nowrap; }
+    .rx-selo.ok { background:color-mix(in srgb, var(--ok) 16%, transparent); color:var(--ok); }
+    .rx-selo.cli { border:1px solid var(--line-strong); color:var(--text-muted); }
+    .rx-linhas { flex:1; display:flex; flex-direction:column; gap:6px; }
+    .rx-linha { display:flex; align-items:baseline; gap:8px; min-width:0; }
+    .rx-linha .r { min-width:0; }
+    .rx-linha .p { flex:1; min-width:10px; border-bottom:1px dotted var(--line-strong); transform:translateY(-4px); }
+    .rx-linha .v { font-weight:600; font-variant-numeric:tabular-nums; white-space:nowrap; }
+    .rx-linha.leve { font-size:12.5px; color:var(--text-muted); }
+    .rx-linha.leve .v { font-weight:500; }
+    .rx-total { margin-top:auto; display:flex; flex-wrap:wrap; align-items:baseline; justify-content:space-between; gap:8px; border-top:1px solid var(--line-strong); padding-top:8px; font-weight:700; }
+    .rx-total .v { font-size:1.25rem; font-variant-numeric:tabular-nums; white-space:nowrap; }
+    .rx-medida { height:8px; border-radius:4px; min-width:4px; background:var(--rx-dentro); margin-bottom:2px; }
+    .rx-guia.fora .rx-medida { background:var(--rx-fora); }
+    .rx-cliente { border-top:1px dashed var(--line); padding-top:7px; margin-top:2px; }
+    .rx p.rx-dif { font-weight:600; max-width:96ch; }
+    /* o pé: a conta passo a passo (recolhida) e o resumo pra copiar */
+    .rx-pe { position:relative; border-top:1px solid var(--line); }
+    .rx-det > summary { list-style:none; cursor:pointer; display:flex; flex-wrap:wrap; align-items:baseline; gap:4px 8px; padding:12px 20px; font-size:13.5px; font-weight:700; color:var(--text); }
+    .rx-det > summary::-webkit-details-marker { display:none; }
+    .rx-det > summary::before { content:'+'; flex:none; width:1em; font-weight:500; color:var(--text-muted); }
+    .rx-det[open] > summary::before { content:'\2212'; }
+    .rx-det > summary small { font-weight:400; font-size:12px; color:var(--text-muted); }
+    .rx-pe > .rx-det > summary { padding-right:270px; }
+    .rx-acoes { position:absolute; top:7px; right:14px; display:flex; align-items:center; gap:10px; }
+    .rx-feito { font-size:12px; font-weight:600; color:var(--ok); }
+    @media (max-width:820px) { .rx-acoes { position:static; padding:10px 20px 0; } .rx-pe > .rx-det > summary { padding-right:20px; } }
+    .rx-conta-corpo { padding:2px 20px 18px; display:grid; gap:16px; }
+    .rx-passos { list-style:none; margin:0; padding:0; display:grid; gap:14px; counter-reset:rxp; max-width:96ch; }
+    .rx-passos > li { counter-increment:rxp; display:grid; grid-template-columns:1.8rem minmax(0,1fr); column-gap:12px; row-gap:4px; }
+    .rx-passos > li::before { content:counter(rxp); grid-column:1; grid-row:1 / span 4; width:1.8rem; height:1.8rem; box-sizing:border-box; border-radius:50%; border:1px solid var(--line-strong); display:grid; place-items:center; font-size:12px; font-weight:700; font-variant-numeric:tabular-nums; }
+    .rx-passos > li > * { grid-column:2; min-width:0; }
+    .rx-passo-t { font-weight:700; }
+    .rx-formula { font-variant-numeric:tabular-nums; font-weight:500; background:var(--fill-1); border-radius:8px; padding:7px 10px; overflow-wrap:anywhere; }
+    .rx-passo-n, .rx-fecho { font-size:12.5px; color:var(--text-muted); max-width:96ch; }
+    .rx-tabela > summary { cursor:pointer; font-size:12.5px; font-weight:600; color:var(--brand-light); }
+    .rx-rolagem { overflow-x:auto; margin-top:6px; }
+    .rx-tab { border-collapse:collapse; font-variant-numeric:tabular-nums; min-width:24rem; width:100%; max-width:40rem; font-size:12.5px; }
+    .rx-tab th, .rx-tab td { padding:5px 9px; text-align:right; border-bottom:1px solid var(--line); white-space:nowrap; }
+    .rx-tab th { font-weight:600; font-size:11.5px; color:var(--text-muted); }
+    .rx-tab th:first-child, .rx-tab td:first-child { text-align:left; }
+    .rx-tab tr.aqui td { background:color-mix(in srgb, var(--rx-dentro) 16%, transparent); font-weight:700; }
+    .rx-supoe h5 { font:700 13px/1.3 var(--font-body); margin-bottom:6px; }
+    .rx-supoe ul { margin:0; padding-left:18px; display:grid; gap:5px; font-size:12.5px; max-width:96ch; }
+    .rx-copia { padding:0 20px 14px; display:grid; gap:6px; }
+    .rx-copia textarea { width:100%; min-height:9rem; box-sizing:border-box; font:500 12.5px/1.45 var(--font-body); color:var(--text); background:var(--fill-1); border:1px solid var(--fill-3); border-radius:10px; padding:9px 11px; }
+    /* o detalhe técnico: recolhido; quem abre fica com ele aberto (a escolha fica no navegador) */
+    .rx-tec { margin-top:10px; border-radius:12px; background:var(--fill-1); }
+    .rx-tec > summary { padding:10px 16px; }
+    .rx-tec-corpo { padding:0 16px 14px; }
+    .rx-tec-corpo > .rt-retratos { margin-top:2px; }
   </style>
 </head>
 <body>
@@ -381,9 +497,74 @@
         </div>
         <p class="rt-nota" id="bXmlInfo" hidden></p>
         <div id="bSaida" hidden>
-          <div class="rt-retratos" id="bRetratos"></div>
-          <div class="rt-verd" id="bVeredito"></div>
-          <table class="rt-tm" id="bMeses"></table>
+          <!-- A SIMULAÇÃO EXPLICADA (17/11/2026): o resultado em palavras e em reais — o veredito, para quem a empresa vende
+               (o ponto em que a conta muda), os dois caminhos lado a lado e a conta passo a passo. Os textos saem de
+               assets/js/rt-explicado.js, que lê o resultado do mesmo motor; o detalhe técnico de sempre fica logo abaixo -->
+          <section class="rx" id="rxPainel" data-chave="dentro" aria-labelledby="rxTexto">
+            <div class="rx-verd">
+              <p class="rx-rot">Resultado para janeiro a junho de 2027</p>
+              <h4 class="rx-titulo"><span class="rx-chave" aria-hidden="true"></span><span id="rxTexto"></span></h4>
+              <div class="rx-tags" id="rxTags"></div>
+              <p class="rx-porque" id="rxPorque"></p>
+              <p class="rx-nota" id="rxNota"></p>
+              <div class="rx-atencao rx-falta" id="rxFalta" hidden></div>
+              <div class="rx-atencao" id="rxAtencao" hidden></div>
+            </div>
+            <div class="rx-sec">
+              <div>
+                <h5 class="rx-h">Para quem a empresa vende?</h5>
+                <p class="rx-sub">Quanto das vendas vai para empresas que descontam a CBS e o IBS da nota (clientes PJ do regime regular). Consumidor final e empresa do Simples que ficou por dentro não descontam.</p>
+              </div>
+              <div class="rx-regua" id="rxRegua" role="img" aria-label="">
+                <div class="rx-zonas" id="rxZonas"></div>
+                <span class="rx-vira" id="rxVira" hidden></span>
+                <span class="rx-pino" id="rxPino"></span>
+              </div>
+              <div class="rx-regua-pe" aria-hidden="true"><span>0%: só consumidor final</span><span>100%: só empresas</span></div>
+              <ul class="rx-legenda" id="rxLegenda"></ul>
+              <p class="rx-depois" id="rxDepois"></p>
+            </div>
+            <div class="rx-sec">
+              <div class="rx-sec-topo">
+                <h5 class="rx-h">O que a empresa paga em cada caminho</h5>
+                <div class="rx-alterna" role="group" aria-label="Período"><button type="button" id="rxPerMes" aria-pressed="true">por mês</button><button type="button" id="rxPerSem" aria-pressed="false">no semestre</button></div>
+              </div>
+              <div class="rx-guias">
+                <article class="rx-guia" aria-labelledby="rxDentroT">
+                  <div class="rx-guia-topo"><h6 id="rxDentroT"><span class="rx-chave" aria-hidden="true"></span>Tudo no DAS</h6><span id="rxSeloDentro"></span></div>
+                  <p class="rx-sub">Por dentro, como é o padrão.</p>
+                  <div class="rx-linhas" id="rxLinhasDentro"></div>
+                </article>
+                <article class="rx-guia fora" aria-labelledby="rxForaT">
+                  <div class="rx-guia-topo"><h6 id="rxForaT"><span class="rx-chave fora" aria-hidden="true"></span>CBS e IBS por fora</h6><span id="rxSeloFora"></span></div>
+                  <p class="rx-sub">Regime regular só para esses dois. O resto segue no DAS.</p>
+                  <div class="rx-linhas" id="rxLinhasFora"></div>
+                </article>
+              </div>
+              <p class="rx-dif" id="rxDif"></p>
+            </div>
+            <div class="rx-pe">
+              <div class="rx-acoes"><span class="rx-feito" id="rxCopiado" role="status"></span><button type="button" class="btn btn-ghost btn-sm" id="rxCopiar" title="Um resumo curto da simulação, em texto, pra colar no WhatsApp ou no e-mail: os dois caminhos em reais e o resultado">Copiar resumo</button></div>
+              <details class="rx-det" id="rxConta">
+                <summary>Como chegamos a esse resultado <small>a conta em 10 passos</small></summary>
+                <div class="rx-conta-corpo">
+                  <ol class="rx-passos" id="rxPassos"></ol>
+                  <p class="rx-fecho" id="rxFecho"></p>
+                  <div class="rx-supoe"><h5>O que a conta supõe</h5><ul id="rxPremissas"></ul></div>
+                </div>
+              </details>
+              <div class="rx-copia" id="rxCopiaManual" hidden><label for="rxCopiaTexto" class="rx-fecho">Não deu para copiar sozinho. Selecione o texto e copie:</label><textarea id="rxCopiaTexto" readonly></textarea></div>
+            </div>
+          </section>
+          <!-- o detalhe técnico: os retratos, o veredito com a confiança e as variações e o mês a mês, como eram até 17/11/2026 -->
+          <details class="rx-det rx-tec" id="bDetalhe">
+            <summary>Detalhe técnico <small>confiança dos números, variações e mês a mês</small></summary>
+            <div class="rx-tec-corpo">
+              <div class="rt-retratos" id="bRetratos"></div>
+              <div class="rt-verd" id="bVeredito"></div>
+              <table class="rt-tm" id="bMeses"></table>
+            </div>
+          </details>
           <p class="rt-nota" id="bNotaAliq">Simulação com as alíquotas de 2027. Valores estimativos, calculados com os dados informados; a decisão é do cliente.</p>
           <p class="rt-refs">Base legal: <a class="ref" href="#" data-regra="CRED-ENTRADAS">[CRED-ENTRADAS]</a> <a class="ref" href="#" data-regra="CRED-DESTACADO">[CRED-DESTACADO]</a> <a class="ref" href="#" data-regra="CRED-CLIENTE">[CRED-CLIENTE]</a> <a class="ref" href="#" data-regra="PARTILHA-DAS-2027">[PARTILHA-DAS-2027]</a> <a class="ref" href="#" data-regra="ANEXO-INDUSTRIA-2027">[ANEXO-INDUSTRIA-2027]</a> <a class="ref" href="#" data-regra="BASE-SEM-ICMS-ISS">[BASE-SEM-ICMS-ISS]</a> <a class="ref" href="#" data-regra="RED-SO-POR-FORA">[RED-SO-POR-FORA]</a> <a class="ref" href="#" data-regra="ALIQ-REF-2027">[ALIQ-REF-2027]</a> — clique pra ver a regra e os materiais de onde ela veio.</p>
         </div>
@@ -475,6 +656,7 @@
     import { simular, anexo2027, aliquotas2027, entradaComAliquotas, comCbsAnterior, REFERENCIA_CBS_2027 } from './assets/js/rt-motor.js';
     import { avaliarConfianca, resumoConfianca, inferirProcedencia, contextoDoCaso, ROT_DECISAO, faltaParaCliente, textoReducaoServico } from './assets/js/rt-confianca.js';
     import { RT_PRAZO, RT_NOTAS, janelaAberta as janelaAbertaEm } from './assets/js/rt-prazos.js';
+    import * as RX from './assets/js/rt-explicado.js';
     import { assistenteDaTela } from './assets/js/assistente-escritorio.js';
 
     const $ = id => document.getElementById(id);
@@ -863,6 +1045,7 @@
       if (!$('sPartilha').value) preencherPartilhaAuto();
       $('bMsg').textContent = '';
       $('bSaida').hidden = true;
+      rxAtual = null; $('rxConta').open = false;   // o resultado explicado é de cada "Calcular"; a conta passo a passo abre recolhida
       // importação feita em outra ficha não vale aqui (13/10/2026): o resumo do Domínio ia junto ao gravar e à análise do
       // próximo cliente aberto — agora fica preso ao caso em que foi aplicado
       Object.assign(domEstado, { rels: [], outras: [], regimes: null, incluir: null, cons: null, resumo: null, casoId: null });
@@ -1607,6 +1790,106 @@
       return confirmar + leiHtml + '<span class="conf">Confiança dos dados: ' + dados.map(it => escapeHtml(it.curto || it.rotulo) + ' <b>' + escapeHtml(it.selo) + '</b>' + (it.periodo && it.periodo !== '—' ? ' (' + escapeHtml(it.periodo) + ')' : '')).join(' · ')
         + '. De onde veio cada número e por quê: na análise técnica.</span>';
     }
+    // ---------- a simulação explicada (17/11/2026, pedido do Samuel) ----------
+    // O resultado em palavras e em reais, por cima do detalhe técnico: o veredito, para quem a empresa vende (o ponto em que a
+    // conta muda), os dois caminhos lado a lado e a conta passo a passo. Os textos e os números saem de rt-explicado.js, que lê
+    // o resultado do motor; aqui só se monta a tela — tudo escapado (os textos da confiança trazem a origem dos números, que
+    // vem dos relatórios lidos). Sem conclusão, nenhum caminho aparece como o recomendado e não há resumo pra copiar.
+    let rxAtual = null, rxPeriodo = 'mes';
+    const htmlPartes = partes => (Array.isArray(partes) ? partes : [partes]).map(x => typeof x === 'string' ? escapeHtml(x) : '<b>' + escapeHtml(x.b) + '</b>').join('');
+    const liConfianca = it => '<li><b>' + escapeHtml(it.rotulo) + '</b>: ' + escapeHtml(it.valor) + ', ' + escapeHtml(it.confianca) + (it.periodo && it.periodo !== '—' ? ' (' + escapeHtml(it.periodo) + ')' : '') + '. '
+      + escapeHtml(it.motivo || '') + ' ' + escapeHtml(it.efeito || '') + '</li>';
+    // no quadro amarelo vai curto: o número, a confiança dele e o que acontece com o resultado (o porquê fica no detalhe técnico)
+    const liCurto = it => { const ef = String(it.efeito || ''); return '<li><b>' + escapeHtml(it.rotulo) + '</b> (' + escapeHtml(it.valor) + ', ' + escapeHtml(it.confianca) + (it.periodo && it.periodo !== '—' ? ', ' + escapeHtml(it.periodo) : '') + '): '
+      + escapeHtml(ef.charAt(0).toLowerCase() + ef.slice(1)) + '</li>'; };
+    // os dois caminhos, por mês ou no semestre (o botão troca sem refazer a conta)
+    function desenharCaminhos() {
+      if (!rxAtual) return;
+      const l = RX.linhasDosCaminhos(rxAtual.q, rxPeriodo, { semConclusao: rxAtual.v.semConclusao });
+      const linha = x => '<div class="rx-linha' + (x.leve ? ' leve' : '') + '"><span class="r">' + escapeHtml(x.rotulo) + '</span><span class="p"></span><span class="v">' + escapeHtml(x.valor) + '</span></div>';
+      const guia = g => g.linhas.map(linha).join('')
+        + '<div class="rx-total"><span>Paga ' + escapeHtml(l.sufixo) + '</span><span class="v">' + escapeHtml(g.total) + '</span></div>'
+        + '<div class="rx-medida" style="width:' + g.largura.toFixed(2) + '%"></div>'
+        + '<div class="rx-cliente">' + linha({ rotulo: l.rotuloCliente, valor: g.cliente, leve: true }) + '</div>';
+      $('rxLinhasDentro').innerHTML = guia(l.dentro);
+      $('rxLinhasFora').innerHTML = guia(l.fora);
+      [['rxSeloDentro', l.dentro.selo], ['rxSeloFora', l.fora.selo]].forEach(([id, selo]) => { const el = $(id); el.className = selo ? 'rx-selo ' + selo.tipo : ''; el.textContent = selo ? selo.texto : ''; });
+      $('rxDif').textContent = l.diferenca;
+      $('rxPerMes').setAttribute('aria-pressed', String(rxPeriodo === 'mes'));
+      $('rxPerSem').setAttribute('aria-pressed', String(rxPeriodo === 'semestre'));
+    }
+    function desenharExplicado(ent, r, conf, alertasDaConta) {
+      const zonas = RX.zonasDaCarteira(ent);
+      const v = RX.vereditoEmPalavras(r, ent, zonas, { conclusao: conf.conclusao });
+      rxAtual = { ent, r, v, q: RX.quadroDosCaminhos(r, ent), zonas, faltam: conf.conclusao === 'a_confirmar' ? (conf.faltamCliente || []) : [] };
+      // o veredito
+      $('rxPainel').dataset.chave = v.chave;
+      $('rxTexto').textContent = v.titulo;
+      $('rxTags').innerHTML = v.tags.map(t => '<span class="rx-tag">' + escapeHtml(t) + '</span>').join('');
+      $('rxPorque').innerHTML = htmlPartes(v.porque);
+      $('rxNota').textContent = v.nota;
+      // sem conclusão: o número que decide não tem base — a tela diz qual, o que falta e deixa a conta só de referência
+      const falta = $('rxFalta');
+      falta.hidden = !v.semConclusao;
+      falta.innerHTML = !v.semConclusao ? '' : '<p class="rx-at-t">Por que não há conclusão</p>'
+        + '<p>Com os números como estão, a conta daria “' + escapeHtml(conf.rotuloDecisao) + '”, mas '
+        + (conf.decisivos.length > 1 ? 'estes números, sem base suficiente (confiança baixa ou não medidos), mudam o resultado:' : 'este número, sem base suficiente (' + escapeHtml(conf.decisivos[0].confianca) + '), muda o resultado:') + '</p>'
+        + '<ul>' + conf.decisivos.map(liConfianca).join('') + '</ul>'
+        + (conf.conjunto && conf.conjunto.semConclusao ? '<p><b>Juntos:</b> ' + escapeHtml(conf.conjunto.texto) + '</p>' : '')
+        + (conf.faltam.length ? '<p><b>Para concluir, falta:</b> ' + escapeHtml(conf.faltam.join('; ')) + '.</p>' : '')
+        + '<p>Conta provisória, só para referência (não é recomendação): ' + escapeHtml(v.provisorio.titulo) + '. ' + htmlPartes(v.provisorio.porque) + '</p>';
+      // o que pode mudar o resultado: número a confirmar, premissa da lei ou da conta que vira a conclusão — e os avisos do motor
+      const mudam = conf.aConfirmar.map(liCurto)
+        .concat(conf.conjunto && !conf.conjunto.semConclusao ? ['<li>' + escapeHtml(conf.conjunto.texto) + '</li>'] : [])
+        .concat((conf.premissas || []).map(liCurto))
+        .concat(alertasDaConta.map(t => '<li>' + escapeHtml(t) + '</li>'));
+      const notas = r.avisos.map(t => '<li>' + escapeHtml(t) + '</li>');
+      const at = $('rxAtencao');
+      at.hidden = !(mudam.length + notas.length);
+      at.innerHTML = (mudam.length ? '<p class="rx-at-t">O que pode mudar este resultado</p><ul>' + mudam.join('') + '</ul>' : '')
+        + (notas.length ? '<p class="rx-at-t">Atenção nesta conta</p><ul>' + notas.join('') + '</ul>' : '');
+      // para quem a empresa vende: as faixas de 0 a 100% de clientes PJ, o ponto em que a conta muda e o % de hoje (o do campo)
+      const pj = Math.max(0, Math.min(100, +ent.pctPJ || 0));
+      $('rxZonas').innerHTML = zonas.faixas.map(f => '<span class="rx-zona ' + f.k + '" style="flex:' + Math.max(f.ate - f.de, 0.01).toFixed(4) + ' 0 0"></span>').join('');
+      $('rxPino').style.left = pj.toFixed(3) + '%';
+      $('rxVira').hidden = !v.vira;
+      if (v.vira) $('rxVira').style.left = v.vira.em.toFixed(3) + '%';
+      const vistos = new Set();
+      $('rxLegenda').innerHTML = zonas.faixas.filter(f => !vistos.has(f.k) && vistos.add(f.k))
+          .map(f => '<li><span class="rx-chave' + (f.k === 'dentro' ? '' : ' ' + f.k) + '"></span>' + escapeHtml(RX.NOME_ZONA[f.k]) + '</li>').join('')
+        + (v.vira ? '<li><span class="rx-tri"></span><b>a conta muda em ' + escapeHtml(v.vira.texto) + '</b></li>' : '')
+        + '<li><span class="rx-bola"></span>hoje: ' + escapeHtml(v.hoje) + ' (o “% clientes PJ” da ficha)</li>';
+      $('rxRegua').setAttribute('aria-label', RX.leituraDaRegua(zonas, pj));
+      $('rxDepois').textContent = v.semConclusao ? 'Pela conta provisória: ' + v.depois.charAt(0).toLowerCase() + v.depois.slice(1) : v.depois;
+      desenharCaminhos();
+      // a conta passo a passo e o que ela supõe
+      const pc = RX.passosDaConta(r, ent);
+      const tabela = t => '<details class="rx-tabela"><summary>Ver a tabela do Anexo ' + escapeHtml(t.anexo) + '</summary><div class="rx-rolagem"><table class="rx-tab"><thead><tr><th>Faixa</th><th>Faturamento de 12 meses</th><th>Alíquota</th><th>Parcela a deduzir</th></tr></thead><tbody>'
+        + t.linhas.map(x => '<tr' + (x.aqui ? ' class="aqui"' : '') + '><td>' + escapeHtml(x.faixa) + '</td><td>até ' + escapeHtml(x.ate) + '</td><td>' + escapeHtml(x.aliquota) + '</td><td>' + escapeHtml(x.deduzir) + '</td></tr>').join('')
+        + '</tbody></table></div></details>';
+      $('rxPassos').innerHTML = pc.passos.map(p => '<li><p class="rx-passo-t">' + escapeHtml(p.titulo) + '</p><p class="rx-formula">' + htmlPartes(p.formula) + '</p>'
+        + (p.nota ? '<p class="rx-passo-n">' + escapeHtml(p.nota) + '</p>' : '') + (p.tabela ? tabela(p.tabela) : '') + '</li>').join('');
+      $('rxFecho').textContent = pc.fecho;
+      $('rxPremissas').innerHTML = RX.premissasDaConta(r, ent).map(t => '<li>' + escapeHtml(t) + '</li>').join('');
+      // o resumo pra copiar: só com conclusão
+      $('rxCopiar').hidden = v.semConclusao;
+      $('rxCopiado').textContent = ''; $('rxCopiaManual').hidden = true;
+    }
+    $('rxPerMes').onclick = () => { rxPeriodo = 'mes'; desenharCaminhos(); };
+    $('rxPerSem').onclick = () => { rxPeriodo = 'semestre'; desenharCaminhos(); };
+    $('rxCopiar').onclick = async () => {
+      if (!rxAtual) return;
+      const c = casoAtual(), cli = c ? clientesMap[c.cliente_id] : null;
+      const texto = RX.resumoParaCopiar({ r: rxAtual.r, ent: rxAtual.ent, veredito: rxAtual.v, quadro: rxAtual.q, empresa: cli && cli.nome_principal, hoje: fmtData(hojeISO()), faltam: rxAtual.faltam });
+      if (!texto) return;
+      try { await navigator.clipboard.writeText(texto); $('rxCopiado').textContent = '✓ Resumo copiado'; $('rxCopiaManual').hidden = true; }
+      catch (e) { $('rxCopiado').textContent = ''; $('rxCopiaManual').hidden = false; const a = $('rxCopiaTexto'); a.value = texto; a.focus(); a.select(); }
+    };
+    // o detalhe técnico abre recolhido; quem abre fica com ele aberto nas próximas fichas (a escolha fica no navegador)
+    const PREF_DETALHE = 'mr_reforma_detalhe';
+    try { $('bDetalhe').open = localStorage.getItem(PREF_DETALHE) === '1'; } catch (e) {}
+    $('bDetalhe').addEventListener('toggle', () => { try { localStorage.setItem(PREF_DETALHE, $('bDetalhe').open ? '1' : '0'); } catch (e) {} });
+
     function calcular() {
       const ent = entradaDaTela();
       avisoMixRed30();   // o mix pode ter vindo do Domínio ou das notas, sem evento de digitação
@@ -1634,10 +1917,14 @@
           '<div class="rw"><span>Crédito que o cliente leva</span><b>' + brl(s.creditoClienteFora) + '</b></div>' +
           '<div class="rw"><span>Aproveitado pela carteira PJ</span><b>' + brl(s.aproveitadoFora) + '</b></div>' +
           '<div class="rw tot"><span>Diferença (fora − dentro)</span><b>' + brl(s.diferenca) + '</b></div></div>';
-      // VARIAÇÕES: o resultado sem uma premissa que ainda não é certa, e se a conclusão muda
-      const variacao = (rotulo, x, depende) => {
+      // VARIAÇÕES: o resultado sem uma premissa que ainda não é certa, e se a conclusão muda. A que muda a conclusão e não está
+      // na confiança dos números (o crédito de estoque está: é premissa de lá) sobe também pro alto do resultado explicado, em
+      // uma frase (`curto`)
+      const alertasDaConta = [];
+      const variacao = (rotulo, x, depende, curto) => {
         const r0 = simular({ ...ent, ...x });
         const muda = decisaoDe(r0) !== decisaoDe(r);
+        if (muda && curto) alertasDaConta.push(curto + ', a conta daria “' + ROT_DECISAO[decisaoDe(r0)] + '”: a conclusão depende ' + depende + '.');
         return '<br><span style="font-size:12px">' + (muda ? '⚠ ' : '') + rotulo + ': diferença de ' + brl(r0.semestre.diferenca) + ' no semestre — ' + textoDecisao(r0)
           + (muda ? '. <b>A conclusão depende ' + depende + '.</b>' : '; a conclusão não muda.') + '</span>';
       };
@@ -1649,11 +1936,11 @@
       const casoFicha = casoAtual();
       const industria = (casoFicha && casoFicha.segmento === 'industria') || ent.anexo === 'II';
       const semCreditoCompras = industria && ent.pctComprasComCredito == null && (ent.pctComprasMercadorias || 0) > 0
-        ? variacao('Sem crédito nas compras de insumos (sem as notas de entrada, as compras foram creditadas como as vendas, mas insumo com alíquota zero, como farinha, ovos e açúcar, não dá crédito, e o comprado de fornecedor do Simples dá pouco — importe os XML de entrada pra medir)', { pctComprasComCredito: 0 }, 'do crédito das compras de insumos') : '';
+        ? variacao('Sem crédito nas compras de insumos (sem as notas de entrada, as compras foram creditadas como as vendas, mas insumo com alíquota zero, como farinha, ovos e açúcar, não dá crédito, e o comprado de fornecedor do Simples dá pouco — importe os XML de entrada pra medir)', { pctComprasComCredito: 0 }, 'do crédito das compras de insumos', 'Sem crédito nas compras de insumos (as notas de entrada não foram medidas)') : '';
       // ICMS/ISS FORA DA BASE (12/10/2026): o método do curso; pro optante ainda sem norma específica — a tela mostra a
       // conta com a base cheia
       const tributo = r.fatores.icmsIss.tributo;
-      const baseCheia = r.mes.exclusaoBase > 0.005 ? variacao('Com o ' + tributo + ' do DAS (' + brl(r.mes.exclusaoBase) + '/mês) na base do débito por fora, sem a exclusão do art. 12, §2º, V, da LC 214 — que pro optante ainda não tem norma específica', { excluirIcmsIssDaBase: false }, 'da exclusão do ' + tributo + ' da base') : '';
+      const baseCheia = r.mes.exclusaoBase > 0.005 ? variacao('Com o ' + tributo + ' do DAS (' + brl(r.mes.exclusaoBase) + '/mês) na base do débito por fora, sem a exclusão do art. 12, §2º, V, da LC 214 — que pro optante ainda não tem norma específica', { excluirIcmsIssDaBase: false }, 'da exclusão do ' + tributo + ' da base', 'Com o ' + tributo + ' do DAS dentro da base da CBS e do IBS por fora (sem a exclusão do art. 12, § 2º, V, da LC 214)') : '';
       const motivosDas = [];
       if (r.fatores.mudouAnexo) motivosDas.push('a indústria passa ao Anexo ' + r.fatores.anexo2027 + ' (LC 123, art. 18, §5º, na redação da LC 214)');
       if (r.mes.exclMono > 0) motivosDas.push('acaba a exclusão do PIS/COFINS monofásico e a CBS alcança essa receita');
@@ -1684,6 +1971,7 @@
       $('bMeses').innerHTML = '<thead><tr><th>Mês</th><th>DAS por dentro</th><th>DAS sobra (fora)</th><th>IBS/CBS a recolher</th><th>Crédito estoque</th><th>Custo dentro</th><th>Custo fora</th></tr></thead><tbody>' +
         r.meses.map((m, i) => '<tr><td>' + MESES[i] + '</td><td>' + brl(m.caixaDentro) + '</td><td>' + brl(r.mes.dasSobra) + '</td><td>' + brl(m.aRecolher) + '</td><td>' + brl(m.estoque) + '</td><td>' + brl(m.custoDentro) + '</td><td>' + brl(m.custoFora) + '</td></tr>').join('') +
         '<tr class="tot"><td>Semestre</td><td>' + brl(s.caixaDentro) + '</td><td>' + brl(r.mes.dasSobra * 6) + '</td><td>' + brl(r.meses.reduce((a, m) => a + m.aRecolher, 0)) + '</td><td>' + brl(r.meses.reduce((a, m) => a + m.estoque, 0)) + '</td><td>' + brl(s.custoDentro) + '</td><td>' + brl(s.custoFora) + '</td></tr></tbody>';
+      desenharExplicado(ent, r, conf, alertasDaConta);
       $('bSaida').hidden = false;
       assistente.atualizar();   // as perguntas prontas do assistente passam a ser as de quem tem resultado
       return r;

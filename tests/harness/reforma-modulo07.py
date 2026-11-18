@@ -140,6 +140,9 @@ def main():
         p = b.new_page(viewport={'width': 1500, 'height': 1000})
         p.on('pageerror', lambda e: erros.append(str(e)))
         p.add_init_script("(() => { const g = Storage.prototype.getItem; Storage.prototype.getItem = function (k) { return String(k).startsWith('mr_tour_') ? 'ok' : g.call(this, k); }; })()")
+        # o detalhe técnico aberto (17/11/2026: ele abre recolhido, por baixo do resultado explicado, e a escolha de deixar aberto
+        # fica no navegador): este teste lê o veredito técnico, os retratos e o mês a mês
+        p.add_init_script("try { localStorage.setItem('mr_reforma_detalhe', '1'); } catch (e) {}")
         p.add_init_script(SEMEAR)
         p.goto(base + 'fiscal-reforma.html'); p.wait_for_timeout(1500)
         aviso_visivel = lambda: p.is_visible('#sMixAviso')
