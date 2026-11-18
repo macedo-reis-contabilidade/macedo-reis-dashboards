@@ -82,8 +82,12 @@
 
         <div class="rn-pauta-bar">
           <h3 class="rn-pautas-titulo">Pauta<span class="rn-total-min" id="pautaTotalMin"></span></h3>
-          <button class="btn btn-primary btn-sm" id="btnNovaPauta">+ Adicionar pauta</button>
+          <div class="rn-pauta-botoes">
+            <button class="btn btn-ghost btn-sm" id="btnOrdem" type="button" aria-pressed="false" hidden>Mudar a ordem</button>
+            <button class="btn btn-primary btn-sm" id="btnNovaPauta">+ Adicionar pauta</button>
+          </div>
         </div>
+        <p class="rn-ordem-dica" id="ordemDica" hidden>Arraste a pauta dentro do setor, ou o setor pelo nome, ou use as setas. A ordem grava sozinha, e os horários e o PDF seguem ela. <small id="ordemStatus" aria-live="polite"></small></p>
         <div id="pautas">
           <div class="loading-row" style="padding:24px;text-align:center;"><span class="spinner"></span>Carregando pauta…</div>
         </div>
@@ -198,6 +202,26 @@
 
     const SETORES_PAUTA = [['fiscal','Fiscal'],['dp','Departamento Pessoal'],['contabil','Contábil'],['societario','Societário'],['financeiro','Financeiro'],['comercial','Comercial'],['direcao','Direção']];
     const setorLabel = s => (SETORES_PAUTA.find(x => x[0] === s) || [s, s])[1];
+    const posSetor = s => { const i = SETORES_PAUTA.findIndex(x => x[0] === s); return i < 0 ? SETORES_PAUTA.length : i; };
+
+    // A ordem da pauta (18/11/2026, pedido do Samuel: "preciso poder redefinir a ordem das pautas"): os setores na ordem em
+    // que aparecem e, dentro de cada um, as pautas pela `ordem` gravada. A pauta sem ordem (0: a reunião em que ninguém mexeu
+    // na ordem, a pauta nova, a que mudou de setor) vem depois das ordenadas, pela ordem fixa dos setores e pela criação —
+    // então a reunião de antes fica como sempre foi, e a pauta nova entra no fim do setor dela.
+    function gruposDaPauta(lista) {
+      const chave = p => (+p.ordem || 0) > 0 ? [0, +p.ordem] : [1, 0];
+      const ord = lista.slice().sort((a, b) => {
+        const x = chave(a), y = chave(b);
+        return x[0] - y[0] || x[1] - y[1] || posSetor(a.setor) - posSetor(b.setor) || String(a.created_at || '').localeCompare(String(b.created_at || ''));
+      });
+      const grupos = [];
+      ord.forEach(p => {
+        let g = grupos.find(x => x.setor === p.setor);
+        if (!g) grupos.push(g = { setor: p.setor, rotulo: setorLabel(p.setor), itens: [] });
+        g.itens.push(p);
+      });
+      return grupos;
+    }
 
     let usuarioEmail = null;
     let reunioes = [];
@@ -206,6 +230,7 @@
     let pautas = [];
     let editPautaId = null;
     let editReuniaoId = null;
+    let ordenando = false;   // o modo "Mudar a ordem" da pauta
 
     const elLista = document.getElementById('lista');
     const elPautas = document.getElementById('pautas');
@@ -297,6 +322,8 @@
     // ---- detalhe ----
     async function abrirReuniao(id) {
       reuniaoAtual = reunioes.find(r => r.id === id);
+      ordenando = false;
+      document.getElementById('ordemStatus').textContent = '';
       document.getElementById('dIntro').value = (reuniaoAtual && reuniaoAtual.introducao) || '';
       ajustarAlturaIntro();
       document.getElementById('dIntroMin').value = (reuniaoAtual && reuniaoAtual.introducao_minutos) || '';
@@ -316,7 +343,7 @@
       window.scrollTo(0, 0);
       await carregarPautas();
     }
-    function mostrarLista() { painelDetalhe.hidden = true; painelLista.hidden = false; reuniaoAtual = null; }
+    function mostrarLista() { painelDetalhe.hidden = true; painelLista.hidden = false; reuniaoAtual = null; ordenando = false; }
 
     async function carregarPautas() {
       elPautas.innerHTML = '<div class="loading-row" style="padding:24px;text-align:center;"><span class="spinner"></span>Carregando pauta…</div>';
@@ -335,13 +362,13 @@
       let cur = h * 60 + m; const ini = cur;
       const im = +reuniaoAtual.introducao_minutos || 0;
       if (im) { c.intro = [cur, cur + im]; cur += im; }
-      SETORES_PAUTA.forEach(([s]) => {
+      gruposDaPauta(pautas).forEach(g => {
         let sIni = null, sFim = null;
-        pautas.filter(p => p.setor === s).forEach(p => {
+        g.itens.forEach(p => {
           const pm = +p.minutos || 0; if (!pm) return;
           c.pauta[p.id] = [cur, cur + pm]; if (sIni === null) sIni = cur; cur += pm; sFim = cur;
         });
-        if (sIni !== null) c.setor[s] = [sIni, sFim];
+        if (sIni !== null) c.setor[g.setor] = [sIni, sFim];
       });
       if (cur > ini) c.total = [ini, cur];
       return c;
@@ -356,17 +383,28 @@
       const cr = cronograma();
       document.getElementById('pautaTotalMin').textContent = totalGeral ? '· ' + (cr.total ? faixa(cr.total) + ' · ' : '') + fmtMin(totalGeral) + ' no total' : '';
       document.getElementById('introFaixa').textContent = cr.intro ? faixa(cr.intro) : '';
+      // o modo "Mudar a ordem": só com duas pautas ou mais
+      if (pautas.length < 2) ordenando = false;
+      const btnOrdem = document.getElementById('btnOrdem');
+      btnOrdem.hidden = pautas.length < 2;
+      btnOrdem.textContent = ordenando ? 'Concluir' : 'Mudar a ordem';
+      btnOrdem.setAttribute('aria-pressed', ordenando ? 'true' : 'false');
+      document.getElementById('ordemDica').hidden = !ordenando;
+      elPautas.classList.toggle('rn-ordenando', ordenando);
       if (!pautas.length) {
         elPautas.innerHTML = '<div class="empty-state" style="padding:40px 24px;"><svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg><h3>Pauta vazia</h3><p>Cada setor adiciona seus pontos no botão “Adicionar pauta”.</p></div>';
         return;
       }
       let html = '';
-      SETORES_PAUTA.forEach(([s, lbl]) => {
-        const itens = pautas.filter(p => p.setor === s);
-        if (!itens.length) return;
+      const grupos = gruposDaPauta(pautas);
+      grupos.forEach((g, gi) => {
+        const s = g.setor, itens = g.itens;
         const minSetor = somaMin(itens);
-        html += '<div class="pauta-grupo"><div class="pauta-grupo-head">' + lbl + ' <span class="pauta-grupo-n">' + itens.length + '</span>' + (minSetor ? '<span class="pauta-grupo-min">' + (cr.setor[s] ? faixa(cr.setor[s]) + ' · ' : '') + fmtMin(minSetor) + '</span>' : '') + '</div>';
-        html += itens.map(p => '<div class="pauta-item' + (p.imprescindivel ? ' impresc' : '') + '" data-id="' + p.id + '" style="cursor:pointer;" title="Clique pra abrir as anotações da reunião">'
+        html += '<div class="pauta-grupo" data-setor="' + escapeHtml(s) + '"><div class="pauta-grupo-head"' + (ordenando ? ' draggable="true" title="Arraste pra mudar a posição do setor"' : '') + '>'
+          + '<span>' + escapeHtml(g.rotulo) + ' <span class="pauta-grupo-n">' + itens.length + '</span></span>' + (minSetor ? '<span class="pauta-grupo-min">' + (cr.setor[s] ? faixa(cr.setor[s]) + ' · ' : '') + fmtMin(minSetor) + '</span>' : '')
+          + (ordenando ? setasDaOrdem('setor', s, gi, grupos.length, 'o setor ' + g.rotulo) : '') + '</div>';
+        html += itens.map((p, pi) => '<div class="pauta-item' + (p.imprescindivel ? ' impresc' : '') + '" data-id="' + p.id + '" data-setor="' + escapeHtml(s) + '"'
+            + (ordenando ? ' draggable="true" title="Arraste pra mudar a ordem dentro do setor"' : ' style="cursor:pointer;" title="Clique pra abrir as anotações da reunião"') + '>'
           + '<div class="pauta-item-body"><div class="pauta-item-tit">' + escapeHtml(p.titulo)
             + (p.apresentadores ? ' <span class="pauta-apres">(' + escapeHtml(p.apresentadores) + ')</span>' : '')
             + (p.imprescindivel ? '<span class="pauta-chip imp">não pode faltar</span>' : '')
@@ -376,7 +414,7 @@
           + (p.descricao ? '<div class="pauta-item-desc">' + escapeHtml(p.descricao) + '</div>' : '')
           + (Array.isArray(p.imagens) && p.imagens.length ? '<div class="pauta-item-imgs" data-pid="' + p.id + '">' + p.imagens.map(() => '<img alt="">').join('') + '</div>' : '')
           + (Array.isArray(p.anexos) && p.anexos.length ? '<div class="pauta-item-anx" data-anx="' + p.id + '"></div>' : '') + '</div>'
-          + '<div class="pauta-item-acoes"><button class="rn-link" data-edit="' + p.id + '">Editar</button></div>'
+          + '<div class="pauta-item-acoes">' + (ordenando ? setasDaOrdem('pauta', p.id, pi, itens.length, 'a pauta ' + p.titulo) : '<button class="rn-link" data-edit="' + p.id + '">Editar</button>') + '</div>'
         + '</div>').join('');
         html += '</div>';
       });
@@ -391,10 +429,116 @@
         p.anexos.forEach(a => box.appendChild(chipAnexo(a, { link: true })));
       });
       elPautas.querySelectorAll('[data-edit]').forEach(b => b.addEventListener('click', (e) => { e.stopPropagation(); abrirModalPauta(pautas.find(p => p.id === b.dataset.edit)); }));
-      elPautas.querySelectorAll('.pauta-item').forEach(card => card.addEventListener('click', () => {
+      if (!ordenando) elPautas.querySelectorAll('.pauta-item').forEach(card => card.addEventListener('click', () => {
         const p = pautas.find(x => x.id === card.dataset.id);
         if (p) abrirDiscussao(p);
       }));
+    }
+
+    // ---- a ordem da pauta: as setas, o arrastar e a gravação ----
+    function setasDaOrdem(tipo, chave, i, n, nome) {
+      const b = (dir, rot, seta, off) => '<button type="button" class="rn-seta" data-mover="' + tipo + '" data-chave="' + escapeHtml(chave) + '" data-dir="' + dir + '"'
+        + (off ? ' disabled' : '') + ' aria-label="' + rot + ' ' + escapeHtml(nome) + '" title="' + rot + '">' + seta + '</button>';
+      return '<span class="rn-setas">' + b(-1, 'Subir', '↑', i === 0) + b(1, 'Descer', '↓', i === n - 1) + '</span>';
+    }
+    document.getElementById('btnOrdem').addEventListener('click', () => { ordenando = !ordenando; renderPautas(); });
+    // a seta: o setor anda um lugar entre os setores; a pauta, um lugar dentro do setor
+    elPautas.addEventListener('click', e => {
+      const b = e.target.closest('[data-mover]');
+      if (!b || !ordenando || b.disabled) return;
+      const tipo = b.dataset.mover, chave = b.dataset.chave, dir = +b.dataset.dir;
+      const grupos = gruposDaPauta(pautas);
+      const lista = tipo === 'setor' ? grupos : ((grupos.find(g => g.itens.some(p => p.id === chave)) || {}).itens || []);
+      const i = lista.findIndex(x => (tipo === 'setor' ? x.setor : x.id) === chave), j = i + dir;
+      if (i < 0 || j < 0 || j >= lista.length) return;
+      [lista[i], lista[j]] = [lista[j], lista[i]];
+      aplicarOrdem(grupos);
+      // o foco fica na mesma seta (ou na outra, quando esta chegou na ponta), pra seguir pelo teclado
+      const sel = '[data-mover="' + tipo + '"][data-chave="' + CSS.escape(chave) + '"]';
+      const mesma = elPautas.querySelector(sel + '[data-dir="' + dir + '"]');
+      const foco = mesma && !mesma.disabled ? mesma : elPautas.querySelector(sel + ':not(:disabled)');
+      if (foco) foco.focus();
+    });
+    // arrastar (no computador): a pauta dentro do setor dela; o setor, pelo nome, entre os setores
+    let arrasto = null;
+    function limparArrasto() {
+      elPautas.querySelectorAll('.rn-arrastando, .rn-solta-antes, .rn-solta-depois').forEach(x => x.classList.remove('rn-arrastando', 'rn-solta-antes', 'rn-solta-depois'));
+    }
+    function alvoDoArrasto(e) {
+      if (!arrasto || !e.target.closest) return null;
+      const el = e.target.closest(arrasto.tipo === 'setor' ? '.pauta-grupo' : '.pauta-item');
+      if (!el || el === arrasto.el || !elPautas.contains(el)) return null;
+      if (arrasto.tipo === 'pauta' && el.dataset.setor !== arrasto.setor) return null;
+      const r = el.getBoundingClientRect();
+      return { el, depois: e.clientY > r.top + r.height / 2 };
+    }
+    elPautas.addEventListener('dragstart', e => {
+      arrasto = null;
+      if (!ordenando || !e.target.closest) return;
+      const head = e.target.closest('.pauta-grupo-head'), item = e.target.closest('.pauta-item');
+      if (head) { const g = head.closest('.pauta-grupo'); arrasto = { tipo: 'setor', chave: g.dataset.setor, el: g }; }
+      else if (item) arrasto = { tipo: 'pauta', chave: item.dataset.id, setor: item.dataset.setor, el: item };
+      else return;
+      arrasto.el.classList.add('rn-arrastando');
+      e.dataTransfer.effectAllowed = 'move';
+      try { e.dataTransfer.setData('text/plain', arrasto.chave); } catch (x) {}
+    });
+    elPautas.addEventListener('dragover', e => {
+      if (!arrasto) return;
+      const a = alvoDoArrasto(e);
+      elPautas.querySelectorAll('.rn-solta-antes, .rn-solta-depois').forEach(x => x.classList.remove('rn-solta-antes', 'rn-solta-depois'));
+      if (!a) return;
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'move';
+      a.el.classList.add(a.depois ? 'rn-solta-depois' : 'rn-solta-antes');
+    });
+    elPautas.addEventListener('drop', e => {
+      const a = alvoDoArrasto(e);
+      if (!a) return;
+      e.preventDefault();
+      const grupos = gruposDaPauta(pautas);
+      const lista = arrasto.tipo === 'setor' ? grupos : (grupos.find(g => g.setor === arrasto.setor) || {}).itens;
+      const chaveDe = x => arrasto.tipo === 'setor' ? x.setor : x.id;
+      const de = lista ? lista.findIndex(x => chaveDe(x) === arrasto.chave) : -1;
+      if (de >= 0) {
+        const [x] = lista.splice(de, 1);
+        const para = lista.findIndex(y => chaveDe(y) === (arrasto.tipo === 'setor' ? a.el.dataset.setor : a.el.dataset.id));
+        if (para >= 0) lista.splice(para + (a.depois ? 1 : 0), 0, x); else lista.splice(de, 0, x);
+      }
+      arrasto = null;
+      limparArrasto();
+      if (de >= 0) aplicarOrdem(grupos);
+    });
+    elPautas.addEventListener('dragend', () => { arrasto = null; limparArrasto(); });
+
+    // grava a ordem da tela: as pautas de 1 em diante, setor por setor; só a que mudou vai pro banco. As gravações vão uma
+    // depois da outra (cada uma com o número de cada pauta), então o banco termina como a tela, mesmo com cliques seguidos.
+    let filaOrdem = Promise.resolve(), ordemPendente = 0;
+    function aplicarOrdem(grupos) {
+      const mudam = [];
+      grupos.flatMap(g => g.itens).forEach((p, i) => { if ((+p.ordem || 0) !== i + 1) { p.ordem = i + 1; mudam.push({ id: p.id, ordem: i + 1 }); } });
+      renderPautas();
+      if (!mudam.length) return;
+      const st = document.getElementById('ordemStatus');
+      const reuniao = reuniaoAtual && reuniaoAtual.id;
+      ordemPendente++;
+      st.classList.remove('erro');
+      st.textContent = 'salvando…';
+      filaOrdem = filaOrdem.then(async () => {
+        const res = await Promise.all(mudam.map(m => supabase.from('reuniao_pautas').update({ ordem: m.ordem }).eq('id', m.id)));
+        ordemPendente--;
+        if (res.some(r => r && r.error)) {
+          st.classList.add('erro');
+          st.textContent = 'Não deu pra gravar a ordem: a pauta voltou ao que está gravado.';
+          if (reuniaoAtual && reuniaoAtual.id === reuniao) await carregarPautas();
+          if (!ordenando) alert('Não deu pra gravar a ordem da pauta: ela voltou ao que está gravado.');
+          return;
+        }
+        if (!ordemPendente && !st.classList.contains('erro')) {
+          st.textContent = 'ordem salva ✓';
+          setTimeout(() => { if (st.textContent === 'ordem salva ✓') st.textContent = ''; }, 2500);
+        }
+      });
     }
 
     // ---- modal reunião ----
@@ -717,7 +861,13 @@
         visivel_cliente: document.getElementById('pVisivel').checked
       };
       let error;
-      if (editPautaId) ({ error } = await supabase.from('reuniao_pautas').update({ setor: campos.setor, titulo: campos.titulo, descricao: campos.descricao, imagens: campos.imagens, anexos: campos.anexos, minutos: campos.minutos, apresentadores: campos.apresentadores, imprescindivel: campos.imprescindivel, visivel_cliente: campos.visivel_cliente }).eq('id', editPautaId));
+      if (editPautaId) {
+        const mudou = { setor: campos.setor, titulo: campos.titulo, descricao: campos.descricao, imagens: campos.imagens, anexos: campos.anexos, minutos: campos.minutos, apresentadores: campos.apresentadores, imprescindivel: campos.imprescindivel, visivel_cliente: campos.visivel_cliente };
+        // mudou de setor: a pauta sai da ordem e vai pro fim do setor novo (a pauta nova também entra sem ordem, no fim do setor dela)
+        const antes = pautas.find(p => p.id === editPautaId);
+        if (antes && antes.setor !== campos.setor && (+antes.ordem || 0) > 0) mudou.ordem = 0;
+        ({ error } = await supabase.from('reuniao_pautas').update(mudou).eq('id', editPautaId));
+      }
       else ({ error } = await supabase.from('reuniao_pautas').insert(campos));
       if (error) { alert('Erro ao salvar: ' + error.message); return; }
       imagensNovas = []; anexosNovos = [];
@@ -754,11 +904,12 @@
       const logoUrl = new URL('assets/logo-mr.png', location.href).href;
       let blocos = '';
       const cr = cronograma();
-      SETORES_PAUTA.forEach(([s, lbl]) => {
-        const itens = pautas.filter(p => p.setor === s && p.visivel_cliente !== false);
+      // na ordem da tela (gruposDaPauta), só o que vai pro cliente
+      gruposDaPauta(pautas).forEach(g => {
+        const s = g.setor, itens = g.itens.filter(p => p.visivel_cliente !== false);
         if (!itens.length) return;
         const minSetor = somaMin(itens);
-        blocos += '<div class="bloco"><div class="bloco-setor">' + lbl + (minSetor ? '<span class="bloco-min">' + (cr.setor[s] ? faixa(cr.setor[s]) : fmtMin(minSetor)) + '</span>' : '') + '</div>'
+        blocos += '<div class="bloco"><div class="bloco-setor">' + escapeHtml(g.rotulo) + (minSetor ? '<span class="bloco-min">' + (cr.setor[s] ? faixa(cr.setor[s]) : fmtMin(minSetor)) + '</span>' : '') + '</div>'
           + itens.map(p => '<div class="pauta' + (p.imprescindivel ? ' impresc' : '') + '"><div class="pauta-tit">' + escapeHtml(p.titulo)
             + (p.apresentadores ? ' <span class="apres">(' + escapeHtml(p.apresentadores) + ')</span>' : '')
             + (p.imprescindivel ? '<span class="tag-imp">não pode faltar</span>' : '')
@@ -885,6 +1036,25 @@
 
     .rn-pauta-bar { display:flex; align-items:center; justify-content:space-between; margin-bottom:14px; }
     .rn-pautas-titulo { color:var(--text); font-size:16px; margin:0; }
+    /* a ordem da pauta (18/11/2026): o botão "Mudar a ordem", as setas e as marcas do arrastar */
+    .rn-pauta-botoes { display:flex; gap:8px; align-items:center; flex-wrap:wrap; justify-content:flex-end; }
+    #btnOrdem[hidden] { display:none; }   /* o display do .btn vence o hidden */
+    .rn-ordem-dica { margin:-6px 0 12px; font-size:12.5px; line-height:1.5; color:var(--text-muted); }
+    .rn-ordem-dica[hidden] { display:none; }
+    .rn-ordem-dica small { margin-left:4px; font-size:12px; color:var(--ok); }
+    .rn-ordem-dica small.erro { color:var(--err); }
+    .rn-setas { display:inline-flex; gap:4px; flex:none; }
+    .rn-seta { width:30px; height:28px; display:inline-flex; align-items:center; justify-content:center; padding:0; border-radius:8px; border:1px solid var(--fill-3); background:var(--fill-2); color:var(--text); font-size:14px; line-height:1; cursor:pointer; }
+    .rn-seta:hover:not(:disabled) { border-color:var(--brand-light); color:var(--brand-pale); }
+    .rn-seta:disabled { opacity:.35; cursor:default; }
+    .rn-seta:focus-visible { outline:2px solid var(--brand-light); outline-offset:2px; }
+    .rn-ordenando .pauta-grupo-head { display:flex; align-items:center; gap:10px; cursor:grab; }
+    .rn-ordenando .pauta-grupo-head .pauta-grupo-min { float:none; margin-left:auto; }
+    .rn-ordenando .pauta-grupo-head > .rn-setas:nth-child(2) { margin-left:auto; }
+    .rn-ordenando .pauta-item { cursor:grab; }
+    .rn-arrastando { opacity:.45; }
+    .rn-solta-antes { box-shadow:0 -3px 0 0 var(--brand-light); }
+    .rn-solta-depois { box-shadow:0 3px 0 0 var(--brand-light); }
 
     .pauta-grupo { margin-bottom:16px; }
     .pauta-grupo-head { color:var(--brand-pale); font-size:13px; font-weight:600; text-transform:uppercase; letter-spacing:.04em; padding:6px 0; border-bottom:1px solid rgba(91,130,166,.3); margin-bottom:8px; }
