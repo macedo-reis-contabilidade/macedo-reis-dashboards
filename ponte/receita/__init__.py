@@ -14,7 +14,9 @@ do CNPJ — e, desde 09/11/2026 (pedido da Thalia com o ok do Samuel), o PDF do 
 função do sistema salva na pasta da empresa no Drive (relatorios.py). O PDF da declaração do PGDAS fica no PC.
 Leia ponte/LEIA-ME.md.
 """
-VERSAO = '0.4.3'
+VERSAO = '0.4.4'
+# de quem é a procuração (19/11/2026, 0.4.4): todo pacote leva a lista `vias` — a procuração de cada empresa é a do CNPJ
+# do escritório ou a do CPF do procurador —, tirada do estado.json, sem consulta nenhuma ao Serpro
 # pagamentos (19/11/2026, 0.4.0): as guias pagas (PAGTOWEB · PAGAMENTOS71), uma vez por mês por empresa; na 0.4.1
 # (o mesmo dia), o cenário da demonstração que o trial aceita, o tipo da guia como a documentação mostra e a contagem
 # da Receita conferindo a resposta que veio em páginas

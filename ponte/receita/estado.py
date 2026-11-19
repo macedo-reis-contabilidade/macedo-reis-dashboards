@@ -66,6 +66,18 @@ class Estado:
         a = self.d['autorizacao'].get(doc) or {}
         return a.get('via') == 'procurador' and a.get('situacao') == 'ativa'
 
+    def vias(self, docs):
+        """De quem é a procuração de cada empresa da lista que tem uma (ativa ou vencida), pelo que a última consulta da
+        autorização disse: {documento: 'procurador' (a do CPF do procurador) | 'escritorio' (a do CNPJ do escritório)}.
+        Vai no pacote de toda rodada (19/11/2026, a 0.4.4), pro sistema mostrar qual das duas vale: sai do que o estado
+        já lembra, sem consulta nenhuma ao Serpro. A empresa sem procuração e a que o estado não conhece ficam de fora."""
+        saida = {}
+        for doc in docs:
+            a = self.d['autorizacao'].get(doc) or {}
+            if a.get('situacao') in ('ativa', 'vencida'):
+                saida[doc] = 'procurador' if a.get('via') == 'procurador' else 'escritorio'
+        return saida
+
     def liberar_consultas(self, doc):
         """A empresa que estava sem a procuração e agora tem: o PGDAS e a situação fiscal marcados como feitos enquanto
         ela estava sem (sem chamar o Serpro) voltam a contar como não feitos, e a declaração tentada sem a procuração,

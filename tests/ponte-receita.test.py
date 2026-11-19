@@ -99,6 +99,9 @@ FERIADOS_JS = RAIZ / 'assets' / 'js' / 'rescisao-datas.js'
 
 # o contrato da fila (2.5), escrito aqui e não importado da ponte: um campo a mais na ponte tem que derrubar o teste
 CONTRATO_TOPO = {'versao', 'tipo', 'rodada', 'empresas', 'faltou'}
+# de quem é a procuração de cada empresa (19/11/2026, a 0.4.4): a lista vai quando o estado conhece alguma com procuração
+CONTRATO_VIA = {'documento', 'via'}
+VIAS = {'escritorio', 'procurador'}
 CONTRATO_RODADA = {'id', 'inicio', 'fim', 'maquina', 'ponte', 'ambiente', 'chamadas_mes'}
 CONTRATO_BLOCOS = {
     'autorizacao': {'situacao', 'valida_ate'},
@@ -1096,8 +1099,8 @@ def caso_servicos(srp, sis):
     ok(versoes == {'SOLICITARPROTOCOLO91': '2.0', 'RELATORIOSITFIS92': '2.0'},
        f'situacao_fiscal: a versão 2.0 do SITFIS (a 1.0 a Receita desligou em 11/2026) — {versoes}')
     ok(faltou(pac) == [], 'nada no faltou')
-    ok(pac and pac['tipo'] == 'receita' and pac['versao'] == 1 and pac['rodada']['ponte'] == '0.4.3'
-       and pac['rodada']['ambiente'] == 'producao', 'o pacote: tipo receita, versão 1, ponte 0.4.3, produção')
+    ok(pac and pac['tipo'] == 'receita' and pac['versao'] == 1 and pac['rodada']['ponte'] == '0.4.4'
+       and pac['rodada']['ambiente'] == 'producao', 'o pacote: tipo receita, versão 1, ponte 0.4.4, produção')
     ok(pac and pac['rodada']['chamadas_mes'] == len(srp.pedidos), f'chamadas_mes = as chamadas do mês ({len(srp.pedidos)})')
 
     # a autorização vencida (a da demonstração, de 2023)
@@ -1414,8 +1417,11 @@ def caso_calendario(srp, sis):
 
 def conferir_contrato(pac):
     problemas = []
-    if set(pac) != CONTRATO_TOPO:
+    if set(pac) - {'vias'} != CONTRATO_TOPO:
         problemas.append(f'topo {sorted(pac)}')
+    vias = pac.get('vias', [{'documento': '', 'via': 'escritorio'}])       # sem a lista, nada a conferir nela
+    if not isinstance(vias, list) or not vias or any(set(v) != CONTRATO_VIA or v['via'] not in VIAS for v in vias):
+        problemas.append(f'vias {vias}')
     if set(pac['rodada']) != CONTRATO_RODADA:
         problemas.append(f"rodada {sorted(pac['rodada'])}")
     for e in pac['empresas']:
@@ -2560,7 +2566,13 @@ def caso_procurador(srp, sis):
     ok((empresa(pac, A) or {}).get('autorizacao') == {'situacao': 'ativa', 'valida_ate': '2027-12-31'}
        and (empresa(pac, B) or {}).get('autorizacao') == {'situacao': 'vencida', 'valida_ate': '2025-06-30'}
        and (empresa(pac, C) or {}).get('autorizacao') == {'situacao': 'ativa', 'valida_ate': '2027-12-31'},
-       'no pacote: A ativa e B vencida (as do CPF), C ativa (a do escritório) — sem o via, que não é do contrato')
+       'no pacote: A ativa e B vencida (as do CPF), C ativa (a do escritório) — o bloco segue sem o via')
+    # de quem é a procuração (19/11/2026, a 0.4.4): a lista vias do pacote, tirada do estado
+    ok(pac.get('vias') == [{'documento': A, 'via': 'procurador'}, {'documento': B, 'via': 'procurador'},
+                           {'documento': C, 'via': 'escritorio'}],
+       f"  e a lista vias diz de quem é cada procuração: A e B do procurador, C do escritório ({pac.get('vias')})")
+    ok('a procuração de 3 empresa(s): 1 pro CNPJ do escritório e 2 pro CPF do procurador' in logs(p),
+       '  o resumo do log conta as duas')
     est = (estado(p) or {}).get('autorizacao', {})
     ok(est.get(A, {}).get('via') == 'procurador' and est.get(B, {}).get('via') == 'procurador'
        and 'via' not in est.get(C, {}), 'o estado.json lembra de quem é a procuração (o via procurador)')
@@ -2590,6 +2602,10 @@ def caso_procurador(srp, sis):
        and [x['pedido']['autorPedidoDados'] for x in pedidos_de(srp, 'MSGCONTRIBUINTE61')] == [AUTOR_PROCURADOR]
        and srp.respostas_termo == [200],
        'no dia seguinte, sem a consulta da autorização: A segue em nome do procurador (um termo novo, uma rodada nova)')
+    ok(sis.ultimo().get('vias') == [{'documento': A, 'via': 'procurador'}, {'documento': B, 'via': 'procurador'},
+                                    {'documento': C, 'via': 'escritorio'}]
+       and all('autorizacao' not in e for e in sis.ultimo()['empresas']),
+       '  e o pacote leva de novo de quem é cada procuração, tirado do estado (nenhuma consulta da procuração)')
 
     # segunda, 05/10: o conferir e a rodada do mesmo dia — o mesmo termo, o 304, o token do ETag
     preparar({})
@@ -2657,6 +2673,8 @@ def caso_procurador(srp, sis):
        and (empresa(pac, C) or {}).get('autorizacao', {}).get('situacao') == 'ativa',
        'a rodada: o termo nem sai; a autorização de A e B fica sem resposta (erro), a de C vem')
     ok(sum('o e-CPF do procurador é de outro CPF' in lin for lin in logs(r).splitlines()) == 1, '  o log diz uma vez')
+    ok(pac.get('vias') == [{'documento': C, 'via': 'escritorio'}],
+       f"  e a lista vias só tem quem o estado conhece com procuração: a C, do escritório ({pac.get('vias')})")
     est_r = (estado(r) or {}).get('autorizacao', {})
     ok(all(est_r.get(x, {}).get('consultada_em') == '2026-10-01' and est_r.get(x, {}).get('situacao') == 'sem'
            for x in (A, B)),

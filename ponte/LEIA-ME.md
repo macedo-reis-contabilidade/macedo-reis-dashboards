@@ -375,9 +375,16 @@ faltam, sem o Serpro (nenhuma chamada paga). O `--falso`, a demonstração e o `
 
 **O que sai do PC:** no pacote, só os campos do contrato (`ponte\receita\pacote.py`); o que vier a mais do Serpro é
 jogado fora antes de montar o pacote. À parte, só o PDF do relatório de situação fiscal, pro Drive da empresa (acima).
-**Não sai:** o PDF da declaração do PGDAS, o texto das mensagens, as chaves, a senha do certificado, os tokens. No log, das mensagens só quantas — nunca o assunto. Do procurador, nada vai pro sistema: o
-termo e o token ficam na memória da rodada, o CPF, o caminho do e-CPF e a senha viram `***` no log, e o pacote não diz
-por qual procuração a empresa foi consultada (o `via` fica só no `estado.json`).
+**Não sai:** o PDF da declaração do PGDAS, o texto das mensagens, as chaves, a senha do certificado, os tokens. No log, das mensagens só quantas — nunca o assunto. Do procurador, o
+termo e o token ficam na memória da rodada, e o CPF, o caminho do e-CPF e a senha viram `***` no log. O que vai pro
+sistema, desde a 0.4.4, é só de quem é a procuração de cada empresa (abaixo).
+
+**De quem é a procuração (19/11/2026, ponte 0.4.4, pedido do Samuel):** todo pacote leva a lista `vias` — de cada
+empresa da lista que o `estado.json` conhece com procuração (ativa ou vencida), se ela é a do CNPJ do escritório
+(`escritorio`) ou a do CPF do procurador (`procurador`). Sai do que a última consulta da autorização de cada empresa
+já disse: **nenhuma consulta a mais ao Serpro**. O sistema grava só isso (a tela Integrações › Receita mostra qual das
+duas vale) e só de quem ele tem com a procuração; a empresa sem procuração não entra na lista. Vai a palavra, nunca o
+CPF. Com nada mais a mandar na rodada, a lista espera a seguinte.
 
 ## O procurador (as procurações pro CPF do contador)
 
@@ -395,8 +402,9 @@ token no ETag.
   a pro CPF do procurador, conferida **em nome dele** (só o próprio procurador vê as procurações que recebeu). Vale a
   ativa; senão a vencida mais recente; senão `sem`. A empresa ativa pela procuração pro CPF tem o PGDAS, a declaração,
   a situação fiscal e a Caixa Postal consultados em nome dele, e o lote de eventos da Caixa Postal sai um por autor (o
-  do escritório e o do procurador). O `estado.json` lembra de quem é a procuração (`via: procurador`); o pacote não leva
-  isso — o sistema vê só `ativa`.
+  do escritório e o do procurador). O `estado.json` lembra de quem é a procuração (`via: procurador`); o bloco da
+  autorização no pacote segue só com `ativa` e a data, e, desde a 0.4.4, a lista `vias` do pacote diz ao sistema de quem
+  é a de cada empresa (acima, "De quem é a procuração").
 - **Sem o token nesta rodada** (o e-CPF de outro CPF, vencido, a senha errada — aí o termo nem sai do PC —, ou o Serpro
   recusando o termo, inclusive com o 500 que traz mensagem, que não é o Serpro fora): o termo é tentado uma vez só, o
   log diz o porquê **uma vez**, e as consultas em nome do procurador vão pro `faltou` como `erro` sem chamar a Receita

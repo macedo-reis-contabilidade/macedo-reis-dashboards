@@ -51,10 +51,14 @@ export function htmlDaReceita(d) {
     + '<div style="min-width:150px; font-weight:600;">' + esc(rotulo) + '</div><div style="flex:1;' + (cor ? ' color:' + cor + ';' : '') + '">' + html + '</div></div>');
   const VERMELHO = 'var(--danger, #c0392b)';
 
+  // de quem é a procuração (19/11/2026, a coluna autorizacao_via, que a ponte da Receita manda): a do CNPJ do escritório ou
+  // a do CPF do Diego, em nome de quem a ponte consulta. Sem a coluna (a ponte ainda não disse), a linha fica como era
+  const deQuem = verbo => (e.autorizacao_via === 'procurador' ? ' ' + verbo + ' a procuração pro CPF do Diego' + (verbo === 'É' ? ': a ponte consulta em nome dele.' : '.')
+    : e.autorizacao_via === 'escritorio' ? ' ' + verbo + ' a procuração pro CNPJ do escritório.' : '');
   if (e.autorizacao === 'ativa') {
-    linha('Autorização', 'O escritório tem a autorização de acesso' + (e.autorizacao_ate ? ' até ' + esc(dataBR(e.autorizacao_ate)) : '') + '.');
+    linha('Autorização', 'O escritório tem a autorização de acesso' + (e.autorizacao_ate ? ' até ' + esc(dataBR(e.autorizacao_ate)) : '') + '.' + deQuem('É'));
   } else if (e.autorizacao === 'vencida' || e.autorizacao === 'sem') {
-    linha('Autorização', (e.autorizacao === 'vencida' ? 'A autorização de acesso do escritório venceu.' : 'A Receita recusou a consulta: o escritório não tem a autorização de acesso desta empresa.')
+    linha('Autorização', (e.autorizacao === 'vencida' ? 'A autorização de acesso do escritório venceu.' + deQuem('Era') : 'A Receita recusou a consulta: o escritório não tem a autorização de acesso desta empresa.')
       + ' Peça ao cliente pra autorizar o CNPJ do escritório (Portal de Serviços da Receita, Minhas Autorizações de Acesso) e aceite no e-CAC.', VERMELHO);
   }
 
@@ -95,7 +99,7 @@ export function htmlDaReceita(d) {
 export async function carregarReceita(supabase, clienteId) {
   try {
     const [e, p, m] = await Promise.all([
-      supabase.from('receita_empresas').select('autorizacao, autorizacao_ate, autorizacao_em, pgdas_em, pendencias, situacao_fiscal_em, situacao_fiscal_pdf_em, situacao_fiscal_pdf_url')
+      supabase.from('receita_empresas').select('autorizacao, autorizacao_ate, autorizacao_via, autorizacao_em, pgdas_em, pendencias, situacao_fiscal_em, situacao_fiscal_pdf_em, situacao_fiscal_pdf_url')
         .eq('cliente_id', clienteId).maybeSingle(),
       supabase.from('receita_pgdas').select('competencia, transmitida_em, das_pago, receita_mes, receita_12_meses').eq('cliente_id', clienteId).order('competencia', { ascending: false }).limit(12),
       supabase.from('receita_mensagens').select('assunto, enviada_em, origem, lida, recebida_em').eq('cliente_id', clienteId)

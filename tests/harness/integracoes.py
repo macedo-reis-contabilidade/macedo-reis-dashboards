@@ -16,11 +16,14 @@ Confere:
   3. o perfil no Domínio: o endereço com ?empresa=, o mês a mês (a mesma peça da ficha), o faturamento ao lado do PGDAS,
      a contabilidade, a jornada e os avisos do vigia; o anterior e a próxima; o Voltar da tela e o do navegador;
   4. o link direto do perfil, e a empresa que não está na carteira de hoje;
-  5. a Receita: o alto (a última consulta, as consultas do mês, as com procuração), o calendário das consultas com a
-     próxima de cada uma, os números do alto e a linha de uma empresa; os filtros;
-  6. o perfil na Receita: a procuração, a situação fiscal com o PDF no Drive, o PGDAS mês a mês com as guias do DAS, a
-     Caixa Postal e as guias pagas (o filtro por ano e por tipo, as somas, a guia aberta com a parte de cada tributo);
-     a empresa fora da consulta e a sem procuração;
+  5. a Receita: o alto (a última consulta, as consultas do mês, as com procuração e de quem ela é — a do CNPJ do
+     escritório ou a do CPF do Diego), o calendário das consultas com a próxima de cada uma, os números do alto e a
+     linha de uma empresa; os filtros; a parcela de parcelamento não tira o mês do "DAS sem pagamento", e a guia de
+     vários meses tira os meses dela;
+  6. o perfil na Receita: a procuração (e de quem ela é), a situação fiscal com o PDF no Drive, o PGDAS mês a mês com as
+     guias do DAS (a de vários meses com a parte de cada mês; a parcela de parcelamento só nas guias pagas), a Caixa
+     Postal e as guias pagas (o filtro por ano e por tipo, as somas, a guia aberta com a parte de cada tributo); a
+     empresa fora da consulta e a sem procuração;
   7. o que vem de fora entra como texto (nome, assunto, pendência, tributo e aviso com <img onerror> não viram imagem);
   8. a página Integrações (os dois cards com o que cada uma traz e como está) e o card do Painel (em dia; com as
      pontes paradas, quantas);
@@ -98,6 +101,9 @@ SIMPLES = [{'receita_codigo': '1001', 'receita': 'IRPJ - Simples Nacional', 'per
            {'receita_codigo': '1002', 'receita': 'CSLL - Simples Nacional', 'periodo_apuracao': '2026-09-01', 'principal': 200.0, 'multa': 6.7, 'juros': 1.7, 'valor_total': 208.4},
            {'receita_codigo': '1006', 'receita': 'INSS - Simples Nacional', 'periodo_apuracao': '2026-09-01', 'principal': 700.0, 'multa': 23.6, 'juros': 5.8, 'valor_total': 729.4}]
 
+def partes_de(mes, itens=SIMPLES):
+    return [dict(x, periodo_apuracao=mes + '-01') for x in itens]
+
 DADOS = {
     'dominio_empresas': [{'codigo': 101, 'cliente_id': 'k1', 'ativa': True}, {'codigo': 102, 'cliente_id': 'k2', 'ativa': True}, {'codigo': 103, 'cliente_id': 'k3', 'ativa': True},
                          {'codigo': 203, 'cliente_id': 'k3', 'ativa': False}, {'codigo': 104, 'cliente_id': 'k4', 'ativa': True}, {'codigo': 105, 'cliente_id': 'k5', 'ativa': True},
@@ -119,28 +125,31 @@ DADOS = {
     'receita_rodadas': [{'id': 'rr-2', 'inicio': '2026-11-19T11:30:00Z', 'fim': '2026-11-19T11:35:40Z', 'ponte': '0.4.3', 'ambiente': 'producao', 'chamadas_mes': 1097, 'empresas': 84, 'sem_cadastro': 0, 'recebida_em': '2026-11-19T11:36:02Z'},
                         {'id': 'rr-1', 'inicio': '2026-11-18T11:30:00Z', 'fim': '2026-11-18T11:33:00Z', 'ponte': '0.4.1', 'ambiente': 'producao', 'chamadas_mes': 1012, 'empresas': 84, 'sem_cadastro': 0, 'recebida_em': '2026-11-18T11:33:20Z'}],
     'receita_empresas': [
-        {'cliente_id': 'k1', 'autorizacao': 'ativa', 'autorizacao_ate': '2027-03-31', 'autorizacao_em': '2026-11-02T11:31:00Z', 'pgdas_em': '2026-11-03T11:32:00Z', 'situacao_fiscal_em': '2026-11-05',
+        {'cliente_id': 'k1', 'autorizacao': 'ativa', 'autorizacao_ate': '2027-03-31', 'autorizacao_via': 'procurador', 'autorizacao_em': '2026-11-02T11:31:00Z', 'pgdas_em': '2026-11-03T11:32:00Z', 'situacao_fiscal_em': '2026-11-05',
          'situacao_fiscal_pdf_em': '2026-11-05', 'situacao_fiscal_pdf_url': 'https://drive.google.com/file/d/ARQteste00001/view',
          'pendencias': [{'orgao': 'Receita', 'titulo': 'Pendência - Débito (SIEF) ' + XSS}, {'orgao': 'PGFN', 'titulo': 'Inscrição em Dívida Ativa'}],
          'pagamentos_desde': '2025-01-01', 'pagamentos_ate': '2026-11-18', 'pagamentos_em': '2026-11-19T14:25:00Z'},
         {'cliente_id': 'k2', 'autorizacao': 'sem', 'autorizacao_ate': None, 'autorizacao_em': '2026-11-16T11:31:00Z', 'pendencias': None, 'situacao_fiscal_em': None, 'pagamentos_ate': None},
-        {'cliente_id': 'k3', 'autorizacao': 'ativa', 'autorizacao_ate': '2026-12-01', 'autorizacao_em': '2026-11-02T11:31:00Z', 'pgdas_em': '2026-11-03T11:32:00Z', 'pendencias': [], 'situacao_fiscal_em': '2026-11-05',
+        {'cliente_id': 'k3', 'autorizacao': 'ativa', 'autorizacao_ate': '2026-12-01', 'autorizacao_via': 'escritorio', 'autorizacao_em': '2026-11-02T11:31:00Z', 'pgdas_em': '2026-11-03T11:32:00Z', 'pendencias': [], 'situacao_fiscal_em': '2026-11-05',
          'pagamentos_desde': '2025-01-01', 'pagamentos_ate': '2026-11-18'},
-        {'cliente_id': 'k4', 'autorizacao': 'ativa', 'autorizacao_ate': '2028-01-15', 'pendencias': [], 'situacao_fiscal_em': '2026-11-05', 'pagamentos_desde': '2025-01-01', 'pagamentos_ate': '2026-11-18'},
-        {'cliente_id': 'k5', 'autorizacao': 'ativa', 'autorizacao_ate': '2026-11-10', 'pendencias': [], 'situacao_fiscal_em': '2026-11-05', 'pagamentos_desde': '2025-01-01', 'pagamentos_ate': '2026-11-18'},
+        {'cliente_id': 'k4', 'autorizacao': 'ativa', 'autorizacao_ate': '2028-01-15', 'autorizacao_via': 'procurador', 'pendencias': [], 'situacao_fiscal_em': '2026-11-05', 'pagamentos_desde': '2025-01-01', 'pagamentos_ate': '2026-11-18'},
+        {'cliente_id': 'k5', 'autorizacao': 'ativa', 'autorizacao_ate': '2026-11-10', 'autorizacao_via': 'procurador', 'autorizacao_em': '2026-11-02T11:31:00Z', 'pgdas_em': '2026-11-03T11:32:00Z', 'pendencias': [],
+         'situacao_fiscal_em': '2026-11-05', 'pagamentos_desde': '2025-01-01', 'pagamentos_ate': '2026-11-18'},
         {'cliente_id': 'k6', 'autorizacao': 'sem', 'autorizacao_ate': None, 'pendencias': None, 'situacao_fiscal_em': None, 'pagamentos_ate': None},
-        {'cliente_id': 'k8', 'autorizacao': 'ativa', 'autorizacao_ate': '2027-08-20', 'pendencias': [{'orgao': 'Receita', 'titulo': 'Omissão de DCTFWeb'}], 'situacao_fiscal_em': '2026-11-05',
+        {'cliente_id': 'k8', 'autorizacao': 'ativa', 'autorizacao_ate': '2027-08-20', 'autorizacao_via': 'escritorio', 'pendencias': [{'orgao': 'Receita', 'titulo': 'Omissão de DCTFWeb'}], 'situacao_fiscal_em': '2026-11-05',
          'pagamentos_desde': '2025-01-01', 'pagamentos_ate': '2026-11-18'},
-        {'cliente_id': 'k9', 'autorizacao': 'ativa', 'autorizacao_ate': '2027-05-02', 'pendencias': [], 'situacao_fiscal_em': '2026-11-05', 'pagamentos_desde': '2025-01-01', 'pagamentos_ate': '2026-11-18'},
-        {'cliente_id': 'k10', 'autorizacao': 'ativa', 'autorizacao_ate': None, 'pendencias': None, 'situacao_fiscal_em': None, 'pagamentos_ate': None},
-        {'cliente_id': 'k11', 'autorizacao': 'ativa', 'autorizacao_ate': '2027-09-09', 'pendencias': [], 'situacao_fiscal_em': '2026-11-05', 'pagamentos_desde': '2025-01-01', 'pagamentos_ate': '2026-11-18'},
-        {'cliente_id': 'k12', 'autorizacao': 'ativa', 'autorizacao_ate': '2027-02-11', 'pendencias': [], 'situacao_fiscal_em': '2026-11-05', 'pagamentos_desde': '2025-01-01', 'pagamentos_ate': '2026-11-18'},
-        {'cliente_id': 'k15', 'autorizacao': 'ativa', 'autorizacao_ate': '2027-06-30', 'pendencias': [], 'situacao_fiscal_em': '2026-11-05', 'pagamentos_desde': '2025-01-01', 'pagamentos_ate': '2026-11-18'}],
+        {'cliente_id': 'k9', 'autorizacao': 'ativa', 'autorizacao_ate': '2027-05-02', 'autorizacao_via': 'procurador', 'pendencias': [], 'situacao_fiscal_em': '2026-11-05', 'pagamentos_desde': '2025-01-01', 'pagamentos_ate': '2026-11-18'},
+        {'cliente_id': 'k10', 'autorizacao': 'ativa', 'autorizacao_ate': None, 'autorizacao_via': None, 'pendencias': None, 'situacao_fiscal_em': None, 'pagamentos_ate': None},
+        {'cliente_id': 'k11', 'autorizacao': 'ativa', 'autorizacao_ate': '2027-09-09', 'autorizacao_via': 'procurador', 'pendencias': [], 'situacao_fiscal_em': '2026-11-05', 'pagamentos_desde': '2025-01-01', 'pagamentos_ate': '2026-11-18'},
+        {'cliente_id': 'k12', 'autorizacao': 'ativa', 'autorizacao_ate': '2027-02-11', 'autorizacao_via': 'escritorio', 'pendencias': [], 'situacao_fiscal_em': '2026-11-05', 'pagamentos_desde': '2025-01-01', 'pagamentos_ate': '2026-11-18'},
+        {'cliente_id': 'k15', 'autorizacao': 'ativa', 'autorizacao_ate': '2027-06-30', 'autorizacao_via': 'procurador', 'pendencias': [], 'situacao_fiscal_em': '2026-11-05', 'pagamentos_desde': '2025-01-01', 'pagamentos_ate': '2026-11-18'}],
     'receita_pgdas': [
         {'cliente_id': 'k1', 'competencia': '2026-06', 'transmitida_em': '2026-07-15T13:00:00Z', 'das_pago': False, 'receita_mes': None, 'receita_12_meses': None},
         {'cliente_id': 'k1', 'competencia': '2026-08', 'transmitida_em': '2026-09-15T13:00:00Z', 'das_pago': True, 'receita_mes': None, 'receita_12_meses': None},
         {'cliente_id': 'k1', 'competencia': '2026-09', 'transmitida_em': '2026-10-18T13:02:00Z', 'das_pago': False, 'receita_mes': 84211.5, 'receita_12_meses': 912000.0},
         {'cliente_id': 'k3', 'competencia': '2026-09', 'transmitida_em': '2026-10-19T13:02:00Z', 'das_pago': True, 'receita_mes': 60500.0, 'receita_12_meses': 700000.0},
+        {'cliente_id': 'k5', 'competencia': '2026-07', 'transmitida_em': '2026-08-17T13:02:00Z', 'das_pago': False, 'receita_mes': None, 'receita_12_meses': None},
+        {'cliente_id': 'k5', 'competencia': '2026-08', 'transmitida_em': '2026-09-16T13:02:00Z', 'das_pago': False, 'receita_mes': None, 'receita_12_meses': None},
         {'cliente_id': 'k5', 'competencia': '2026-09', 'transmitida_em': '2026-10-19T13:02:00Z', 'das_pago': False, 'receita_mes': 18000.0, 'receita_12_meses': 210000.0}],
     'receita_mensagens': [
         {'cliente_id': 'k1', 'id_receita': 'm1', 'assunto': 'Termo de Exclusão do Simples Nacional', 'enviada_em': '2026-10-20', 'origem': 'Estado', 'lida': False, 'recebida_em': '2026-10-21T12:00:00Z'},
@@ -149,7 +158,7 @@ DADOS = {
         {'cliente_id': 'k1', 'id_receita': 'm4', 'assunto': 'Antiga e não lida', 'enviada_em': '2026-06-01', 'origem': 'Receita', 'lida': False, 'recebida_em': '2026-06-02T12:00:00Z'},
         {'cliente_id': 'k3', 'id_receita': 'm5', 'assunto': 'Parcelamento concedido', 'enviada_em': '2026-11-01', 'origem': 'Receita', 'lida': True, 'recebida_em': '2026-11-02T12:00:00Z'}],
     'receita_pagamentos': [
-        guia('k1', '07202600000001', 'DAS', '2026-08-31', '2026-09-21', valor_total=1180.0, valor_principal=1180.0, partes=SIMPLES[:2]),
+        guia('k1', '07202600000001', 'DAS', '2026-08-01', '2026-09-21', valor_total=1180.0, valor_principal=1180.0, partes=partes_de('2026-08', SIMPLES[:2])),
         guia('k1', '07202600000002', 'DAS', '2026-09-01', '2026-11-12', vencimento='2026-10-20', valor_total=1250.4, valor_principal=1200.0, valor_multa=40.4, valor_juros=10.0, partes=SIMPLES),
         guia('k1', '07202600000003', 'DAS', '2026-07-31', '2026-08-25', referencia='1234567', receita_codigo='1734', valor_total=310.0, valor_principal=310.0,
              partes=[{'receita_codigo': '1469', 'receita': 'R D Ativa - IRPJ - Simples Nacional', 'principal': 310.0, 'multa': 0, 'juros': 0, 'valor_total': 310.0}]),
@@ -158,8 +167,17 @@ DADOS = {
                      {'receita_codigo': '561-7', 'receita': 'IRRF - Rendimento do Trabalho Assalariado ' + XSS, 'principal': 300.0, 'multa': 0, 'juros': 0, 'valor_total': 300.0}]),
         guia('k1', '07202500000005', 'DARF', '2025-10-31', '2025-11-10', valor_total=640.0, valor_principal=640.0),
         guia('k1', '07202600000006', 'DAE', '2026-09-30', '2026-10-07', valor_total=95.5, valor_principal=95.5),
-        guia('k3', '07202600000007', 'DAS', '2026-09-30', '2026-10-20', valor_total=2100.0, valor_principal=2100.0),
-        guia('k14', '07202600000008', 'DAS', '2026-02-28', '2026-03-20')],
+        guia('k3', '07202600000007', 'DAS', '2026-09-01', '2026-10-20', valor_total=2100.0, valor_principal=2100.0),
+        guia('k14', '07202600000008', 'DAS', '2026-02-01', '2026-03-20'),
+        # a parcela de um parcelamento (como a Receita manda): o período no último dia do mês, o vencimento dentro dele e,
+        # nas partes, os meses antigos — não é o DAS de setembro, que segue sem pagar
+        guia('k5', '07202600000021', 'DAS', '2026-09-30', '2026-09-25', vencimento='2026-09-30', valor_total=583.66, valor_principal=437.58, valor_multa=87.51, valor_juros=58.57,
+             partes=[{'receita_codigo': '1001', 'receita': 'IRPJ - Simples Nacional', 'periodo_apuracao': '2024-03-01', 'principal': 200.0, 'multa': 40.0, 'juros': 30.0, 'valor_total': 270.0},
+                     {'receita_codigo': '1006', 'receita': 'INSS - Simples Nacional', 'periodo_apuracao': '2024-04-01', 'principal': 237.58, 'multa': 47.51, 'juros': 28.57, 'valor_total': 313.66}]),
+        # uma guia só pagando julho e agosto, depois da consulta do PGDAS: cada parte diz o mês dela
+        guia('k5', '07202600000022', 'DAS', '2026-08-01', '2026-10-30', vencimento='2026-09-21', valor_total=640.3, valor_principal=600.0, valor_multa=30.2, valor_juros=10.1,
+             partes=[{'receita_codigo': '1001', 'receita': 'IRPJ - Simples Nacional', 'periodo_apuracao': '2026-07-01', 'principal': 300.0, 'multa': 15.1, 'juros': 5.0, 'valor_total': 320.1},
+                     {'receita_codigo': '1001', 'receita': 'IRPJ - Simples Nacional', 'periodo_apuracao': '2026-08-01', 'principal': 300.0, 'multa': 15.1, 'juros': 5.1, 'valor_total': 320.2}])],
     'vigia_achados': [
         aviso(1, 'dominio_pgdas_diferente', 'k1', 'Faturamento do Domínio diferente do PGDAS em 08/2026', grav='alta'),
         aviso(2, 'receita_pendencia', 'k1', 'Receita: débito e dívida ativa ' + XSS),
@@ -332,16 +350,20 @@ def main(fotos=False):
         ok('Consultada hoje às 08h36' in hoje and 'De segunda a sexta às 8h30' in hoje, f'a última consulta ({hoje.splitlines()[0]})')
         ok('1.097 de 1.500 consultas em novembro' in hoje and p.get_attribute('#igHoje .ig-barra', 'aria-label') == '73% do teto do mês', 'as consultas pagas do mês contra o teto')
         ok('9 de 13 com procuração' in hoje and '3 sem procuração ou com ela vencida' in hoje and '1 fora da consulta' in hoje, f'quantas têm procuração ({hoje.splitlines()[-2:]})')
+        ok('3 pro CNPJ do escritório e 5 pro CPF do Diego (1 a ponte ainda não disse)' in hoje, f'e de quem ela é: a do CNPJ do escritório ou a do CPF do Diego ({hoje.splitlines()[-1:]})')
         prox = p.evaluate("() => Object.fromEntries([...document.querySelectorAll('#igSobre .ig-cartao')].map(i => [i.querySelector('h4').textContent, i.querySelector('.ig-prox b').textContent]))")
         ok(prox == {'Procuração': '01/12', 'PGDAS': '24/11', 'Caixa Postal': 'hoje', 'Situação fiscal': '07/12', 'Pagamentos': '25/11'}, f'as cinco consultas, com a próxima de cada uma ({prox})')
         ok('teto de 1.500 por mês' in p.inner_text('#igSobre') and 'Só do Simples' in p.inner_text('#igSobre'), 'o que cada consulta traz e o teto')
         linhas = p.evaluate(LISTA)
         alfa = next(l for l in linhas if l['id'] == 'k1')
-        ok(alfa['celulas'][1:] == ['ativa até 31/03/2027', '2 pendências', 'declarado até 09/2026 DAS sem pagamento: 1 mês', '2 não lidas', '5 última em 12/11'], f'a linha da empresa ({alfa["celulas"][1:]})')
+        ok(alfa['celulas'][1:] == ['ativa até 31/03/2027 pro CPF do Diego', '2 pendências', 'declarado até 09/2026 DAS sem pagamento: 1 mês', '2 não lidas', '5 última em 12/11'], f'a linha da empresa ({alfa["celulas"][1:]})')
         ok('1 aviso do vigia' in alfa['celulas'][0], 'o aviso do vigia desta integração')
         por = {l['id']: l['celulas'] for l in linhas}
         ok(por['k2'][1] == 'sem procuração' and por['k2'][2] == '—' and por['k2'][5] == '—', 'a sem procuração: o que não foi consultado fica com o traço')
-        ok(por['k3'][1] == 'vence em 12 dias' and por['k5'][1] == 'vencida em 10/11/2026' and por['k10'][1] == 'ativa', 'vencendo, vencida e ativa sem data')
+        ok(por['k3'][1] == 'vence em 12 dias pro CNPJ do escritório' and por['k5'][1] == 'vencida em 10/11/2026 pro CPF do Diego' and por['k10'][1] == 'ativa',
+           f"vencendo, vencida e ativa sem data, com de quem é a procuração (a que a ponte ainda não disse fica sem) ({por['k3'][1]} · {por['k5'][1]} · {por['k10'][1]})")
+        ok(por['k5'][3] == 'declarado até 09/2026 DAS sem pagamento: 1 mês' and p.get_attribute('#igCorpo tr[data-id="k5"] td:nth-child(4) small', 'title') == '09/2026',
+           f"a parcela de parcelamento paga em setembro não tira setembro do DAS sem pagamento, e a guia de dois meses tira julho e agosto ({por['k5'][3]})")
         ok(por['k7'][1] == 'ainda não consultada' and por['k13'][1] == 'fora da consulta' and por['k8'][3] == '—', 'a que ainda não foi consultada, a de fora da consulta e o PGDAS só do Simples')
         ok(por['k3'][2] == 'sem pendência' and por['k3'][4] == 'tudo lido' and por['k4'][4] == 'sem mensagem' and por['k3'][5].startswith('1 última em 20/10'), f'sem pendência, tudo lido, sem mensagem e as guias ({por["k3"][2:]})')
         focos = p.evaluate(FOCOS)
@@ -356,7 +378,8 @@ def main(fotos=False):
         print('6. O perfil na Receita')
         p.click('#igCorpo tr[data-id="k1"] .ig-nome'); p.wait_for_selector('#igPerfil #igGuias', timeout=10000)
         t = p.inner_text('#igPerfil')
-        ok('Ativa até 31/03/2027.' in t and 'Conferida em 02/11/2026.' in t and 'o sistema ainda não guarda qual das duas' in t, 'a procuração, com o dia em que foi conferida')
+        ok('Ativa até 31/03/2027.' in t and 'Conferida em 02/11/2026.' in t and 'É a procuração pro CPF do Diego: a ponte consulta esta empresa em nome dele.' in t,
+           'a procuração, com de quem ela é e o dia em que foi conferida')
         ok('2 pendências' in t and 'PGFN: Inscrição em Dívida Ativa' in t and 'relatório de 05/11/2026' in t, 'a situação fiscal, com as pendências')
         lk = p.locator('#igPerfil a', has_text='Abrir o relatório (PDF)')
         ok(lk.count() == 1 and lk.get_attribute('href') == 'https://drive.google.com/file/d/ARQteste00001/view' and lk.get_attribute('target') == '_blank' and 'noopener' in (lk.get_attribute('rel') or ''), 'o PDF do relatório no Drive, numa aba nova')
@@ -387,12 +410,33 @@ def main(fotos=False):
         av = p.inner_text('#igPerfil .ig-sec-avisos')
         ok('Receita: débito e dívida ativa' in av and 'Faturamento do Domínio' not in av, 'os avisos do vigia da Receita')
         foto(p, 'receita-perfil')
+        # a parcela de parcelamento e a guia de vários meses, no perfil
+        p.goto(base + 'integracao-receita.html?empresa=k5'); p.wait_for_selector('#igPerfil #igGuias', timeout=10000)
+        t = p.inner_text('#igPerfil')
+        ok('Venceu em 10/11/2026.' in t and 'Era a procuração pro CPF do Diego.' in t and 'em nome dele' not in t, 'a procuração vencida diz de quem era')
+        pg = p.evaluate("() => { const s = [...document.querySelectorAll('#igPerfil .ig-sec')].find(x => x.querySelector('h3').textContent.startsWith('PGDAS')); return [...s.querySelectorAll('tbody tr')].map(tr => tr.innerText.replace(/\\s+/g, ' ').trim()); }")
+        ok(len(pg) == 3 and pg[0].startswith('09/2026 transmitida em 19/10/2026 sem pagamento') and 'pago em' not in pg[0], f'setembro segue sem pagamento: a parcela paga em setembro não é o DAS do mês ({pg[0]})')
+        ok(pg[1].startswith('08/2026 transmitida em 16/09/2026 sem pagar na consulta pago em 30/10/2026: R$ 320,20 (numa guia de 2 meses)')
+           and pg[2].startswith('07/2026 transmitida em 17/08/2026 sem pagar na consulta pago em 30/10/2026: R$ 320,10 (numa guia de 2 meses)'), f'a guia de dois meses aparece nos dois, com a parte de cada um ({pg[1:]})')
+        ok('a parcela paga não é o DAS do mês' in t, 'a nota do PGDAS explica a parcela')
+        guias = p.evaluate("() => [...document.querySelectorAll('#igGuias tr.ig-guia')].map(tr => tr.innerText.replace(/\\s+/g, ' ').trim())")
+        ok(len(guias) == 2 and guias[0].startswith('30/10/2026 DAS 3333 IRPJ - Simples Nacional') and '08/2026 e mais 1 mês 21/09/2026' in guias[0] and 'parcela de parcelamento' not in guias[0],
+           f'a guia de vários meses diz quantos meses pagou ({guias[0]})')
+        ok(guias[1].startswith('25/09/2026 DAS 3333 parcela de parcelamento Simples Nacional: IRPJ, INSS') and '09/2026 30/09/2026' in guias[1], f'a parcela de parcelamento vem marcada nas guias pagas ({guias[1]})')
+        ok(p.get_attribute('#igGuias tr.ig-guia[data-guia="07202600000022"] td:nth-child(3) small', 'title') == 'A mesma guia pagou 07/2026, 08/2026'
+           and 'não o DAS daquele mês' in (p.get_attribute('#igGuias tr.ig-guia[data-guia="07202600000021"] .ig-etiqueta', 'title') or ''), 'os meses da guia e o porquê da parcela ficam na dica')
+        foto(p, 'receita-perfil-parcelamento')
+        p.goto(base + 'integracao-receita.html?empresa=k10'); p.wait_for_selector('#igPerfil #igGuias', timeout=10000)
+        ok('A ponte ainda não disse se ela é a do CNPJ do escritório ou a do CPF do Diego' in p.inner_text('#igPerfil'), 'a que a ponte ainda não disse de quem é a procuração')
+        p.goto(base + 'integracao-receita.html?empresa=k3'); p.wait_for_selector('#igPerfil #igGuias', timeout=10000)
+        ok('É a procuração pro CNPJ do escritório.' in p.inner_text('#igPerfil'), 'e a do CNPJ do escritório')
         p.goto(base + 'integracao-receita.html?empresa=k13'); p.wait_for_selector('#igPerfil .ig-sec')
         t = p.inner_text('#igPerfil')
         ok('Fora da consulta' in t and 'Regime Imune: a ponte consulta as empresas do Simples, do MEI, do Presumido e do Real.' in t and p.locator('#igGuias').count() == 0, 'a empresa fora da consulta: o porquê, e mais nada')
         p.goto(base + 'integracao-receita.html?empresa=k2'); p.wait_for_selector('#igPerfil #igGuias')
         t = p.inner_text('#igPerfil')
-        ok('Sem procuração: a Receita recusou a consulta.' in t and 'Minhas Autorizações de Acesso' in t and 'Sem a procuração, a ponte não consegue consultar os pagamentos' in t, 'a sem procuração: o que pedir ao cliente')
+        ok('Sem procuração: a Receita recusou a consulta.' in t and 'Minhas Autorizações de Acesso' in t and 'Sem a procuração, a ponte não consegue consultar os pagamentos' in t
+           and 'procuração pro C' not in t and 'ainda não disse' not in t, 'a sem procuração: o que pedir ao cliente, e nada de quem é')
         ok(not any(h.startswith('PGDAS') for h in p.locator('#igPerfil .ig-sec h3').all_inner_texts()), 'a do Presumido não tem a seção do PGDAS')
         p.goto(base + 'integracao-receita.html?empresa=k7'); p.wait_for_selector('#igPerfil .ig-sec')
         ok('Ainda não consultada' in p.inner_text('#igPerfil'), 'a que entra na próxima rodada')

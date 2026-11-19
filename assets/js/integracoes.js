@@ -291,43 +291,98 @@ export const mesesDoDominio = mensal => [...new Set((mensal || []).map(l => l &&
 export const DIAS_VENCENDO = 30;      // a procuração a 30 dias de vencer (a conta do vigia)
 export const DIAS_NAO_LIDAS = 90;     // as mensagens não lidas dos últimos 90 dias
 
-/** A procuração (a autorização de acesso) em palavras. estado: fora, nao_consultada, sem, vencida, vencendo, ativa. */
+// De quem é a procuração (19/11/2026, a coluna autorizacao_via, que a ponte 0.4.4 manda): a do CNPJ do escritório ou a do
+// CPF do procurador — o Diego, em nome de quem a ponte consulta a empresa pelo Autentica Procurador
+export const DE_QUEM = { escritorio: 'pro CNPJ do escritório', procurador: 'pro CPF do Diego' };
+/** A procuração (a autorização de acesso) em palavras. estado: fora, nao_consultada, sem, vencida, vencendo, ativa.
+ *  Na que tem procuração (ativa, vencendo ou vencida), via: 'escritorio' | 'procurador' | null (a ponte ainda não disse). */
 export function procuracaoDe(rec, fora, hoje) {
   if (fora) return { estado: 'fora', texto: 'fora da consulta', porque: fora };
   if (!rec || !rec.autorizacao) return { estado: 'nao_consultada', texto: 'ainda não consultada' };
   const ate = dia10(rec.autorizacao_ate);
   if (rec.autorizacao === 'sem') return { estado: 'sem', texto: 'sem procuração' };
-  if (rec.autorizacao === 'vencida' || (rec.autorizacao === 'ativa' && ate && ate < hoje)) return { estado: 'vencida', texto: ate ? 'vencida em ' + dataBR(ate) : 'vencida', ate };
+  const via = Object.prototype.hasOwnProperty.call(DE_QUEM, rec.autorizacao_via) ? rec.autorizacao_via : null;
+  if (rec.autorizacao === 'vencida' || (rec.autorizacao === 'ativa' && ate && ate < hoje)) return { estado: 'vencida', texto: ate ? 'vencida em ' + dataBR(ate) : 'vencida', ate, via };
   if (rec.autorizacao !== 'ativa') return { estado: 'nao_consultada', texto: 'ainda não consultada' };
   const dias = ate ? diasEntre(hoje, ate) : null;
-  if (dias != null && dias <= DIAS_VENCENDO) return { estado: 'vencendo', texto: dias === 0 ? 'vence hoje' : 'vence em ' + plural(dias, 'dia', 'dias'), ate, dias };
-  return { estado: 'ativa', texto: ate ? 'ativa até ' + dataBR(ate) : 'ativa', ate, dias };
+  if (dias != null && dias <= DIAS_VENCENDO) return { estado: 'vencendo', texto: dias === 0 ? 'vence hoje' : 'vence em ' + plural(dias, 'dia', 'dias'), ate, dias, via };
+  return { estado: 'ativa', texto: ate ? 'ativa até ' + dataBR(ate) : 'ativa', ate, dias, via };
+}
+/** Das empresas com procuração (ativa ou vencendo), de quem ela é: { escritorio, procurador, semDizer } (as linhas da lista). */
+export function procuracoesPorVia(linhas) {
+  const n = { escritorio: 0, procurador: 0, semDizer: 0 };
+  for (const l of linhas || []) {
+    const p = l && l.procuracao;
+    if (!p || !['ativa', 'vencendo'].includes(p.estado)) continue;
+    n[p.via || 'semDizer']++;
+  }
+  return n;
 }
 
-/** O mês 'AAAA-MM' do período de apuração de uma guia (a Receita manda o primeiro ou o último dia do mês). */
+/** O mês 'AAAA-MM' do período de apuração de uma guia (ou de uma parte dela). */
 export const mesDaApuracao = iso => { const d = dia10(iso); return d ? d.slice(0, 7) : null; };
-/** A guia é o DAS do mês (o do PGDAS ou o do MEI)? Fora a de dívida ativa e a de parcelamento, que têm a referência. */
-export function ehDasDoMes(g) {
-  if (!g || String(g.tipo_codigo) !== '9' || g.referencia) return false;
-  return !(Array.isArray(g.partes) ? g.partes : []).some(p => /R D Ativa|D[ií]vida Ativa|Parcelamento/i.test(String((p && p.receita) || '')));
+// A guia do Simples (o tipo 9, o DAS) sem a referência da dívida ativa: nos pagamentos lidos em 19/11/2026 ela vem de
+// dois jeitos, e só o primeiro é o DAS de um mês.
+//   o DAS do mês (o do PGDAS ou o do MEI): o período de apuração no dia 1º e o vencimento no mês seguinte (o dia 20);
+//     uma guia só pode pagar vários meses atrasados de uma vez, e aí cada parte diz o mês dela
+//   a parcela de um parcelamento: o período no último dia do mês da parcela, o vencimento dentro desse mesmo mês e, nas
+//     partes, os meses antigos que a parcela amortiza — ela NÃO paga o DAS do mês em que vence
+// Quem separa é o vencimento: o DAS de um mês nunca vence dentro dele. O vigia usa a mesma regra (vigia_regras_receita,
+// a parte das_pago): mudou aqui, mude lá.
+const mesmoSimples = g => !!g && String(g.tipo_codigo) === '9' && !String(g.referencia || '').trim()
+  && !(Array.isArray(g.partes) ? g.partes : []).some(p => /R D Ativa|D[ií]vida Ativa|Parcelamento/i.test(String((p && p.receita) || '')));
+/** A guia é a parcela de um parcelamento do Simples (ou do MEI)? Vence dentro do mês do próprio período de apuração. */
+export function ehParcelaDoSimples(g) {
+  if (!mesmoSimples(g)) return false;
+  const pa = dia10(g.periodo_apuracao), venc = dia10(g.vencimento);
+  return !!pa && !!venc && venc.slice(0, 7) <= pa.slice(0, 7);
 }
-/** As guias do DAS por mês de apuração: Map('AAAA-MM' → [guia]), a mais antiga primeiro. */
+/** A guia é o DAS de um mês (o do PGDAS ou o do MEI)? Fora a de dívida ativa (com a referência) e a parcela de
+ *  parcelamento; sem o período ou sem o vencimento não dá pra dizer, e ela não conta. */
+export function ehDasDoMes(g) {
+  if (!mesmoSimples(g)) return false;
+  const pa = dia10(g.periodo_apuracao), venc = dia10(g.vencimento);
+  return !!pa && !!venc && venc.slice(0, 7) > pa.slice(0, 7);
+}
+// os centavos de cada mês que a guia pagou: Map('AAAA-MM' → centavos). A parte sem o período fica no mês da guia; sem
+// partes (ou com um mês só), o total da guia
+function centavosPorMes(g) {
+  const c = v => Math.round((+v || 0) * 100);
+  const topo = mesDaApuracao(g.periodo_apuracao), m = new Map();
+  for (const p of (Array.isArray(g.partes) ? g.partes : []).filter(Boolean)) {
+    const mes = mesDaApuracao(p.periodo_apuracao) || topo;
+    if (!mes) continue;
+    const v = p.valor_total != null && p.valor_total !== '' ? c(p.valor_total) : c(p.principal) + c(p.multa) + c(p.juros);
+    m.set(mes, (m.get(mes) || 0) + v);
+  }
+  if (!m.size && topo) m.set(topo, 0);
+  if (m.size === 1) m.set([...m.keys()][0], c(g.valor_total));
+  return m;
+}
+/** Os meses que a guia do DAS pagou (os das partes; sem elas, o da guia), em ordem. A que não é o DAS de um mês: nenhum. */
+export const mesesDoDas = g => (ehDasDoMes(g) ? [...centavosPorMes(g).keys()].sort() : []);
+/** Quanto da guia do DAS é de um mês: o total dela, ou, na guia de vários meses, a soma das partes daquele mês. */
+export const valorNoMes = (g, mes) => (ehDasDoMes(g) ? (centavosPorMes(g).get(mes) || 0) / 100 : 0);
+/** As guias do DAS por mês pago: Map('AAAA-MM' → [guia]), a paga primeiro na frente. A guia de vários meses entra em cada um. */
 export function dasPorMes(guias) {
   const m = new Map();
   for (const g of guias || []) {
-    const c = ehDasDoMes(g) ? mesDaApuracao(g.periodo_apuracao) : null;
-    if (!c) continue;
-    if (!m.has(c)) m.set(c, []);
-    m.get(c).push(g);
+    for (const c of mesesDoDas(g)) {
+      if (!m.has(c)) m.set(c, []);
+      m.get(c).push(g);
+    }
   }
   for (const l of m.values()) l.sort((a, b) => String(a.arrecadado_em).localeCompare(String(b.arrecadado_em)));
   return m;
 }
-/** Os meses declarados em que a Receita mostra o DAS sem pagar e não há guia paga do DAS daquele mês. */
+/** Os meses declarados em que a Receita mostra o DAS sem pagar e não há guia paga do DAS daquele mês (a regra do aviso
+ *  "DAS sem pagar" do vigia, sem a parte do parcelamento, que o vigia tira pelo relatório de situação fiscal). */
 export function mesesSemPagamento(pgdas, guias) {
   const das = dasPorMes(guias);
   return (pgdas || []).filter(p => p && p.transmitida_em && p.das_pago === false && !das.has(p.competencia)).map(p => p.competencia).sort();
 }
+/** As empresas que a Receita mostra com algum DAS declarado e sem pagar: só delas a lista precisa das partes das guias. */
+export const comDasSemPagar = pgdas => [...new Set((pgdas || []).filter(p => p && p.cliente_id && p.transmitida_em && p.das_pago === false).map(p => p.cliente_id))];
 /** As mensagens não lidas dos últimos 90 dias (pela data em que a Receita mandou; sem ela, a da chegada). */
 export function naoLidasRecentes(mensagens, hoje) {
   const desde = somaDias(hoje, -DIAS_NAO_LIDAS);
@@ -495,7 +550,8 @@ export function resumoDasPartes(partes, max = 2) {
   return descs.slice(0, max).join(' · ') + (descs.length > max ? ' e mais ' + (descs.length - max) : '');
 }
 
-/** As guias pagas pro perfil, a mais recente primeiro, com o mês de apuração, o atraso e o que foi pago. */
+/** As guias pagas pro perfil, a mais recente primeiro, com o mês de apuração, o atraso e o que foi pago. das: o DAS de
+ *  um mês (meses: os que ela pagou — mais de um na guia de vários meses) · parcela: a de um parcelamento do Simples. */
 export function guiasDoPerfil(guias) {
   return (guias || []).filter(g => g && dia10(g.arrecadado_em)).map(g => {
     const pago = dia10(g.arrecadado_em), venc = dia10(g.vencimento);
@@ -504,7 +560,7 @@ export function guiasDoPerfil(guias) {
     return { numero: String(g.numero_documento || ''), tipo: String(g.tipo || '').trim() || 'Guia', tipoCodigo: g.tipo_codigo == null ? null : String(g.tipo_codigo),
       codigo: String(g.receita_codigo || '').trim(), receita: String(g.receita || '').trim(), mes: mesDaApuracao(g.periodo_apuracao), pagoEm: pago, vencimento: venc, atraso,
       total: num(g.valor_total) || 0, principal: num(g.valor_principal), multa: num(g.valor_multa) || 0, juros: num(g.valor_juros) || 0, saldo: num(g.saldo_total) || 0,
-      referencia: String(g.referencia || '').trim(), resumo: resumoDasPartes(partes), partes, das: ehDasDoMes(g) };
+      referencia: String(g.referencia || '').trim(), resumo: resumoDasPartes(partes), partes, das: ehDasDoMes(g), meses: mesesDoDas(g), parcela: ehParcelaDoSimples(g) };
   }).sort((a, b) => b.pagoEm.localeCompare(a.pagoEm) || b.numero.localeCompare(a.numero));
 }
 /** Os tipos das guias pra filtrar: DAS, DARF e "outras" (o resto junto). */
@@ -521,7 +577,9 @@ export const anosDasGuias = lista => [...new Set((lista || []).map(g => g.pagoEm
 
 /**
  * O PGDAS mês a mês pro perfil, o mais novo primeiro: do primeiro mês declarado ao último, com o buraco no meio marcado
- * (falta: a Receita não mostra declaração daquele mês) e as guias do DAS de cada mês.
+ * (falta: a Receita não mostra declaração daquele mês) e as guias do DAS de cada mês — o dia do pagamento e o valor
+ * daquele mês (meses: quantos a guia pagou; na de vários, o valor é só a parte do mês). A parcela de parcelamento não
+ * é o DAS do mês e não entra aqui.
  */
 export function pgdasDoPerfil(pgdas, guias) {
   const linhas = (pgdas || []).filter(p => p && RE_MES.test(String(p.competencia || '')));
@@ -530,7 +588,7 @@ export function pgdasDoPerfil(pgdas, guias) {
   const meses = [...por.keys()].sort();
   const out = [];
   for (let c = meses[0]; c <= meses[meses.length - 1]; c = somaMes(c, 1)) {
-    const p = por.get(c), gs = (das.get(c) || []).map(g => ({ pagoEm: dia10(g.arrecadado_em), total: num(g.valor_total) || 0, numero: String(g.numero_documento || '') }));
+    const p = por.get(c), gs = (das.get(c) || []).map(g => ({ pagoEm: dia10(g.arrecadado_em), total: valorNoMes(g, c), numero: String(g.numero_documento || ''), meses: mesesDoDas(g).length }));
     out.push(p ? { competencia: c, falta: false, transmitidaEm: p.transmitida_em ? diaEmBrasilia(p.transmitida_em) : null, dasPago: p.das_pago === true ? true : p.das_pago === false ? false : null,
       receitaMes: num(p.receita_mes), receita12: num(p.receita_12_meses), guias: gs }
       : { competencia: c, falta: true, transmitidaEm: null, dasPago: null, receitaMes: null, receita12: null, guias: gs });
@@ -621,12 +679,20 @@ export async function carregarListaDominio(supabase, ids) {
 /** O que a lista da Receita precisa das empresas (ids). */
 export async function carregarListaReceita(supabase, ids) {
   const [empresas, pgdas, mensagens, guias, achados] = await Promise.all([
-    lerPorClientes(supabase, 'receita_empresas', 'cliente_id, autorizacao, autorizacao_ate, pendencias, situacao_fiscal_em, pgdas_em, pagamentos_desde, pagamentos_ate', ids, ['cliente_id']),
+    lerPorClientes(supabase, 'receita_empresas', 'cliente_id, autorizacao, autorizacao_ate, autorizacao_via, pendencias, situacao_fiscal_em, pgdas_em, pagamentos_desde, pagamentos_ate', ids, ['cliente_id']),
     lerPorClientes(supabase, 'receita_pgdas', 'cliente_id, competencia, transmitida_em, das_pago', ids, ['cliente_id', 'competencia']),
     lerPorClientes(supabase, 'receita_mensagens', 'cliente_id, id_receita, lida, enviada_em, recebida_em', ids, ['cliente_id', 'id_receita']),
-    lerPorClientes(supabase, 'receita_pagamentos', 'cliente_id, numero_documento, tipo_codigo, periodo_apuracao, arrecadado_em, referencia', ids, ['cliente_id', 'numero_documento']),
+    lerPorClientes(supabase, 'receita_pagamentos', 'cliente_id, numero_documento, tipo_codigo, periodo_apuracao, arrecadado_em, vencimento, referencia', ids, ['cliente_id', 'numero_documento']),
     lerPorClientes(supabase, 'vigia_achados', COLS_AVISO, ids, ['id'], q => q.eq('situacao', 'aberto'))
   ]);
+  // a guia do DAS de vários meses diz o mês de cada parte: as partes são pesadas (3 MB com todas as guias), e só fazem
+  // diferença pra quem a Receita mostra com DAS sem pagar — só delas a lista lê as partes, e só das guias do DAS
+  const devem = comDasSemPagar(pgdas);
+  if (devem.length) {
+    const partes = await lerPorClientes(supabase, 'receita_pagamentos', 'cliente_id, numero_documento, partes', devem, ['cliente_id', 'numero_documento'], q => q.eq('tipo_codigo', '9'));
+    const por = new Map(partes.map(p => [p.cliente_id + '|' + p.numero_documento, p.partes]));
+    for (const g of guias) { const p = por.get(g.cliente_id + '|' + g.numero_documento); if (p) g.partes = p; }
+  }
   return { empresas, pgdas, mensagens, guias, achados };
 }
 
@@ -662,7 +728,7 @@ export async function carregarPerfilDominio(supabase, clienteId, hoje) {
 /** Tudo o que o perfil da Receita mostra de uma empresa. */
 export async function carregarPerfilReceita(supabase, clienteId) {
   const [emp, pg, ms, gs, ach] = await Promise.all([
-    supabase.from('receita_empresas').select('cliente_id, autorizacao, autorizacao_ate, autorizacao_em, pgdas_em, pendencias, situacao_fiscal_em, situacao_fiscal_pdf_em, situacao_fiscal_pdf_url, pagamentos_desde, pagamentos_ate, pagamentos_em')
+    supabase.from('receita_empresas').select('cliente_id, autorizacao, autorizacao_ate, autorizacao_via, autorizacao_em, pgdas_em, pendencias, situacao_fiscal_em, situacao_fiscal_pdf_em, situacao_fiscal_pdf_url, pagamentos_desde, pagamentos_ate, pagamentos_em')
       .eq('cliente_id', clienteId).limit(1),
     supabase.from('receita_pgdas').select('competencia, transmitida_em, das_pago, receita_mes, receita_12_meses').eq('cliente_id', clienteId).order('competencia', { ascending: false }).limit(36),
     supabase.from('receita_mensagens').select('assunto, enviada_em, origem, lida, recebida_em').eq('cliente_id', clienteId)

@@ -21,7 +21,7 @@ import {
   lerSaude, TETO_MES, CONSULTAS, proximasConsultas, BLOCOS_DO_DOMINIO,
   carregarCarteira, carregarListaDominio, carregarListaReceita, carregarPerfilDominio, carregarPerfilReceita,
   linhasDoDominio, mesesDoDominio, FOCOS_DOMINIO, focosDominio, linhasDaReceita, FOCOS_RECEITA, focosReceita,
-  contarFocos, filtrar, ordenar, proximaOrdem, procuracaoDe, foraDaConsulta, tipoDoFiltro, totaisDasGuias, anosDasGuias, MESES_NO_PERFIL
+  contarFocos, filtrar, ordenar, proximaOrdem, procuracaoDe, procuracoesPorVia, DE_QUEM, foraDaConsulta, tipoDoFiltro, totaisDasGuias, anosDasGuias, MESES_NO_PERFIL
 } from './integracoes.js';
 
 const ESTILO = `
@@ -97,6 +97,7 @@ const ESTILO = `
   .ig-apagado { color:var(--text-dim); }
   .ig-vigia { display:inline-flex; align-items:center; gap:5px; margin-left:8px; padding:1px 9px; border-radius:999px; font-size:11.5px; font-weight:600; color:var(--warn); border:1px solid color-mix(in srgb, var(--warn) 45%, transparent); white-space:nowrap; }
   .ig-vigia[data-alta] { color:var(--err); border-color:color-mix(in srgb, var(--err) 50%, transparent); }
+  .ig-etiqueta { display:inline-flex; align-items:center; margin-left:6px; padding:1px 8px; border-radius:999px; font-size:11.5px; color:var(--text-muted); border:1px solid var(--line-strong); white-space:nowrap; }
   .ig-vazio { text-align:center; padding:56px 20px; color:var(--text-muted); }
   .ig-erro-geral { color:var(--err); padding:24px 0; }
 
@@ -320,8 +321,11 @@ export async function initIntegracao(cfg) {
         + '<small>' + (pct >= 90 ? 'Perto do teto: a ponte para ao chegar nele.' : 'O Integra cobra por consulta: a ponte para no teto.') + '</small></div>');
       const cons = st.linhas.filter(l => l.procuracao.estado !== 'fora'), com = cons.filter(l => ['ativa', 'vencendo'].includes(l.procuracao.estado)).length;
       const sem = cons.filter(l => ['sem', 'vencida'].includes(l.procuracao.estado)).length, fora = nLinhas - cons.length;
+      // de quem é a procuração: só quando a ponte já disse de alguma (até a 0.4.4 rodar, a linha não aparece)
+      const via = procuracoesPorVia(st.linhas), deQuem = via.escritorio + via.procurador
+        ? esc(inteiro(via.escritorio)) + ' pro CNPJ do escritório e ' + esc(inteiro(via.procurador)) + ' pro CPF do Diego' + (via.semDizer ? ' (' + esc(inteiro(via.semDizer)) + ' a ponte ainda não disse)' : '') : '';
       tiles.push('<div class="ig-tile"><b>' + (st.base ? esc(inteiro(com)) + ' de ' + esc(inteiro(cons.length)) + ' com procuração' : '—') + '</b><small>'
-        + (st.base ? [sem ? esc(inteiro(sem)) + ' sem procuração ou com ela vencida' : '', fora ? esc(inteiro(fora)) + ' fora da consulta' : ''].filter(Boolean).join(' · ') || 'Todas com procuração.' : '&nbsp;') + '</small></div>');
+        + (st.base ? [deQuem, sem ? esc(inteiro(sem)) + ' sem procuração ou com ela vencida' : '', fora ? esc(inteiro(fora)) + ' fora da consulta' : ''].filter(Boolean).join(' · ') || 'Todas com procuração.' : '&nbsp;') + '</small></div>');
     }
     $('igHoje').innerHTML = tiles.join('');
   }
@@ -371,7 +375,8 @@ export async function initIntegracao(cfg) {
       : '<div>' + esc(inteiro(l.guias12)) + (l.ultimaGuia ? '<small>última em ' + esc(diaMes(l.ultimaGuia)) + (l.ultimaGuia.slice(0, 4) !== HOJE.slice(0, 4) ? '/' + esc(l.ultimaGuia.slice(0, 4)) : '') + '</small>' : '') + '</div>';
     return '<tr class="is-clickable" data-id="' + esc(l.id) + '">'
       + '<td class="ig-c-nome"><a class="ig-nome" href="?empresa=' + encodeURIComponent(l.id) + '">' + esc(l.nome) + '</a><div class="table-sub">' + esc(l.regime || 'Sem regime') + avisosHtml(l.avisos) + '</div></td>'
-      + '<td class="ig-junto" data-label="Procuração"><span class="' + COR_DA_PROCURACAO[p.estado] + '"' + (p.porque ? ' title="' + esc(p.porque) + '"' : '') + '>' + esc(p.texto) + '</span></td>'
+      + '<td class="ig-junto" data-label="Procuração"><span class="' + COR_DA_PROCURACAO[p.estado] + '"' + (p.porque ? ' title="' + esc(p.porque) + '"' : '') + '>' + esc(p.texto) + '</span>'
+      + (p.via ? '<small>' + esc(DE_QUEM[p.via]) + '</small>' : '') + '</td>'
       + '<td data-label="Situação fiscal">' + pend + '</td>'
       + '<td data-label="PGDAS e DAS">' + pg + '</td>'
       + '<td data-label="Caixa Postal">' + cx + '</td>'
@@ -552,9 +557,16 @@ export async function initIntegracao(cfg) {
       vencida: 'Venceu' + (pr.ate ? ' em ' + dataBR(pr.ate) : '') + '.', sem: 'Sem procuração: a Receita recusou a consulta.', nao_consultada: 'Ainda não consultada.' }[pr.estado];
     const cor = { vencendo: 'ig-alerta', vencida: 'ig-erro', sem: 'ig-alerta' }[pr.estado] || '';
     const quando = diaEmBrasilia(r.autorizacao_em);
+    // de quem é: a do CNPJ do escritório ou a do CPF do Diego (a coluna autorizacao_via, que a ponte 0.4.4 manda a cada rodada)
+    const temProcuracao = ['ativa', 'vencendo', 'vencida'].includes(pr.estado);
+    const vencida = pr.estado === 'vencida';
+    const deQuem = !temProcuracao ? '' : pr.via === 'procurador' ? (vencida ? 'Era a procuração pro CPF do Diego.' : 'É a procuração pro CPF do Diego: a ponte consulta esta empresa em nome dele.')
+      : pr.via === 'escritorio' ? (vencida ? 'Era' : 'É') + ' a procuração pro CNPJ do escritório.'
+      : 'A ponte ainda não disse se ela é a do CNPJ do escritório ou a do CPF do Diego: vem na próxima rodada.';
     return sec('Procuração', '<p class="ig-forte ' + cor + '">' + esc(frase) + '</p>'
+      + (deQuem ? '<p' + (pr.via ? '' : ' class="ig-apagado"') + '>' + esc(deQuem) + '</p>' : '')
       + (['vencida', 'sem', 'vencendo'].includes(pr.estado) ? '<p>' + esc(O_QUE_PEDIR) + '</p>' : '')
-      + '<div class="field-help">' + (quando ? 'Conferida em ' + esc(dataBR(quando)) + '. ' : '') + 'Vale a procuração pro CNPJ do escritório ou pro CPF do Diego: o sistema ainda não guarda qual das duas.</div>');
+      + (quando ? '<div class="field-help">Conferida em ' + esc(dataBR(quando)) + '.</div>' : ''));
   }
   function situacaoHtml(r) {
     const rel = oRelatorio(r);   // o link do PDF no Drive (HTML já escapado)
@@ -572,7 +584,8 @@ export async function initIntegracao(cfg) {
     const consulta = diaEmBrasilia(r.pgdas_em);
     if (!p.pgdas.length) return sec('PGDAS e DAS', '<p>' + (consulta ? 'Na consulta de ' + esc(dataBR(consulta)) + ', a Receita não mostrou declaração do PGDAS desta empresa neste ano.' : 'O PGDAS desta empresa ainda não foi consultado.') + '</p>');
     const das = m => {
-      const guias = m.guias.length ? '<small>' + m.guias.map(g => 'pago em ' + esc(dataBR(g.pagoEm)) + ': ' + esc(dinheiro(g.total))).join('<br>') + '</small>' : '';
+      const guias = m.guias.length ? '<small>' + m.guias.map(g => 'pago em ' + esc(dataBR(g.pagoEm)) + ': ' + esc(dinheiro(g.total))
+        + (g.meses > 1 ? ' (numa guia de ' + esc(inteiro(g.meses)) + ' meses)' : '')).join('<br>') + '</small>' : '';
       if (m.falta) return guias || nd();
       if (m.dasPago === true) return '<span class="ig-ok">pago</span>' + guias;
       if (m.dasPago === false) return m.guias.length ? '<span>sem pagar na consulta</span>' + guias : '<span class="ig-alerta">sem pagamento</span>';
@@ -583,7 +596,8 @@ export async function initIntegracao(cfg) {
       + p.pgdas.map(m => '<tr><td>' + esc(mesBR(m.competencia)) + '</td><td>' + (m.falta ? '<span class="ig-erro">sem declaração na Receita</span>' : m.transmitidaEm ? 'transmitida em ' + esc(dataBR(m.transmitidaEm)) : '<span class="ig-erro">sem transmissão</span>')
         + '</td><td>' + das(m) + '</td><td class="ig-num">' + (m.receitaMes == null ? nd() : esc(dinheiro(m.receitaMes))) + '</td><td class="ig-num">' + (m.receita12 == null ? nd() : esc(dinheiro(m.receita12))) + '</td></tr>').join('')
       + '</tbody></table></div><div class="field-help" style="margin-top:10px;">O "pago" é o que o PGDAS mostrava no dia da consulta. O dia e o valor vêm das guias pagas, que são lidas à parte (no dia 25): '
-      + 'por isso um mês pode aparecer sem pagar na consulta e já ter a guia paga. O DAS que entrou em parcelamento também aparece sem pagamento. A receita é a da declaração que a ponte leu.</div>');
+      + 'por isso um mês pode aparecer sem pagar na consulta e já ter a guia paga. O DAS que entrou em parcelamento também aparece sem pagamento: '
+      + 'a parcela paga não é o DAS do mês, e fica só nas guias pagas, embaixo. A receita é a da declaração que a ponte leu.</div>');
   }
   function caixaHtml(p) {
     if (!p.mensagens.length) return sec('Caixa Postal do e-CAC', '<p>Nenhuma mensagem lida pela ponte.</p>');
@@ -613,8 +627,10 @@ export async function initIntegracao(cfg) {
       const aberta = st.abertas.has(g.numero);
       const mj = Math.round((g.multa + g.juros) * 100) / 100;
       return '<tr class="ig-guia" data-guia="' + esc(g.numero) + '"><td><button type="button" class="ig-abre" aria-expanded="' + aberta + '" aria-label="Ver os tributos da guia paga em ' + esc(dataBR(g.pagoEm)) + '">' + esc(dataBR(g.pagoEm)) + '</button></td>'
-        + '<td>' + esc(g.tipo) + (g.codigo ? ' <span class="ig-apagado">' + esc(g.codigo) + '</span>' : '') + (g.resumo ? '<small class="ig-resumo" title="' + esc(g.resumo) + '">' + esc(g.resumo) + '</small>' : '') + '</td>'
-        + '<td>' + (g.mes ? esc(mesBR(g.mes)) : nd()) + '</td>'
+        + '<td>' + esc(g.tipo) + (g.codigo ? ' <span class="ig-apagado">' + esc(g.codigo) + '</span>' : '')
+        + (g.parcela ? ' <span class="ig-etiqueta" title="Vence dentro do próprio mês: é a parcela de um parcelamento do Simples, não o DAS daquele mês. Os meses que ela amortiza estão nos tributos da guia.">parcela de parcelamento</span>' : '')
+        + (g.resumo ? '<small class="ig-resumo" title="' + esc(g.resumo) + '">' + esc(g.resumo) + '</small>' : '') + '</td>'
+        + '<td>' + (g.mes ? esc(mesBR(g.mes)) : nd()) + (g.meses.length > 1 ? '<small title="A mesma guia pagou ' + esc(g.meses.map(mesBR).join(', ')) + '">e mais ' + esc(plural(g.meses.length - 1, 'mês', 'meses')) + '</small>' : '') + '</td>'
         + '<td>' + (g.vencimento ? esc(dataBR(g.vencimento)) : nd()) + (g.atraso > 0 ? '<small class="ig-alerta">paga ' + esc(plural(g.atraso, 'dia', 'dias')) + ' depois</small>' : '') + '</td>'
         + '<td class="ig-num">' + (g.principal == null ? nd() : esc(dinheiro(g.principal))) + '</td>'
         + '<td class="ig-num">' + (mj > 0 ? '<span class="ig-alerta">' + esc(dinheiro(mj)) + '</span>' : '<span class="ig-apagado">' + esc(dinheiro(0)) + '</span>') + '</td>'

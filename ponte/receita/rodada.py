@@ -29,6 +29,10 @@ também a procuração pro CPF dele; a empresa ativa por ela é consultada em no
 de eventos da Caixa Postal sai um por autor. Sem o token dele nesta rodada, essas consultas vão pro `faltou` como erro
 (o log diz uma vez) e voltam na próxima. A empresa que estava sem a procuração e passou a ter não espera o próximo dia
 marcado: as consultas que ficaram de fora por isso entram na mesma rodada (no calendário; com o --so, vale o --so).
+
+De quem é a procuração (19/11/2026, a 0.4.4): todo pacote leva a lista `vias` — de cada empresa da lista que o estado
+conhece com procuração, se ela é a do CNPJ do escritório ou a do CPF do procurador. Sai do estado.json, sem chamada ao
+Serpro; com nada mais a mandar, a lista espera a rodada seguinte.
 """
 import datetime
 import json
@@ -442,7 +446,10 @@ def rodar(demonstracao=False, falso=False, sem_enviar=False, saida=None, so=None
         if srv_falso:
             srv_falso.fechar()
 
-    pac = pacote.montar(dados, faltou, inicio, agora(), ambiente, cont.total())
+    # de quem é a procuração de cada empresa da lista (a do escritório ou a do procurador), pelo que o estado lembra: vai
+    # em todo pacote, sem consulta nenhuma (19/11/2026, a 0.4.4)
+    pac = pacote.montar(dados, faltou, inicio, agora(), ambiente, cont.total(),
+                        vias=est.vias([e['documento'] for e in empresas]))
     reg('receita: ' + pacote.resumo(pac))
     if saida:
         destino = pathlib.Path(saida)

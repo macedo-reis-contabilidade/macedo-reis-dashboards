@@ -3,7 +3,8 @@
     { "versao": 1, "tipo": "receita",
       "rodada": { id, inicio, fim, maquina, ponte, ambiente, chamadas_mes },
       "empresas": [ { documento, autorizacao?, pgdas?, faturamento?, caixa_postal?, situacao_fiscal?, pagamentos? } ],
-      "faltou": [ { documento, servico, motivo } ] }
+      "faltou": [ { documento, servico, motivo } ],
+      "vias": [ { documento, via } ] }
 
 Bloco que não está na empresa = não consultado nesta rodada (nunca um "vazio" inventado). O que a ponte não conseguiu
 ler do PDF não vai (24/10/2026): o faturamento sem os dois valores e a situação fiscal sem a lista de pendências ficam
@@ -17,6 +18,12 @@ vencimento, receita_codigo, receita, referencia, valor_total, principal, multa, 
 receita, periodo_apuracao, vencimento, valor_total, principal, multa, juros } ] } ] } — a janela consultada e as guias
 pagas nela (a lista vazia = nada pago na janela). A conferência do sistema: BLOCOS.pagamentos em
 supabase/functions/ponte/receita.js.
+
+De quem é a procuração (19/11/2026, a 0.4.4): `vias` é a lista do que o estado.json lembra de cada empresa da rodada
+que tem procuração — "escritorio" (a do CNPJ do escritório) ou "procurador" (a do CPF do procurador, em nome de quem a
+ponte consulta a empresa). Vai em toda rodada que manda pacote, sem consulta nenhuma ao Serpro: sai do que a última
+consulta da autorização de cada empresa já disse. O sistema grava só isso (a coluna autorizacao_via) e só de quem ele
+tem com a procuração; a empresa sem procuração não entra na lista, e sem nenhuma a lista não vai.
 """
 import socket
 import uuid
@@ -25,6 +32,7 @@ from . import VERSAO, SERVICOS
 
 MOTIVOS = ('sem_autorizacao', 'teto', 'erro', 'a_conferir')
 SITUACOES = ('ativa', 'vencida', 'sem')
+VIAS = ('escritorio', 'procurador')
 ORIGENS = ('Receita', 'Estado', 'Município')
 ORGAOS = ('Receita', 'PGFN')
 CAMPOS_GUIA = ('numero', 'tipo_codigo', 'tipo', 'periodo_apuracao', 'arrecadado_em', 'vencimento', 'receita_codigo',
@@ -97,8 +105,9 @@ def limpar_bloco(servico, b):
     return None
 
 
-def montar(empresas, faltou, inicio, fim, ambiente, chamadas_mes):
-    """empresas: {documento: {servico: bloco}}; faltou: [{documento, servico, motivo}]."""
+def montar(empresas, faltou, inicio, fim, ambiente, chamadas_mes, vias=None):
+    """empresas: {documento: {servico: bloco}}; faltou: [{documento, servico, motivo}]; vias: {documento: 'escritorio' |
+    'procurador'} (de quem é a procuração de cada empresa, pelo estado)."""
     lista = []
     for doc in sorted(empresas):
         e = {'documento': str(doc)}
@@ -109,7 +118,7 @@ def montar(empresas, faltou, inicio, fim, ambiente, chamadas_mes):
                     e[servico] = limpo
         if len(e) > 1:
             lista.append(e)
-    return {
+    pac = {
         'versao': 1,
         'tipo': 'receita',
         'rodada': {'id': str(uuid.uuid4()), 'inicio': inicio, 'fim': fim, 'maquina': socket.gethostname(),
@@ -118,6 +127,10 @@ def montar(empresas, faltou, inicio, fim, ambiente, chamadas_mes):
         'faltou': [{'documento': str(f['documento']), 'servico': f['servico'], 'motivo': f['motivo']}
                    for f in faltou if f.get('motivo') in MOTIVOS and f.get('servico') in SERVICOS],
     }
+    de_quem = [{'documento': str(doc), 'via': via} for doc, via in sorted((vias or {}).items()) if via in VIAS]
+    if de_quem:
+        pac['vias'] = de_quem
+    return pac
 
 
 def resumo(pac):
@@ -135,4 +148,9 @@ def resumo(pac):
         for f in pac['faltou']:
             por[f['motivo']] = por.get(f['motivo'], 0) + 1
         texto += '; faltou: ' + ', '.join(f'{m} {n}' for m, n in sorted(por.items()))
+    vias = pac.get('vias') or []
+    if vias:
+        do_procurador = sum(1 for v in vias if v['via'] == 'procurador')
+        texto += (f'; a procuração de {len(vias)} empresa(s): {len(vias) - do_procurador} pro CNPJ do escritório e '
+                  f'{do_procurador} pro CPF do procurador')
     return texto

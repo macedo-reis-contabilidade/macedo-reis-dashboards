@@ -19,6 +19,16 @@ const d = {
 };
 const h = htmlDaReceita(d), t = texto(h);
 chk('a autorização com a data', t.includes('O escritório tem a autorização de acesso até 31/03/2027.'));
+chk('sem a ponte dizer de quem é a procuração, a linha fica como era', !/procuração pro C/.test(t));
+{
+  const com = (via, extra = {}) => texto(htmlDaReceita({ ...d, empresa: { ...d.empresa, autorizacao_via: via, ...extra } }));
+  chk('de quem é a procuração: a do CPF do Diego (a ponte consulta em nome dele) ou a do CNPJ do escritório',
+    com('procurador').includes('até 31/03/2027. É a procuração pro CPF do Diego: a ponte consulta em nome dele.')
+    && com('escritorio').includes('até 31/03/2027. É a procuração pro CNPJ do escritório.') && !/procuração pro C/.test(com('outra')), com('procurador'));
+  chk('a vencida diz de quem era, e a sem procuração não diz nada', com('procurador', { autorizacao: 'vencida' }).includes('A autorização de acesso do escritório venceu. Era a procuração pro CPF do Diego. Peça ao cliente')
+    && com('escritorio', { autorizacao: 'vencida' }).includes('venceu. Era a procuração pro CNPJ do escritório. Peça ao cliente')
+    && !/procuração pro C/.test(com('procurador', { autorizacao: 'sem' })), com('procurador', { autorizacao: 'vencida' }));
+}
 chk('sem pendência, com o dia do relatório', t.includes('Sem pendência na Receita e na PGFN (relatório de 05/10/2026).'));
 chk('o PGDAS do mais recente pro mais antigo; sem transmissão em destaque', t.indexOf('09/2026: sem transmissão') < t.indexOf('08/2026: transmitido em 15/09/2026 · DAS pago'), t);
 chk('o faturamento com centavos, em reais', t.includes('Receita bruta de 09/2026: R$ 1.000,50 · nos 12 meses anteriores: R$ 120.000,00'));

@@ -9,7 +9,10 @@
 //   { versao: 1, tipo: 'receita', rodada, empresas, faltou } → o pacote da Receita, gravado pelo banco (receita_gravar);
 //                                                              do ambiente de demonstração, nada é gravado; o bloco de
 //                                                              uma empresa fora do contrato fica de fora sozinho e volta
-//                                                              em `recusadas` (a rodada não trava por causa dele)
+//                                                              em `recusadas` (a rodada não trava por causa dele); com a
+//                                                              lista `vias` (19/11/2026, a ponte 0.4.4), de quem é a
+//                                                              procuração de cada empresa: a do CNPJ do escritório ou a
+//                                                              do CPF do procurador
 //   { versao: 1, tipo: 'receita', relatorio: 'situacao_fiscal', documento, emitido_em, ambiente, pdf }
 //                                                            → o PDF do relatório de situação fiscal de uma empresa, na
 //                                                              pasta dela no Drive (FISCAL › SITUAÇÃO FISCAL), e o link

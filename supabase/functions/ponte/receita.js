@@ -6,6 +6,11 @@
 // cortado, número e data têm de ser de verdade. Quem grava é o banco (receita_gravar), com o pacote que sai daqui.
 // O bloco de uma empresa fora do contrato fica de fora sozinho (vai pro faltou com 'erro'); só o que é da rodada recusa
 // o pacote inteiro.
+// De quem é a procuração (19/11/2026, a ponte 0.4.4, com o "pode fazer" do Samuel): a lista `vias` do pacote, [{ documento,
+// via }], com o que o PC sabe de cada empresa que tem procuração — 'escritorio' (a do CNPJ do escritório) ou 'procurador'
+// (a do CPF do procurador, em nome de quem a ponte consulta). Vem em toda rodada, sai do que a ponte já lembra (nenhuma
+// consulta a mais) e o banco grava só a coluna autorizacao_via, de quem tem a procuração. O pacote sem a lista (a ponte
+// de antes) passa igual.
 // E a lista de empresas que a ponte consulta: os clientes de hoje da carteira, CNPJ, com o regime.
 // Sem import: testes no node em tests/ponte-funcao.test.mjs.
 // ============================================================
@@ -16,6 +21,8 @@
 export const LIMITES = { empresas: 3000, meses: 36, mensagens: 300, pendencias: 100, pagamentos: 1000, partes: 60, faltou: 6000, corpo: 16 * 1024 * 1024 };
 export const SERVICOS = ['autorizacao', 'pgdas', 'faturamento', 'caixa_postal', 'situacao_fiscal', 'pagamentos'];
 export const MOTIVOS = ['sem_autorizacao', 'teto', 'erro', 'a_conferir'];
+// de quem é a procuração de uma empresa (19/11/2026): a do CNPJ do escritório ou a do CPF do procurador
+export const VIAS = ['escritorio', 'procurador'];
 export const REGIME = { 'Simples Nacional': 'simples', MEI: 'mei', 'Lucro Presumido': 'presumido', 'Lucro Real': 'real' };
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -198,7 +205,8 @@ function empresa(e, i, recusadas, faltou) {
  *  Recusa o pacote inteiro só o que é da rodada (versão, tipo, a rodada, as listas grandes demais). Dentro de uma empresa,
  *  o bloco fora do contrato fica de fora sozinho — uma data esquisita numa empresa não trava a rodada inteira todo dia
  *  (a ponte não repete o que voltou 4xx) —, vai pro `faltou` da rodada com o motivo 'erro' e volta na lista `recusadas`
- *  ({ documento, campo, erro }), pra ponte anotar no log; o item do `faltou` fora do contrato também. */
+ *  ({ documento, campo, erro }), pra ponte anotar no log; o item do `faltou` fora do contrato também, e o da lista `vias`
+ *  (de quem é a procuração de cada empresa; sem nenhum item bom, o pacote sai sem ela). */
 export function validarPacote(p) {
   try {
     objeto(p, 'pacote');
@@ -224,7 +232,19 @@ export function validarPacote(p) {
     });
     // a empresa que ficou sem bloco nenhum pra gravar não vai (só criaria a linha vazia dela no banco)
     const empresas = brutasEmpresas.map((e, i) => empresa(e, i, recusadas, faltou)).filter(e => e && Object.keys(e).length > 1);
-    return { ok: true, pacote: { versao: 1, tipo: 'receita', rodada, empresas, faltou }, recusadas };
+    // de quem é a procuração: o item fora do contrato fica de fora sozinho; o documento repetido fica com o primeiro
+    const vias = [], comVia = new Set();
+    lista(p.vias, LIMITES.empresas, 'vias').forEach((x, i) => {
+      const onde = 'vias[' + i + ']';
+      if (x == null || typeof x !== 'object' || Array.isArray(x)) { recusadas.push({ documento: null, campo: onde, erro: 'tem que ser um objeto' }); return; }
+      const doc = documento(x.documento);
+      if (!doc) { recusadas.push({ documento: null, campo: onde + '.documento', erro: 'CNPJ ou CPF inválido' }); return; }
+      if (!VIAS.includes(x.via)) { recusadas.push({ documento: doc, campo: onde + '.via', erro: 'tem que ser escritorio ou procurador' }); return; }
+      if (comVia.has(doc)) return;
+      comVia.add(doc);
+      vias.push({ documento: doc, via: x.via });
+    });
+    return { ok: true, pacote: { versao: 1, tipo: 'receita', rodada, empresas, faltou, ...(vias.length ? { vias } : {}) }, recusadas };
   } catch (e) {
     if (e instanceof Recusa) return { ok: false, campo: e.campo, erro: e.message };
     throw e;

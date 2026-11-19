@@ -7,7 +7,7 @@ import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { posix } from 'node:path';
 import { createHash } from 'node:crypto';
-import { validarPacote, empresasDaCarteira, documento, hojeEmBrasilia, sha256Hex, iguais, LIMITES } from '../supabase/functions/ponte/receita.js';
+import { validarPacote, empresasDaCarteira, documento, hojeEmBrasilia, sha256Hex, iguais, LIMITES, VIAS } from '../supabase/functions/ponte/receita.js';
 import { criarServidor } from '../supabase/functions/ponte/servidor.js';
 import { validarPacoteDominio, LIMITES_DOMINIO, BLOCOS_DA_VERSAO, BLOCOS_DOMINIO, BLOCOS_DA_5 } from '../supabase/functions/ponte/dominio.js';
 import { validarPacoteNotas, empresasAutorizadas, destinosDaConfig, dvDaChave, pareceCpf, semCpf, LIMITES_NOTAS, SEM_DESTINO, SEM_AUTORIZACAO, DESTINO_FORA } from '../supabase/functions/ponte/notas.js';
@@ -160,6 +160,24 @@ console.log('Os pagamentos (PAGTOWEB, 19/11/2026):');
     !!foraPag(b => { b.documentos[0].juros = -1; }, 'empresas[0].pagamentos.documentos[0].juros')
     && !!foraPag(b => { b.documentos[0].partes[0].vencimento = '2025-02-30'; }, 'empresas[0].pagamentos.documentos[0].partes[0].vencimento')
     && !!foraPag(b => { b.documentos = Array.from({ length: LIMITES.pagamentos + 1 }, (_, i) => ({ numero: 'N' + i, arrecadado_em: '2026-01-01', valor_total: 1 })); }, 'empresas[0].pagamentos.documentos'));
+}
+
+console.log('De quem é a procuração (a lista vias):');
+{
+  const COM = extra => ({ ...BOM(), ...extra });
+  let r = validarPacote(COM({ vias: [{ documento: '11.222.333/0001-00', via: 'procurador', nome: 'x' }, { documento: '22333444000100', via: 'escritorio' }] }));
+  chk('a lista do contrato passa, só com o documento e a via', r.ok && JSON.stringify(r.pacote.vias) === JSON.stringify([{ documento: '11222333000100', via: 'procurador' }, { documento: '22333444000100', via: 'escritorio' }])
+    && r.recusadas.length === 0, r);
+  chk('o pacote sem a lista (a ponte de antes) passa, e sai sem ela', v.ok && !('vias' in v.pacote) && validarPacote(COM({ vias: null })).ok && !('vias' in validarPacote(COM({ vias: [] })).pacote));
+  r = validarPacote(COM({ vias: [{ documento: '123', via: 'procurador' }, { documento: DOC, via: 'diego' }, 'texto', null, { documento: DOC, via: 'escritorio' }, { documento: DOC, via: 'procurador' }] }));
+  chk('o item fora do contrato fica de fora sozinho (o resto do pacote segue), e o documento repetido fica com o primeiro',
+    r.ok && JSON.stringify(r.pacote.vias) === JSON.stringify([{ documento: DOC, via: 'escritorio' }]) && r.pacote.empresas.length === 1
+    && JSON.stringify(r.recusadas.map(x => x.campo)) === JSON.stringify(['vias[0].documento', 'vias[1].via', 'vias[2]', 'vias[3]']), r);
+  r = validarPacote(COM({ vias: [{ documento: '123', via: 'procurador' }] }));
+  chk('sem nenhum item bom, o pacote sai sem a lista', r.ok && !('vias' in r.pacote) && r.recusadas.length === 1);
+  chk('a lista que não é lista, ou longa demais, recusa o pacote', !!recusa(p => { p.vias = 'todas'; }, 'vias')
+    && !!recusa(p => { p.vias = Array.from({ length: LIMITES.empresas + 1 }, () => ({ documento: DOC, via: 'escritorio' })); }, 'vias'));
+  chk('só as duas vias do contrato', JSON.stringify(VIAS) === JSON.stringify(['escritorio', 'procurador']));
 }
 
 console.log('A lista de empresas pra ponte:');
@@ -652,6 +670,12 @@ let db = fakeDb();
 r = await pedir(db, BOM());
 chk('o pacote da Receita vai pro banco já conferido (sem o que sobra)', r.status === 200 && r.corpo.gravado === true && db.chamadas.length === 1
   && db.chamadas[0].nome === 'receita_gravar' && !('nome' in db.chamadas[0].args.p.empresas[0]) && db.chamadas[0].args.p.empresas[0].documento === '11222333000100', r);
+chk('sem a lista de quem é a procuração (a ponte de antes), o banco recebe o pacote sem ela', !('vias' in db.chamadas[0].args.p));
+db = fakeDb();
+r = await pedir(db, { ...BOM(), vias: [{ documento: '11.222.333/0001-00', via: 'procurador' }, { documento: '22333444000100', via: 'outra' }] });
+chk('de quem é a procuração vai pro banco conferida, e o item fora do contrato volta nas recusadas', r.status === 200 && r.corpo.gravado === true
+  && JSON.stringify(db.chamadas[0].args.p.vias) === JSON.stringify([{ documento: '11222333000100', via: 'procurador' }])
+  && r.corpo.recusadas.length === 1 && r.corpo.recusadas[0].campo === 'vias[1].via', r);
 db = fakeDb();
 r = await pedir(db, { ...BOM(), rodada: { ...BOM().rodada, ambiente: 'demonstracao' } });
 chk('do ambiente de demonstração: 200 e nada gravado', r.status === 200 && r.corpo.gravado === false && db.chamadas.length === 0 && Array.isArray(r.corpo.recusadas), r);
