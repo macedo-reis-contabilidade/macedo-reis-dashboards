@@ -1,0 +1,10 @@
+{
+ "status": 200,
+ "mensagens": [
+  {
+   "codigo": "Sucesso-PAGTOWEB-00000",
+   "texto": "Requisição efetuada com sucesso. (O exemplo da documentação, 19/11/2026)"
+  }
+ ],
+ "dados": "2"
+}

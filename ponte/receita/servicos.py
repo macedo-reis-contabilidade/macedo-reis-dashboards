@@ -9,7 +9,8 @@
                      de até 1.000 CNPJs) e, só de quem teve novidade, CAIXAPOSTAL · MSGCONTRIBUINTE61
     situacao_fiscal  SITFIS · SOLICITARPROTOCOLO91 (Apoiar) + RELATORIOSITFIS92 (Emitir) — do PDF, as pendências
     pagamentos       PAGTOWEB · PAGAMENTOS71 (19/11/2026) — as guias pagas numa janela de datas de pagamento (o DAS, o
-                     DARF), com o dia, os valores e a parte de cada tributo; em páginas de 100, cada uma uma chamada
+                     DARF), com o dia, os valores e a parte de cada tributo; em páginas de 100, cada uma uma chamada;
+                     a resposta que veio em mais de uma página é conferida pela contagem, CONTACONSDOCARRPG73
 
 Toda consulta passa por consultar(): o teto do mês, o Serpro fora do ar, o acesso negado (= o cliente não autorizou)
 e a recusa viram Falta, que a rodada põe no `faltou` com o motivo (sem_autorizacao, teto, erro, a_conferir). A Falta
@@ -444,9 +445,13 @@ def situacao_fiscal(cli, empresa, hoje, pasta, tentativas=6, autor=None):
 # ---------------------------------------------------------------- pagamentos (19/11/2026)
 # O "pode ligar" do Samuel de 18/11/2026: a consulta de pagamentos do Integra, uma vez por mês por empresa, pra a
 # importação da contabilidade (o pagamento no dia e no valor de verdade) e a conferência do que foi pago. O formato da
-# resposta é o da documentação do Serpro (a lista dos documentos de arrecadação no `dados`); as datas e os valores são
-# lidos em mais de um formato, e a guia sem o número, o dia do pagamento ou o valor faz o bloco não ir (a_conferir) —
-# o sistema recusaria o bloco inteiro.
+# resposta é o da documentação do Serpro (a lista dos documentos de arrecadação no `dados`, em texto: as datas como
+# "2019-09-30T00:00:00-03:00", os valores como número, o tipo como {"codigo": "4", "descricao": "DOCUMENTO DE
+# ARRECADAÇÃO DE RECEITAS FEDERAIS", "descricaoAbreviada": "DARF"}; os tipos da documentação: 4 DARF, 7 DJE, 8 DARF
+# SIMPLES, 9 DAS, 10 DAE); as datas e os valores são lidos em mais de um formato, e a guia sem o número, o dia do
+# pagamento ou o valor faz o bloco não ir (a_conferir) — o sistema recusaria o bloco inteiro. Quando a resposta vem em
+# mais de uma página, a contagem da Receita (CONTACONSDOCARRPG73, a mesma janela) confere que nenhuma guia ficou de
+# fora: a documentação não diz se o primeiroDaPagina é a posição da guia ou o número da página.
 
 INICIO_PAGAMENTOS = datetime.date(2025, 1, 1)   # a primeira janela de cada empresa: o que as contabilidades em aberto pedem
 SOBREPOSICAO_PAGAMENTOS = 45                    # dias: a janela seguinte começa antes do fim da anterior
@@ -558,6 +563,7 @@ def guia_do_pagamento(g):
     if total is None:
         return None, 'uma guia sem o valor pago'
     tipo = g.get('tipo') if isinstance(g.get('tipo'), dict) else {}
+    nome_tipo = _txt(tipo.get('descricaoAbreviada'), 60) or _txt(tipo.get('descricao'), 60)
     receita_codigo, receita = _receita(g.get('receitaPrincipal'))
     partes = []
     for x in (g.get('desmembramentos') if isinstance(g.get('desmembramentos'), list) else [])[:60]:
@@ -568,7 +574,7 @@ def guia_do_pagamento(g):
                        'vencimento': _dia(x.get('dataVencimento')), 'valor_total': _valor(x.get('valorTotal')),
                        'principal': _valor(x.get('valorPrincipal')), 'multa': _valor(x.get('valorMulta')),
                        'juros': _valor(x.get('valorJuros'))})
-    return {'numero': numero, 'tipo_codigo': _txt(tipo.get('codigo'), 10), 'tipo': _txt(tipo.get('descricao'), 60),
+    return {'numero': numero, 'tipo_codigo': _txt(tipo.get('codigo'), 10), 'tipo': nome_tipo,
             'periodo_apuracao': _periodo(g.get('periodoApuracao')), 'arrecadado_em': arrecadado,
             'vencimento': _dia(g.get('dataVencimento')), 'receita_codigo': receita_codigo, 'receita': receita,
             'referencia': _txt(g.get('referencia'), 60), 'valor_total': total, 'principal': _valor(g.get('valorPrincipal')),
@@ -589,13 +595,30 @@ def _lista_de_guias(r):
     return d if isinstance(d, list) else None
 
 
+def contagem_pagamentos(cli, doc, de, ate, autor=None):
+    """Quantas guias pagas a Receita tem na janela (PAGTOWEB · CONTACONSDOCARRPG73, uma chamada): (n, None), ou
+    (None, o porquê) quando a resposta não dá pra ler."""
+    r = consultar(cli, 'Consultar', 'PAGTOWEB', 'CONTACONSDOCARRPG73', doc,
+                  {'intervaloDataArrecadacao': {'dataInicial': de.isoformat(), 'dataFinal': ate.isoformat()}}, autor=autor)
+    _conferir_resposta(r)
+    d = _json_fundo(r.dados_texto)
+    try:
+        n = int(str(d).strip())
+    except (TypeError, ValueError):
+        return None, 'a contagem dos pagamentos veio num formato que a ponte não entende'
+    return (n, None) if n >= 0 else (None, 'a contagem dos pagamentos veio negativa')
+
+
 def pagamentos(cli, empresa, de, ate, autor=None):
     """As guias pagas de `de` a `ate` (datas de pagamento): PAGTOWEB · PAGAMENTOS71, em páginas de 100 — cada página é
-    uma chamada (conta no teto); a página cheia pede a seguinte. Devolve (bloco, problema): o bloco do contrato, ou
-    (None, o porquê) quando a resposta não dá pra ler — aí nada vai e a rodada põe o a_conferir no faltou. O teto que
-    acaba entre as páginas levanta a Falta (nada vai pela metade). O "nada encontrado" da Receita é a lista vazia."""
+    uma chamada (conta no teto); a página cheia pede a seguinte, e a resposta que veio em mais de uma página é conferida
+    pela contagem da Receita (mais uma chamada). Devolve (bloco, problema): o bloco do contrato, ou (None, o porquê)
+    quando a resposta não dá pra ler ou não fecha com a contagem — aí nada vai e a rodada põe o a_conferir no faltou. O
+    teto que acaba entre as páginas levanta a Falta (nada vai pela metade). O "nada encontrado" da Receita é a lista
+    vazia."""
     doc = empresa['documento']
     guias, vistos = [], set()
+    paginou = False
     for pagina in range(PAGINAS_PAGAMENTOS):
         r = consultar(cli, 'Consultar', 'PAGTOWEB', 'PAGAMENTOS71', doc,
                       {'intervaloDataArrecadacao': {'dataInicial': de.isoformat(), 'dataFinal': ate.isoformat()},
@@ -618,7 +641,15 @@ def pagamentos(cli, empresa, de, ate, autor=None):
             guias.append(guia)
         if len(lista) < PAGINA_PAGAMENTOS:
             break
+        paginou = True
     else:
         return None, f'mais de {PAGINAS_PAGAMENTOS * PAGINA_PAGAMENTOS} guias na janela (o limite de uma consulta)'
+    if paginou:
+        total, problema = contagem_pagamentos(cli, doc, de, ate, autor=autor)
+        if problema:
+            return None, problema
+        if total != len(guias):
+            return None, (f'a consulta em páginas trouxe {len(guias)} guia(s) e a contagem da Receita diz {total} '
+                          f'(a paginação não fechou)')
     guias.sort(key=lambda g: (g['arrecadado_em'], g['numero']))
     return {'de': de.isoformat(), 'ate': ate.isoformat(), 'documentos': guias}, None

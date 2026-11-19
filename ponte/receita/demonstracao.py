@@ -4,8 +4,10 @@ inválidos. Utilize o json no menu Cenário da documentação."). Por isso, em d
 o corpo do cenário dele, com os números de exemplo do Serpro, e põe a resposta na empresa de demonstração.
 
 Os corpos vêm da cópia da documentação oficial que a biblioteca pública MarlonSantosDev/serpro_integra_contador_api
-guarda em bk.cursor/rules/ (conferidos no trial em 23/10/2026: os 10 responderam; o do PAGAMENTOS71, de 19/11/2026,
-veio da mesma cópia e ainda não foi conferido no trial). O token é o público do trial, o
+guarda em bk.cursor/rules/ (conferidos no trial em 23/10/2026: os 10 responderam). Os dos pagamentos (19/11/2026)
+vieram da mesma cópia: em 19/11 o trial recusou o "Body" do PAGAMENTOS71 (o autor e o contribuinte com o CPF de
+exemplo), com e sem a versaoSistema, e vai o do "Curl" da mesma página, com o CNPJ de exemplo nos três; o da contagem
+(CONTACONSDOCARRPG73) vai do mesmo jeito. O token é o público do trial, o
 mesmo da biblioteca (lib/src/core/auth/auth_service.dart) — não é segredo nem do escritório.
 """
 
@@ -90,15 +92,24 @@ CENARIOS = {'OBTERPROCURACAO41': {'contratante': {'numero': '99999999999999', 't
                                        'dados': '{ "protocoloRelatorio": '
                                                 '"+S7N6c04XNZUVzmxWT7SzpkZA4xeDQC9Z2T2GBJ5usn8LyouyWXbsy6mKsLy7/EImRkDjF4NAL25KiSXOLjnzAaZu/FC+G1pYOtTMYqokKYYr/yZ6aqUiCuWPfujDQ2/udwgU+Dyh56GSe28B5Ev25jDnzpvVJPhiebO5hpy1YESP5gnEhaP3bocCiZZrYG26F8avRRBJhRTsfv3Rvop+bxvYJZsVym270eO8oZTDIr3OJj==" '
                                                 '}'}},
- # 19/11/2026: o cenário da consulta de pagamentos ("Consulta Pagamento: quando pesquisado por intervaloDataArrecadacao",
- # o "Body" da documentação, sem a versaoSistema, como lá)
+ # 19/11/2026: o cenário da consulta de pagamentos ("Consulta Pagamento: quando pesquisado por intervaloDataArrecadacao").
+ # O "Body" da documentação, com o CPF de exemplo no autor e no contribuinte, o trial recusou ("Dados inválidos"), com e
+ # sem a versaoSistema; vai o do "Curl" da mesma página, com o CNPJ de exemplo nos três e sem a versaoSistema, como lá
  'PAGAMENTOS71': {'contratante': {'numero': '99999999999999', 'tipo': 2},
-                  'autorPedidoDados': {'numero': '99999999999', 'tipo': 1},
-                  'contribuinte': {'numero': '99999999999', 'tipo': 1},
+                  'autorPedidoDados': {'numero': '99999999999999', 'tipo': 2},
+                  'contribuinte': {'numero': '99999999999999', 'tipo': 2},
                   'pedidoDados': {'idSistema': 'PAGTOWEB',
                                   'idServico': 'PAGAMENTOS71',
                                   'dados': '{ "intervaloDataArrecadacao": {"dataInicial": "2019-09-01", '
-                                           '"dataFinal": "2019-11-30"}, "primeiroDaPagina": 0,"tamanhoDaPagina": 100}'}}}
+                                           '"dataFinal": "2019-11-30"}, "primeiroDaPagina": 0,"tamanhoDaPagina": 100}'}},
+ # a contagem dos pagamentos ("Conta Consulta Pagamento: quando pesquisado por intervaloDataArrecadacao", o "Curl")
+ 'CONTACONSDOCARRPG73': {'contratante': {'numero': '99999999999999', 'tipo': 2},
+                         'autorPedidoDados': {'numero': '99999999999999', 'tipo': 2},
+                         'contribuinte': {'numero': '99999999999999', 'tipo': 2},
+                         'pedidoDados': {'idSistema': 'PAGTOWEB',
+                                         'idServico': 'CONTACONSDOCARRPG73',
+                                         'dados': '{ "intervaloDataArrecadacao": {"dataInicial": "2019-09-01", '
+                                                  '"dataFinal": "2019-11-30"}}'}}}
 
 
 def corpo(id_servico):

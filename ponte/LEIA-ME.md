@@ -324,21 +324,28 @@ conseguiu ler: o bloco **não vai** no pacote (nada de `null` que no sistema vir
 faturamento do mês; nunca um número inventado), só o `faltou`, e o PDF fica guardado. A lista de pendências maior que
 100 vai cortada nas 100 primeiras, com o aviso no log.
 
-**Os pagamentos (19/11/2026, ponte 0.4.0; o "pode ligar" do Samuel de 18/11):** o `PAGTOWEB · PAGAMENTOS71` devolve
+**Os pagamentos (19/11/2026, ponte 0.4.1; o "pode ligar" do Samuel de 18/11):** o `PAGTOWEB · PAGAMENTOS71` devolve
 as guias pagas numa janela de **datas de pagamento**. A primeira consulta de cada empresa vai de **01/01/2025** até
 ontem (o que as contabilidades em aberto pedem); as seguintes, do fim da janela anterior **menos 45 dias** até ontem —
 o pagamento que entra atrasado no sistema da Receita aparece na consulta seguinte, sem chamada a mais. A resposta vem
 em páginas de 100: **cada página é uma chamada** (conta no teto), e a página cheia pede a seguinte (até 10 páginas,
-1.000 guias; a guia repetida entre as páginas vai uma vez). O "nada encontrado" da Receita é a lista vazia. A guia sem
+1.000 guias; a guia repetida entre as páginas vai uma vez). A resposta que veio em mais de uma página é conferida pela
+**contagem da Receita** (`CONTACONSDOCARRPG73`, a mesma janela, mais uma chamada): a documentação não diz se o
+`primeiroDaPagina` é a posição da guia ou o número da página, e a que não fecha com a contagem não vai (`a_conferir`).
+O tipo da guia vem como na documentação: o código (`tipo_codigo`: 4 DARF, 7 DJE, 8 DARF SIMPLES, 9 DAS, 10 DAE) e o
+nome curto (`tipo`: DARF, DAS…). O "nada encontrado" da Receita é a lista vazia. A guia sem
 o número, sem o dia do pagamento ou sem o valor pago faz o bloco **não ir** (`a_conferir`, com o porquê no log): o
 sistema recusaria o bloco inteiro, e um número inventado não serve à contabilidade. O teto do mês que acaba entre as
 páginas não manda nada pela metade: a consulta fica pendente pra próxima rodada com chamadas livres. **A recusa não mexe na autorização:** o cliente pode ter dado
 a procuração sem o serviço de pagamentos; a recusa vai pro `faltou` como `sem_autorizacao` (com o serviço
 `pagamentos`), o sistema não marca a empresa como sem autorização, e as outras consultas dela seguem. Recusada ou
 `a_conferir`, a consulta volta no próximo dia 25. Pra que serve: a importação da contabilidade (o pagamento no dia e
-no valor de verdade, com a multa e os juros) e a conferência do que foi pago. **O que a demonstração do Serpro devolve
-ainda não foi conferido** (a resposta de exemplo dos testes, `tests\fixtures\receita\PAGTOWEB-PAGAMENTOS71.json`,
-foi montada pela documentação até a da demonstração chegar).
+no valor de verdade, com a multa e os juros) e a conferência do que foi pago. **A demonstração do Serpro:** em
+19/11/2026 ela recusou o "Body" do cenário da documentação (o autor e o contribuinte com o CPF de exemplo), com e sem a
+`versaoSistema` ("Dados inválidos. Utilize o json no menu Cenário da documentação."); a 0.4.1 manda o do "Curl" da
+mesma página, com o CNPJ de exemplo nos três. A resposta de exemplo dos testes
+(`tests\fixtures\receita\PAGTOWEB-PAGAMENTOS71.json`) foi montada pelo exemplo de retorno da documentação até a da
+demonstração chegar.
 
 **O que o sistema responde:** `"gravado": true` (do ambiente de demonstração e do `--falso`, `false`: nada gravado),
 quantas empresas e as `recusadas` — o bloco de uma empresa que saiu do contrato fica de fora sozinho (o resto é
