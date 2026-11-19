@@ -221,9 +221,11 @@ const empresa = { nome: 'EMPRESA DE TESTE LTDA', documento: '11222333000181', ci
 const um = { empresa, funcionario: { nome: 'Bruna Teste', funcao: 'Auxiliar', admissao: '2026-10-19' }, recibo: salvo };
 let pdf = recibosPdf(DocFalso, [um]);
 const texto = pdf.textos.map(x => x.t).join(' | ');
-chk('o recibo: a empresa, o CNPJ, o tipo, a competência, o funcionário, a admissão, a função, o período e a hora',
-  ['EMPRESA DE TESTE LTDA', 'CNPJ 11.222.333/0001-81', 'Folha mensal', 'Competência: Outubro de 2026', 'BRUNA TESTE', 'Admissão: 19/10/2026', 'Função: Auxiliar',
+chk('o recibo: a empresa, o CNPJ, o tipo, a competência, o funcionário, a função, o período e a hora',
+  ['EMPRESA DE TESTE LTDA', 'CNPJ 11.222.333/0001-81', 'Folha mensal', 'Competência: Outubro de 2026', 'BRUNA TESTE', 'Função: Auxiliar',
     'Período: 19/10/2026 a 31/10/2026', 'Valor da hora: R$ 8,37'].every(s => texto.includes(s)), texto);
+chk('a admissão do cadastro não sai no recibo (é o dia do cadastro no sistema, não o do começo do trabalho)',
+  !/admiss/i.test(texto), texto);
 chk('as linhas: o código, a descrição, a referência e o valor; o arredondamento; os totais e o líquido',
   ['Horas normais', '88:00', '736,56', 'Horas extras 50%', '2:00', '25,11', 'Adiantamento', '300,00', 'Arredondamento', '0,33', '762,00', 'Valor líquido   R$ 462,00'].every(s => texto.includes(s)), texto);
 chk('o recebimento por extenso, a cidade com a data e o nome embaixo da assinatura',

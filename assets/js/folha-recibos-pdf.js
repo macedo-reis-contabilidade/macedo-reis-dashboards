@@ -65,7 +65,8 @@ export function desenharRecibo(doc, { empresa = {}, funcionario = {}, recibo = {
   doc.text('Funcionário:', X + 5, y0 + 21.5);
   doc.setFont('helvetica', 'bold'); doc.text(nome, X + 25, y0 + 21.5, { maxWidth: 110 });
   doc.setFont('helvetica', 'normal');
-  if (funcionario.admissao) doc.text('Admissão: ' + fmtData(funcionario.admissao), DIREITA, y0 + 21.5, { align: 'right' });
+  // a admissão não sai no recibo (19/11/2026, pedido do Samuel): a data do cadastro aqui é a do dia em que o funcionário
+  // entrou no sistema, não a do começo do trabalho
   const meio = [];
   if (funcionario.funcao) meio.push('Função: ' + semTravessao(funcionario.funcao));
   if (COM_PERIODO.includes(recibo.tipo) && recibo.periodo_de && recibo.periodo_ate) meio.push('Período: ' + fmtData(recibo.periodo_de) + ' a ' + fmtData(recibo.periodo_ate));
