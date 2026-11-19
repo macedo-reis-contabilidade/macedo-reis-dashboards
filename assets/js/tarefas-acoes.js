@@ -223,12 +223,15 @@ export async function marcarPagos(sb, ids) {
 
 // ---- alterar prazo, responsável e prioridade (16/10/2026) ----
 // A tarefa de admissão, de rescisão e de alvará é mantida pelo banco a partir da ficha de origem
-// (admissao_/rescisao_/alvara_sincronizar_tarefa): o prazo e o responsável voltariam na próxima mudança de lá — fica de
-// fora, e quem chama diz onde mudar.
-export const VINCULOS_DA_FICHA = [['admissao_id', 'admissão', 'Admissões'], ['rescisao_id', 'rescisão', 'Rescisões'], ['alvara_id', 'alvará', 'Alvarás']];
-export const fichaDeOrigem = t => { const v = VINCULOS_DA_FICHA.find(([c]) => t && t[c]); return v ? { coluna: v[0], nome: v[1], tela: v[2] } : null; };
-// a ficha de origem refaz o prazo e o responsável (a prioridade, não): mudar só a prioridade vale pra ela também
-export const ficaDeFora = (t, mudar) => (mudar && ('prazo' in mudar || 'responsavel' in mudar) ? fichaDeOrigem(t) : null);
+// (admissao_/rescisao_/alvara_sincronizar_tarefa): o que a ficha refaz voltaria na próxima mudança de lá — fica de
+// fora, e quem chama diz onde mudar. Na admissão e na rescisão, o prazo e o responsável; no alvará, só o responsável
+// (19/11/2026, pedido do Samuel pela Adaini: o prazo da renovação se adia na Agenda, como o de qualquer tarefa — o
+// banco refaz o prazo quando o vencimento do alvará muda, na renovação).
+export const VINCULOS_DA_FICHA = [['admissao_id', 'admissão', 'Admissões', ['prazo', 'responsavel']],
+  ['rescisao_id', 'rescisão', 'Rescisões', ['prazo', 'responsavel']], ['alvara_id', 'alvará', 'Alvarás', ['responsavel']]];
+export const fichaDeOrigem = t => { const v = VINCULOS_DA_FICHA.find(([c]) => t && t[c]); return v ? { coluna: v[0], nome: v[1], tela: v[2], refaz: v[3] } : null; };
+// a ficha de origem refaz só o que está no `refaz` dela (a prioridade, nunca): o resto vale pra ela também
+export const ficaDeFora = (t, mudar) => { const f = mudar ? fichaDeOrigem(t) : null; return f && f.refaz.some(c => c in mudar) ? f : null; };
 // trocar o responsável da tarefa que nasce de obrigação fiscal (obrigacao_id) ou de tarefa recorrente (origem
 // "recorrente") não muda a de origem: a próxima nasce com o responsável de lá — quem chama avisa onde trocar de vez
 export function proximasNascemCom(tarefas, mudar) {

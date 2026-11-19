@@ -839,7 +839,7 @@
       }
       const n = r.alteradas.length;
       ctx.feito = { alteradas: r.alteradas.map(a => ({ id: a.id, antes: a.antes, depois: a.depois })) };
-      // a da admissão, da rescisão e do alvará: o prazo vem da ficha (o banco refaz) — diz onde mudar
+      // a da admissão e da rescisão: o prazo vem da ficha (o banco refaz) — diz onde mudar (o do alvará muda aqui, 19/11/2026)
       const fichas = new Map();
       r.daFicha.forEach(f => fichas.set(f.tela, { ...f, n: (fichas.get(f.tela)?.n || 0) + 1 }));
       const fora = [

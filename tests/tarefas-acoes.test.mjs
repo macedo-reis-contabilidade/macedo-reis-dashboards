@@ -9,7 +9,7 @@
 // Sem rede: o cliente do Supabase é um dublê em memória.
 // Rodar com: node tests/tarefas-acoes.test.mjs
 import { concluirTarefas, desfazerConclusao, criarTarefasAvulsas, excluirTarefasCriadas, marcarPagos, desfazerPagos, avisarDependentes,
-  alterarTarefas, desfazerAlteracao, limparMudanca, descreverMudanca, fichaDeOrigem, proximasNascemCom,
+  alterarTarefas, desfazerAlteracao, limparMudanca, descreverMudanca, fichaDeOrigem, ficaDeFora, proximasNascemCom,
   pessoaDaEquipe, definirResponsavelObrigacoes, desfazerResponsavelObrigacoes, definirResponsavelRotina, desfazerResponsavelRotina,
   descartarProposta, desfazerDescarte, avancarBoletos, voltarBoletos, fecharFicha, reabrirFicha, vincularEmpresa, desvincularEmpresa, buscarEmpresas,
   renovarAlvara, desfazerRenovacao, desativarRegistro, reativarRegistro, sugerirObrigacoes, obrigacoesParaVincular, vincularObrigacoes, desfazerVinculoObrigacoes,
@@ -226,6 +226,19 @@ console.log('Alterar prazo, responsável e prioridade:');
   chk('só a prioridade: vale também na tarefa da admissão', r3.alteradas.map(a => a.id).join() === 'm' && db3.tarefas[0].prioridade === 'alta' && !r3.daFicha.length, JSON.stringify(r3));
   const r4 = await alterarTarefas(dubla(db3), ['m'], { prioridade: 'baixa', prazo: '2026-10-20' }, { autor: EU });
   chk('com o prazo junto, a da admissão fica de fora inteira', !r4.alteradas.length && r4.daFicha.length === 1 && db3.tarefas[0].prazo === '2026-10-10' && db3.tarefas[0].prioridade === 'alta');
+  // o alvará (19/11/2026): o prazo da renovação muda como o de qualquer tarefa; o responsável segue vindo da ficha
+  const db5 = { tarefas: [T('al', { alvara_id: 'v1', prazo: '2026-10-10', responsavel: 'Adaini' }), T('ad', { admissao_id: 'a1', prazo: '2026-10-10' })], tarefa_historico: [] };
+  const r5 = await alterarTarefas(dubla(db5), ['al', 'ad'], { prazo: '2026-12-01' }, { autor: EU, origem: 'lote da Agenda' });
+  chk('o prazo da tarefa do alvará muda (com a linha no histórico); a da admissão fica de fora, com a tela onde mudar',
+    r5.alteradas.map(a => a.id).join() === 'al' && db5.tarefas[0].prazo === '2026-12-01' && db5.tarefas[1].prazo === '2026-10-10'
+    && r5.daFicha.length === 1 && r5.daFicha[0].tela === 'Admissões' && db5.tarefa_historico.length === 1, JSON.stringify(r5));
+  const r6 = await alterarTarefas(dubla(db5), ['al'], { responsavel: 'Thalia' }, { autor: EU });
+  chk('o responsável da tarefa do alvará segue vindo da ficha (mude em Alvarás)', !r6.alteradas.length && r6.daFicha.length === 1
+    && r6.daFicha[0].tela === 'Alvarás' && db5.tarefas[0].responsavel === 'Adaini', JSON.stringify(r6));
+  chk('ficaDeFora: o alvará só no responsável; a admissão e a rescisão no prazo e no responsável; a prioridade, nunca',
+    ficaDeFora({ alvara_id: 'v' }, { prazo: '2026-12-01' }) === null && ficaDeFora({ alvara_id: 'v' }, { responsavel: 'Thalia' }).tela === 'Alvarás'
+    && ficaDeFora({ rescisao_id: 'r' }, { prazo: '2026-12-01' }).tela === 'Rescisões' && ficaDeFora({ admissao_id: 'a' }, { prioridade: 'alta' }) === null
+    && ficaDeFora({ obrigacao_id: 'o' }, { prazo: '2026-12-01' }) === null && ficaDeFora({ alvara_id: 'v' }, null) === null);
   const lista = [{ obrigacao_id: 'o1', origem: 'recorrente' }, { origem: 'recorrente' }, { origem: 'avulsa' }, { obrigacao_id: 'o2' }];
   chk('responsável novo: quantas nascem de obrigação fiscal e de tarefa recorrente (a próxima vem com o de lá); sem trocar o responsável, nenhuma',
     JSON.stringify(proximasNascemCom(lista, { responsavel: 'Thalia' })) === '{"obrigacao":2,"recorrente":1}' && JSON.stringify(proximasNascemCom(lista, { prazo: '2026-10-20' })) === '{"obrigacao":0,"recorrente":0}');
