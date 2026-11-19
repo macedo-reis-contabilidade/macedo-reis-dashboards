@@ -539,8 +539,9 @@ def _txt(v, n):
     return t[:n] if t else None
 
 
-# o nome curto de cada tipo de guia (o exemplo da documentação traz a descricaoAbreviada; a produção, em 19/11/2026,
-# trouxe só a descrição longa, "DOCUMENTO DE ARRECADAÇÃO DO SIMPLES NACIONAL")
+# o nome curto de cada tipo de guia, pelo código: o exemplo da documentação traz a descricaoAbreviada ("DAS"), mas a
+# produção, em 19/11/2026, trouxe nela a descrição longa ("DOCUMENTO DE ARRECADAÇÃO DO SIMPLES NACIONAL") — vale o
+# código, e a descricaoAbreviada só no tipo que não está aqui
 TIPOS_DE_GUIA = {'4': 'DARF', '7': 'DJE', '8': 'DARF SIMPLES', '9': 'DAS', '10': 'DAE'}
 
 
@@ -572,7 +573,7 @@ def guia_do_pagamento(g):
     if total is None:
         return None, 'uma guia sem o valor pago'
     tipo = g.get('tipo') if isinstance(g.get('tipo'), dict) else {}
-    nome_tipo = (_txt(tipo.get('descricaoAbreviada'), 60) or TIPOS_DE_GUIA.get(str(tipo.get('codigo') or '').strip())
+    nome_tipo = (TIPOS_DE_GUIA.get(str(tipo.get('codigo') or '').strip()) or _txt(tipo.get('descricaoAbreviada'), 60)
                  or _txt(tipo.get('descricao'), 60))
     receita_codigo, receita = _receita(g.get('receitaPrincipal'))
     partes = []

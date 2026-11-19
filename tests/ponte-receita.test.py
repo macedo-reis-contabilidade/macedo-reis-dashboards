@@ -1096,8 +1096,8 @@ def caso_servicos(srp, sis):
     ok(versoes == {'SOLICITARPROTOCOLO91': '2.0', 'RELATORIOSITFIS92': '2.0'},
        f'situacao_fiscal: a versão 2.0 do SITFIS (a 1.0 a Receita desligou em 11/2026) — {versoes}')
     ok(faltou(pac) == [], 'nada no faltou')
-    ok(pac and pac['tipo'] == 'receita' and pac['versao'] == 1 and pac['rodada']['ponte'] == '0.4.2'
-       and pac['rodada']['ambiente'] == 'producao', 'o pacote: tipo receita, versão 1, ponte 0.4.2, produção')
+    ok(pac and pac['tipo'] == 'receita' and pac['versao'] == 1 and pac['rodada']['ponte'] == '0.4.3'
+       and pac['rodada']['ambiente'] == 'producao', 'o pacote: tipo receita, versão 1, ponte 0.4.3, produção')
     ok(pac and pac['rodada']['chamadas_mes'] == len(srp.pedidos), f'chamadas_mes = as chamadas do mês ({len(srp.pedidos)})')
 
     # a autorização vencida (a da demonstração, de 2023)
@@ -3062,8 +3062,8 @@ def caso_pagamentos(srp, sis):
        and 'a contagem da Receita diz 150' in logs(pasta4) and not (pasta4 / 'receita' / 'pagamentos' / f'{A}.json').exists(),
        f'a resposta em páginas que não fecha com a contagem: a conferir, nada vai, sem a janela e sem cópia ({faltou(pac)})')
 
-    # a resposta da produção (19/11/2026): o tipo sem a descricaoAbreviada e a extensão da receita como objeto; e a
-    # janela gravada pela 0.4.1 (sem a leitura) é lida de novo desde o começo, uma vez
+    # a resposta da produção (19/11/2026): a descricaoAbreviada do tipo com a descrição longa (ou sem ela) e a extensão
+    # da receita como objeto; e a janela gravada pela 0.4.1 (sem a leitura) é lida de novo desde o começo, uma vez
     pasta5 = pasta_nova()
     escrever_config(pasta5, sis)
     rodar(pasta5, srp, '--so', 'autorizacao', hoje='2026-11-19')
@@ -3073,7 +3073,8 @@ def caso_pagamentos(srp, sis):
     arq.write_text(json.dumps(est5), encoding='utf-8')
     srp.zerar(); sis.zerar()
     producao = [{'numeroDocumento': '07202600000000001',
-                 'tipo': {'codigo': '9', 'descricao': 'DOCUMENTO DE ARRECADAÇÃO DO SIMPLES NACIONAL'},
+                 'tipo': {'codigo': '9', 'descricao': 'DOCUMENTO DE ARRECADAÇÃO DO SIMPLES NACIONAL',
+                          'descricaoAbreviada': 'DOCUMENTO DE ARRECADAÇÃO DO SIMPLES NACIONAL'},
                  'periodoApuracao': '2026-09-01T00:00:00-03:00', 'dataArrecadacao': '2026-10-19T00:00:00-03:00',
                  'dataVencimento': '2026-10-20T00:00:00-03:00', 'receitaPrincipal': {'codigo': '3333', 'extensaoReceita': None},
                  'valorTotal': 642.81, 'valorPrincipal': 642.81, 'valorMulta': None, 'valorJuros': None,

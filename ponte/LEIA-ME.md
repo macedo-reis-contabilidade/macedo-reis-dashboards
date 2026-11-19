@@ -333,8 +333,8 @@ em páginas de 100: **cada página é uma chamada** (conta no teto), e a página
 **contagem da Receita** (`CONTACONSDOCARRPG73`, a mesma janela, mais uma chamada): a documentação não diz se o
 `primeiroDaPagina` é a posição da guia ou o número da página, e a que não fecha com a contagem não vai (`a_conferir`).
 O tipo da guia: o código (`tipo_codigo`: 4 DARF, 7 DJE, 8 DARF SIMPLES, 9 DAS, 10 DAE) e o nome curto (`tipo`: DARF,
-DAS…) — a produção não manda o nome curto que a documentação mostra (só a descrição longa), e a ponte o tira do código
-(`TIPOS_DE_GUIA`, 0.4.2). A extensão da receita (`extensaoReceita`, o "-01" do código) vem como texto no exemplo da
+DAS…) — a produção põe na `descricaoAbreviada` a descrição longa ("DOCUMENTO DE ARRECADAÇÃO DO SIMPLES NACIONAL"), e
+a ponte tira o nome curto do código (`TIPOS_DE_GUIA`, 0.4.3; a `descricaoAbreviada` só no tipo que não está lá). A extensão da receita (`extensaoReceita`, o "-01" do código) vem como texto no exemplo da
 documentação e como objeto na produção, com o código dentro: vale o código (0.4.2; a 0.4.1 a gravava como texto,
 "1082-{'codi", e a janela que ela leu é lida de novo desde 01/01/2025 uma vez — `LEITURA_PAGAMENTOS` no
 `estado.json`). O "nada encontrado" da Receita é a lista vazia. A guia sem
@@ -351,7 +351,10 @@ mesma página, com o CNPJ de exemplo nos três. A resposta crua da demonstraçã
 DARF de exemplo) e a da contagem ficam em `tests\fixtures\receita-demonstracao\`. **A primeira leitura** (19/11/2026,
 pela fila `docs\FILA-CODE-2026-11-19-PAGAMENTOS-2.md`): 105 empresas na lista, 84 consultadas (59 pelo procurador),
 21 sem a autorização desse serviço, 3.388 guias de janeiro de 2025 a 18/11/2026, nenhuma empresa com mais de uma
-página; 92 chamadas (as 90 consultas, com as 6 do piloto, e 2 termos do procurador).
+página; 92 chamadas (as 90 consultas, com as 6 do piloto, e 2 termos do procurador). A releitura da 0.4.2 (19/11,
+11h23, `docs\FILA-CODE-2026-11-19-PAGAMENTOS-3.md`): as mesmas 3.388 guias, 85 chamadas; o primeiro envio voltou 500
+(o tempo-limite do banco gravando as 3.388 de uma vez) e o segundo, 10 s depois, gravou — a leitura do mês (45 dias)
+é bem menor.
 
 **O que o sistema responde:** `"gravado": true` (do ambiente de demonstração e do `--falso`, `false`: nada gravado),
 quantas empresas e as `recusadas` — o bloco de uma empresa que saiu do contrato fica de fora sozinho (o resto é
