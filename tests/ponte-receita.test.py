@@ -1096,8 +1096,8 @@ def caso_servicos(srp, sis):
     ok(versoes == {'SOLICITARPROTOCOLO91': '2.0', 'RELATORIOSITFIS92': '2.0'},
        f'situacao_fiscal: a versão 2.0 do SITFIS (a 1.0 a Receita desligou em 11/2026) — {versoes}')
     ok(faltou(pac) == [], 'nada no faltou')
-    ok(pac and pac['tipo'] == 'receita' and pac['versao'] == 1 and pac['rodada']['ponte'] == '0.4.1'
-       and pac['rodada']['ambiente'] == 'producao', 'o pacote: tipo receita, versão 1, ponte 0.4.1, produção')
+    ok(pac and pac['tipo'] == 'receita' and pac['versao'] == 1 and pac['rodada']['ponte'] == '0.4.2'
+       and pac['rodada']['ambiente'] == 'producao', 'o pacote: tipo receita, versão 1, ponte 0.4.2, produção')
     ok(pac and pac['rodada']['chamadas_mes'] == len(srp.pedidos), f'chamadas_mes = as chamadas do mês ({len(srp.pedidos)})')
 
     # a autorização vencida (a da demonstração, de 2023)
@@ -2950,7 +2950,7 @@ def caso_pagamentos(srp, sis):
        and all(set(x) == CONTRATO_PARTE for g in pg.get('documentos') or [] for x in g['partes']), '  só o contrato')
     ok(sis.validacoes and all(v['ok'] and not v['recusadas'] for v in sis.validacoes), '  e o validarPacote de verdade não recusou nada')
     est = estado(pasta) or {}
-    ok(est.get('pagamentos', {}).get(A) == {'consultada_em': '2026-11-19', 'ate': '2026-11-18'},
+    ok(est.get('pagamentos', {}).get(A) == {'consultada_em': '2026-11-19', 'ate': '2026-11-18', 'leitura': 2},
        f"  o estado lembra o dia e o fim da janela — {est.get('pagamentos', {}).get(A)}")
     copia = pasta / 'receita' / 'pagamentos' / f'{A}.json'
     ok(copia.is_file() and [g['numero'] for g in json.loads(copia.read_text(encoding='utf-8'))['documentos']]
@@ -3061,6 +3061,51 @@ def caso_pagamentos(srp, sis):
        and (est4.get('pagamentos') or {}).get(A) == {'consultada_em': '2026-11-19'}
        and 'a contagem da Receita diz 150' in logs(pasta4) and not (pasta4 / 'receita' / 'pagamentos' / f'{A}.json').exists(),
        f'a resposta em páginas que não fecha com a contagem: a conferir, nada vai, sem a janela e sem cópia ({faltou(pac)})')
+
+    # a resposta da produção (19/11/2026): o tipo sem a descricaoAbreviada e a extensão da receita como objeto; e a
+    # janela gravada pela 0.4.1 (sem a leitura) é lida de novo desde o começo, uma vez
+    pasta5 = pasta_nova()
+    escrever_config(pasta5, sis)
+    rodar(pasta5, srp, '--so', 'autorizacao', hoje='2026-11-19')
+    arq = pasta5 / 'receita' / 'estado.json'
+    est5 = json.loads(arq.read_text(encoding='utf-8'))
+    est5['pagamentos'] = {A: {'consultada_em': '2026-11-19', 'ate': '2026-11-18'}}
+    arq.write_text(json.dumps(est5), encoding='utf-8')
+    srp.zerar(); sis.zerar()
+    producao = [{'numeroDocumento': '07202600000000001',
+                 'tipo': {'codigo': '9', 'descricao': 'DOCUMENTO DE ARRECADAÇÃO DO SIMPLES NACIONAL'},
+                 'periodoApuracao': '2026-09-01T00:00:00-03:00', 'dataArrecadacao': '2026-10-19T00:00:00-03:00',
+                 'dataVencimento': '2026-10-20T00:00:00-03:00', 'receitaPrincipal': {'codigo': '3333', 'extensaoReceita': None},
+                 'valorTotal': 642.81, 'valorPrincipal': 642.81, 'valorMulta': None, 'valorJuros': None,
+                 'desmembramentos': [{'sequencial': '1', 'receitaPrincipal': {'codigo': '1001', 'descricao': 'IRPJ - Simples Nacional',
+                                                                              'extensaoReceita': {'codigo': '01', 'descricao': 'Normal'}},
+                                      'valorTotal': 30.0},
+                                     {'sequencial': '2', 'receitaPrincipal': {'codigo': '1002', 'descricao': 'CSLL - Simples Nacional',
+                                                                              'extensaoReceita': {'descricao': 'sem código'}},
+                                      'valorTotal': 20.0}]},
+                {'numeroDocumento': '9999999998', 'tipo': {'codigo': '10', 'descricao': 'DOCUMENTO DE ARRECADAÇÃO DO E-SOCIAL'},
+                 'dataArrecadacao': '2026-10-07T00:00:00-03:00', 'receitaPrincipal': {'codigo': '1328'}, 'valorTotal': 10.0}]
+    srp.por_doc[('PAGAMENTOS71', A)] = [_resposta_guias(producao)]
+    rodar(pasta5, srp, '--so', 'pagamentos', '--empresas', '1', hoje='2026-11-19')
+    pac = sis.ultimo()
+    pg = (empresa(pac, A) or {}).get('pagamentos') or {}
+    docs = pg.get('documentos') or [{}, {}]
+    ok(pedidos_pag(A) and pedidos_pag(A)[0]['intervaloDataArrecadacao']['dataInicial'] == '2025-01-01' and pg.get('de') == '2025-01-01',
+       f'a janela gravada pela 0.4.1 (sem a leitura) é lida de novo desde 01/01/2025 ({pedidos_pag(A)})')
+    das = next((g for g in docs if g.get('tipo_codigo') == '9'), {})
+    ok(das.get('tipo') == 'DAS' and das.get('receita_codigo') == '3333'
+       and [x['receita_codigo'] for x in das.get('partes') or []] == ['1001-01', '1002'],
+       f"a produção: o tipo pelo código ('DAS'), a extensão-objeto vira o código dela, a sem código fica de fora — {das}")
+    dae = next((g for g in docs if g.get('tipo_codigo') == '10'), {})
+    ok(dae.get('tipo') == 'DAE', f'o tipo 10 sai DAE — {dae}')
+    ok(sis.validacoes and all(v['ok'] and not v['recusadas'] for v in sis.validacoes), '  e o validarPacote de verdade não recusou nada')
+    e5 = (estado(pasta5) or {}).get('pagamentos', {}).get(A) or {}
+    ok(e5.get('leitura') == 2 and e5.get('ate') == '2026-11-18', f'o estado ganha a leitura 2: a próxima janela sai do fim desta — {e5}')
+    srp.zerar(); sis.zerar()
+    srp.por_doc[('PAGAMENTOS71', A)] = [_resposta_guias([])]
+    rodar(pasta5, srp, '--so', 'pagamentos', '--empresas', '1', hoje='2026-11-25')
+    ok(pedidos_pag(A) and pedidos_pag(A)[0]['intervaloDataArrecadacao']['dataInicial'] == '2026-10-04',
+       f'e a seguinte volta à janela curta (o fim da anterior menos 45 dias) — {pedidos_pag(A)}')
 
 
 def main():

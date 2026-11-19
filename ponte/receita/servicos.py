@@ -539,10 +539,19 @@ def _txt(v, n):
     return t[:n] if t else None
 
 
+# o nome curto de cada tipo de guia (o exemplo da documentação traz a descricaoAbreviada; a produção, em 19/11/2026,
+# trouxe só a descrição longa, "DOCUMENTO DE ARRECADAÇÃO DO SIMPLES NACIONAL")
+TIPOS_DE_GUIA = {'4': 'DARF', '7': 'DJE', '8': 'DARF SIMPLES', '9': 'DAS', '10': 'DAE'}
+
+
 def _receita(r):
-    """(o código, com '-' e a extensão quando ela vem; a descrição) da receitaPrincipal."""
+    """(o código, com '-' e a extensão quando ela vem; a descrição) da receitaPrincipal. A extensão vem como texto no
+    exemplo da documentação e, na produção (19/11/2026), como objeto com o código dentro: vale o código."""
     r = r if isinstance(r, dict) else {}
-    cod, ext = _txt(r.get('codigo'), 12), _txt(r.get('extensaoReceita'), 6)
+    ext = r.get('extensaoReceita')
+    if isinstance(ext, dict):
+        ext = ext.get('codigo')
+    cod, ext = _txt(r.get('codigo'), 12), (_txt(ext, 6) if isinstance(ext, (str, int)) and not isinstance(ext, bool) else None)
     if cod and ext:
         cod = f'{cod}-{ext}'[:12]
     return cod, _txt(r.get('descricao'), 120)
@@ -563,7 +572,8 @@ def guia_do_pagamento(g):
     if total is None:
         return None, 'uma guia sem o valor pago'
     tipo = g.get('tipo') if isinstance(g.get('tipo'), dict) else {}
-    nome_tipo = _txt(tipo.get('descricaoAbreviada'), 60) or _txt(tipo.get('descricao'), 60)
+    nome_tipo = (_txt(tipo.get('descricaoAbreviada'), 60) or TIPOS_DE_GUIA.get(str(tipo.get('codigo') or '').strip())
+                 or _txt(tipo.get('descricao'), 60))
     receita_codigo, receita = _receita(g.get('receitaPrincipal'))
     partes = []
     for x in (g.get('desmembramentos') if isinstance(g.get('desmembramentos'), list) else [])[:60]:

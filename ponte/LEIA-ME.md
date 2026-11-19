@@ -324,7 +324,7 @@ conseguiu ler: o bloco **não vai** no pacote (nada de `null` que no sistema vir
 faturamento do mês; nunca um número inventado), só o `faltou`, e o PDF fica guardado. A lista de pendências maior que
 100 vai cortada nas 100 primeiras, com o aviso no log.
 
-**Os pagamentos (19/11/2026, ponte 0.4.1; o "pode ligar" do Samuel de 18/11):** o `PAGTOWEB · PAGAMENTOS71` devolve
+**Os pagamentos (19/11/2026, ponte 0.4.1 e 0.4.2; o "pode ligar" do Samuel de 18/11):** o `PAGTOWEB · PAGAMENTOS71` devolve
 as guias pagas numa janela de **datas de pagamento**. A primeira consulta de cada empresa vai de **01/01/2025** até
 ontem (o que as contabilidades em aberto pedem); as seguintes, do fim da janela anterior **menos 45 dias** até ontem —
 o pagamento que entra atrasado no sistema da Receita aparece na consulta seguinte, sem chamada a mais. A resposta vem
@@ -332,8 +332,12 @@ em páginas de 100: **cada página é uma chamada** (conta no teto), e a página
 1.000 guias; a guia repetida entre as páginas vai uma vez). A resposta que veio em mais de uma página é conferida pela
 **contagem da Receita** (`CONTACONSDOCARRPG73`, a mesma janela, mais uma chamada): a documentação não diz se o
 `primeiroDaPagina` é a posição da guia ou o número da página, e a que não fecha com a contagem não vai (`a_conferir`).
-O tipo da guia vem como na documentação: o código (`tipo_codigo`: 4 DARF, 7 DJE, 8 DARF SIMPLES, 9 DAS, 10 DAE) e o
-nome curto (`tipo`: DARF, DAS…). O "nada encontrado" da Receita é a lista vazia. A guia sem
+O tipo da guia: o código (`tipo_codigo`: 4 DARF, 7 DJE, 8 DARF SIMPLES, 9 DAS, 10 DAE) e o nome curto (`tipo`: DARF,
+DAS…) — a produção não manda o nome curto que a documentação mostra (só a descrição longa), e a ponte o tira do código
+(`TIPOS_DE_GUIA`, 0.4.2). A extensão da receita (`extensaoReceita`, o "-01" do código) vem como texto no exemplo da
+documentação e como objeto na produção, com o código dentro: vale o código (0.4.2; a 0.4.1 a gravava como texto,
+"1082-{'codi", e a janela que ela leu é lida de novo desde 01/01/2025 uma vez — `LEITURA_PAGAMENTOS` no
+`estado.json`). O "nada encontrado" da Receita é a lista vazia. A guia sem
 o número, sem o dia do pagamento ou sem o valor pago faz o bloco **não ir** (`a_conferir`, com o porquê no log): o
 sistema recusaria o bloco inteiro, e um número inventado não serve à contabilidade. O teto do mês que acaba entre as
 páginas não manda nada pela metade: a consulta fica pendente pra próxima rodada com chamadas livres. **A recusa não mexe na autorização:** o cliente pode ter dado
@@ -343,9 +347,11 @@ a procuração sem o serviço de pagamentos; a recusa vai pro `faltou` como `sem
 no valor de verdade, com a multa e os juros) e a conferência do que foi pago. **A demonstração do Serpro:** em
 19/11/2026 ela recusou o "Body" do cenário da documentação (o autor e o contribuinte com o CPF de exemplo), com e sem a
 `versaoSistema` ("Dados inválidos. Utilize o json no menu Cenário da documentação."); a 0.4.1 manda o do "Curl" da
-mesma página, com o CNPJ de exemplo nos três. A resposta de exemplo dos testes
-(`tests\fixtures\receita\PAGTOWEB-PAGAMENTOS71.json`) foi montada pelo exemplo de retorno da documentação até a da
-demonstração chegar.
+mesma página, com o CNPJ de exemplo nos três. A resposta crua da demonstração (o
+DARF de exemplo) e a da contagem ficam em `tests\fixtures\receita-demonstracao\`. **A primeira leitura** (19/11/2026,
+pela fila `docs\FILA-CODE-2026-11-19-PAGAMENTOS-2.md`): 105 empresas na lista, 84 consultadas (59 pelo procurador),
+21 sem a autorização desse serviço, 3.388 guias de janeiro de 2025 a 18/11/2026, nenhuma empresa com mais de uma
+página; 92 chamadas (as 90 consultas, com as 6 do piloto, e 2 termos do procurador).
 
 **O que o sistema responde:** `"gravado": true` (do ambiente de demonstração e do `--falso`, `false`: nada gravado),
 quantas empresas e as `recusadas` — o bloco de uma empresa que saiu do contrato fica de fora sozinho (o resto é

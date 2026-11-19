@@ -22,6 +22,7 @@ import pathlib
 
 DIAS_PDF = 30
 MENSAGENS_POR_EMPRESA = 500   # as últimas, pra não crescer pra sempre
+LEITURA_PAGAMENTOS = 2        # a janela de pagamentos gravada antes desta leitura é lida de novo desde o começo (0.4.2)
 
 
 def pasta_receita(base):
@@ -103,13 +104,17 @@ class Estado:
         elif servico == 'pagamentos':
             self.d['pagamentos'][doc] = {**(self.d['pagamentos'].get(doc) or {}), 'consultada_em': hoje.isoformat()}
 
-    # — pagamentos (19/11/2026): o fim da última janela consultada com resposta boa (a janela seguinte sai dele)
+    # — pagamentos (19/11/2026): o fim da última janela consultada com resposta boa (a janela seguinte sai dele). A janela
+    # lida antes da LEITURA_PAGAMENTOS de agora não conta: a empresa é lida de novo desde o começo, uma vez (a 0.4.1 leu
+    # a extensão da receita das partes como texto, e ela vem como objeto)
     def pagamentos_ate(self, doc):
-        return (self.d['pagamentos'].get(doc) or {}).get('ate')
+        p = self.d['pagamentos'].get(doc) or {}
+        return p.get('ate') if (p.get('leitura') or 0) >= LEITURA_PAGAMENTOS else None
 
     def guardar_pagamentos_ate(self, doc, ate):
         antes = self.pagamentos_ate(doc)
-        self.d['pagamentos'][doc] = {**(self.d['pagamentos'].get(doc) or {}), 'ate': max(str(ate), str(antes or ''))}
+        self.d['pagamentos'][doc] = {**(self.d['pagamentos'].get(doc) or {}), 'ate': max(str(ate), str(antes or '')),
+                                     'leitura': LEITURA_PAGAMENTOS}
 
     def conhece_autorizacao(self, doc):
         """Alguma consulta da autorização já disse a situação da empresa (ativa, vencida ou sem)."""
