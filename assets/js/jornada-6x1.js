@@ -18,9 +18,17 @@
 // - art. 5º: lei complementar pode trazer transição pro MEI, a ME e a EPP (não havia, em 09/11/2026);
 // - art. 8º: diploma de nível superior e salário a partir de 2,5 vezes o teto do RGPS: fora do controle de jornada,
 //   salvo opção do empregador ou norma coletiva (as 2 folgas valem).
-// O que é leitura, não texto (dito assim na tela e no relatório): o divisor 210 nas 42 h (220 × 42 ÷ 44); a hora do
-// horista reajustada pra não perder no mês; as 8 h por dia sem convenção ou acordo coletivo; o reflexo da hora extra
-// habitual nas 2 folgas; a 12x36 (média de 42 h) depois de 16/12/2027.
+// O Decreto 13.173, de 19/11/2026 (DOU de 19/11/2026, edição extra — DECRETO), regulamenta a emenda:
+// - art. 2º: turno ininterrupto de revezamento, 6 h por dia, salvo convenção ou acordo, com a média do mês no limite
+//   semanal e os 2 repousos;
+// - art. 3º: a 12x36 com a média do mês acima do limite semanal: compensar as horas ou pagar hora extra, nos termos
+//   da convenção ou do acordo;
+// - art. 4º e 6º: o MTE edita os atos do repouso, dos regimes especiais e os complementares;
+// - art. 5º: o divisor do salário-hora, 210 nas 42 h e 200 nas 40 h; não afasta o divisor menor da lei, da
+//   convenção, do acordo ou do contrato, e vale o mais favorável ao empregado.
+// O que é leitura, não texto (dito assim na tela e no relatório): a hora do horista reajustada pra não perder no
+// mês (o decreto não fala do horista); as 8 h por dia sem convenção ou acordo coletivo; o reflexo da hora extra
+// habitual nas 2 folgas.
 //
 // O STF (ADI 8.041 e 8.042, medida cautelar, ministro Flávio Dino, 12/11/2026; efeito pra todos e imediato, vai a
 // referendo do Plenário e pode ser revista — DECISAO_STF): negou adiar a emenda e, no dispositivo (item 54):
@@ -53,6 +61,13 @@ export const DECISAO_STF = {
   fonte: 'https://conjur.com.br/wp-content/uploads/2026/11/ADI-8041-MC-assinado.pdf',
   obs: 'decisão cautelar do relator, com efeito pra todos e imediato; vai a referendo do Plenário do STF e pode ser revista'
 };
+export const DECRETO = {
+  numero: '13.173/2026',
+  data: '2026-11-19',
+  publicacao: 'DOU de 19/11/2026, edição extra',
+  fonte: 'https://www.planalto.gov.br/ccivil_03/_ato2023-2026/2026/decreto/d13173.htm'
+};
+const textoDecreto = 'Decreto ' + DECRETO.numero;
 export const ETAPAS = {
   e42: { id: 'e42', desde: DATA_42, horas: 42, folgas: 2, divisor: 210, rotulo: '16/12/2026: 42 h e 2 folgas' },
   e40: { id: 'e40', desde: DATA_40, horas: 40, folgas: 2, divisor: 200, rotulo: '16/12/2027: 40 h' }
@@ -181,14 +196,19 @@ export function diagnostico(g, etapa, { cct = false, art8 = null } = {}) {
       base: 'EC 141, art. 2º (sem redução nominal, proporcional ou de outra espécie) — leitura' });
   } else if (!escalaLonga && p.horas != null && p.horas > e.horas) {
     itens.push({ tipo: 'salario', texto: 'O salário do mês não muda; o divisor da hora vai de 220 pra ' + e.divisor + ' (a hora extra fica ' + fmtNum(arred((220 / e.divisor - 1) * 100, 2)) + '% mais cara).',
-      base: etapa === 'e42' ? 'EC 141, art. 2º; o 210 é leitura (220 × 42 ÷ 44)' : 'EC 141, art. 2º; TST, Súmula 431 (40 h, divisor 200)' });
+      base: 'EC 141, art. 2º; ' + textoDecreto + ', art. 5º, ' + (etapa === 'e42' ? 'I (divisor 210)' : 'II (divisor 200)')
+        + '; o divisor menor da convenção, do acordo ou do contrato fica, se for mais favorável (parágrafo único)' });
   }
   // as escalas especiais
   if (p.escala === '12x36' || p.escala === '24x72') {
     itens.push({ tipo: 'conferir', texto: etapa === 'e42'
       ? 'A ' + p.escala + ' dá a média de 42 h por semana: cabe no limite de 16/12/2026.'
-      : 'A ' + p.escala + ' dá a média de 42 h: acima das 40 h de 16/12/2027. Depende de lei (art. 7º, § 3º; o STF deu ao Congresso 180 dias pra fazê-la, em 12/11/2026) ou da negociação coletiva; a PEC das jornadas especiais ainda não foi apresentada.',
-      base: 'CLT, art. 59-A; CF, art. 7º, § 3º' });
+      : 'A ' + p.escala + ' dá a média de 42 h: acima das 40 h de 16/12/2027. Com a média do mês acima do limite, compensar as horas ou pagar hora extra, nos termos da convenção ou do acordo coletivo; a lei dos regimes diferenciados (art. 7º, § 3º) ainda não existe (o STF deu ao Congresso 180 dias pra fazê-la, em 12/11/2026).',
+      base: 'CLT, art. 59-A; CF, art. 7º, § 3º' + (etapa === 'e42' ? '' : '; ' + textoDecreto + ', art. 3º') });
+  }
+  if (p.escala === 'turno') {
+    itens.push({ tipo: 'conferir', texto: 'Turno variável: se for turno ininterrupto de revezamento, 6 h por dia, salvo convenção ou acordo coletivo, com a média do mês no limite da semana (' + e.horas + ' h) e os 2 repousos.',
+      base: 'CF, art. 7º, XIV; ' + textoDecreto + ', art. 2º' });
   }
   if (categoria === 111 || num(g.forma) === 3) {
     itens.push({ tipo: 'conferir', texto: 'Intermitente: as 2 folgas e o limite valem nos períodos de convocação.', base: 'CLT, art. 452-A — leitura' });

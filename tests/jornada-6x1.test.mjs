@@ -3,7 +3,7 @@
 // simulador (contratar, hora extra, reduzir). Os números são contas à mão, no comentário de cada caso.
 // Rodar com: node tests/jornada-6x1.test.mjs
 import {
-  DATA_42, DATA_40, DECISAO_STF, diaMaxDaEtapa, padraoDoGrupo, diagnostico, resumoDaEmpresa, limiteDaEtapa, salarioArt8, encargosDoRegime,
+  DATA_42, DATA_40, DECISAO_STF, DECRETO, diaMaxDaEtapa, padraoDoGrupo, diagnostico, resumoDaEmpresa, limiteDaEtapa, salarioArt8, encargosDoRegime,
   custoMensal, salarioMedio, simular, fmtHoras, fmtReais, PROVISOES
 } from '../assets/js/jornada-6x1.js';
 import { relatorioJornadaPdf, limpar } from '../assets/js/jornada-6x1-pdf.js';
@@ -66,6 +66,20 @@ chk('o horista: a hora sobe 4,76% (44 ÷ 42) pra não perder no mês', dh.itens.
 const d12a = diagnostico(doze, 'e42'), d12b = diagnostico(doze, 'e40');
 chk('a 12x36 cabe nas 42 h de 2026 e fica a conferir nas 40 h de 2027',
   !d12a.precisa && d12a.itens.some(i => i.texto.includes('cabe no limite')) && d12b.itens.some(i => i.tipo === 'conferir' && i.texto.includes('acima das 40 h')));
+// o Decreto 13.173, de 19/11/2026 (DOU, edição extra): o divisor 210/200 (art. 5º), a 12x36 (art. 3º) e o turno (art. 2º)
+igual('o decreto: o número, o dia e o texto no Planalto', [DECRETO.numero, DECRETO.data, DECRETO.fonte.includes('planalto.gov.br') && DECRETO.fonte.endsWith('d13173.htm')], ['13.173/2026', '2026-11-19', true]);
+// 220 ÷ 210 − 1 = 4,76% nas 42 h; 220 ÷ 200 − 1 = 10% nas 40 h
+const sal42 = d6.itens.find(i => i.tipo === 'salario'), sal40 = diagnostico(seis, 'e40').itens.find(i => i.tipo === 'salario');
+chk('o divisor 210 vem do decreto (art. 5º, I), não é mais leitura; a hora extra fica 4,76% mais cara',
+  sal42.base.includes('Decreto 13.173/2026, art. 5º, I') && !sal42.base.includes('leitura') && sal42.texto.includes('210') && sal42.texto.includes('4,76%'), sal42.base);
+chk('nas 40 h, o 200 do art. 5º, II (10% mais cara) e o divisor mais favorável fica',
+  sal40.base.includes('art. 5º, II') && sal40.base.includes('mais favorável') && sal40.texto.includes('10%'), sal40.base);
+const doze40 = d12b.itens.find(i => i.tipo === 'conferir');
+chk('a 12x36 nas 40 h: compensar ou pagar hora extra pela convenção (Decreto, art. 3º); nas 42 h, sem o decreto na base',
+  doze40.texto.includes('compensar') && doze40.base.includes('Decreto 13.173/2026, art. 3º') && !d12a.itens.find(i => i.tipo === 'conferir').base.includes('Decreto'));
+const dturno = diagnostico({ tipo: 3, empregados: 2, horas_semana: 44 }, 'e42');
+chk('o turno variável: a conferir se é turno ininterrupto (6 h por dia, Decreto, art. 2º)',
+  dturno.itens.some(i => i.tipo === 'conferir' && i.texto.includes('6 h por dia') && i.base.includes('art. 2º')));
 const ds = diagnostico(semJornada, 'e42');
 chk('sem a semana no Domínio: a conferir com a empresa', ds.itens[0].tipo === 'conferir');
 const dext = diagnostico({ ...seis, controle: 2 }, 'e42');
@@ -118,7 +132,7 @@ const doc = relatorioJornadaPdf(PdfFalso, { empresa: { nome: 'Empresa Teste Ltda
   opcoes: { regime: 'Simples Nacional' }, etapa: 'e42', plano: { escolha: '5x2 de segunda a sexta', situacao: 'definido', observacao: 'NUNCA NO PDF' }, hoje: '2026-11-09', dadosAte: '2026-11-09' });
 const tudo = doc.textos.join(' ');
 chk('as seções: a lei, o retrato, as duas datas, as saídas, a escolha e os próximos passos',
-  ['O que diz a lei', 'referendo do Plenário', 'Como a empresa está hoje', 'até 16/12/2026', 'até 16/12/2027', 'As saídas', 'O que foi combinado', 'Os próximos passos'].every(t => tudo.includes(t)));
+  ['O que diz a lei', 'referendo do Plenário', 'dividido por 210', 'Decreto 13.173/2026', 'Como a empresa está hoje', 'até 16/12/2026', 'até 16/12/2027', 'As saídas', 'O que foi combinado', 'Os próximos passos'].every(t => tudo.includes(t)));
 chk('a observação interna não sai no PDF', !tudo.includes('NUNCA NO PDF'));
 chk('sem travessão nem reticências (a fonte do jsPDF não tem)', !/[—–…]/.test(tudo));
 igual('limpar troca o travessão, as reticências e o ≥', limpar('a — b … ≥ c'), 'a - b ... >= c');

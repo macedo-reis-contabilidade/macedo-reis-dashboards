@@ -5,7 +5,7 @@
 // interna do plano nunca entra (a regra da casa: anotação interna não sai em PDF).
 // A fonte padrão do jsPDF não tem o travessão nem alguns símbolos: o texto passa pelo limpar().
 // =====================================================================
-import { EMENDA, DECISAO_STF, DATA_42, DATA_40, ETAPAS, padraoDoGrupo, diagnostico, simular, fmtNum, fmtReais } from './jornada-6x1.js';
+import { EMENDA, DECISAO_STF, DECRETO, DATA_42, DATA_40, ETAPAS, padraoDoGrupo, diagnostico, simular, fmtNum, fmtReais } from './jornada-6x1.js';
 
 const dataBr = iso => iso ? String(iso).slice(0, 10).split('-').reverse().join('/') : '';
 export const limpar = t => String(t == null ? '' : t)
@@ -35,6 +35,8 @@ export function relatorioJornadaPdf(J, { empresa, grupos, opcoes = {}, etapa = '
   item('A partir de ' + dataBr(DATA_42) + ': no máximo 42 horas por semana e 2 dias de folga remunerada por semana, um de preferência no domingo. A escala 6x1 acaba.', 'EC 141, art. 6º, I; Constituição, art. 7º, XV');
   item('A partir de ' + dataBr(DATA_40) + ': no máximo 40 horas por semana. O limite de 8 horas por dia continua.', 'EC 141, art. 6º, II; Constituição, art. 7º, XIII');
   item('Sem reduzir o salário, nem de forma proporcional. Quem já trabalha 40 horas ou menos não tem redução, mas ganha as 2 folgas.', 'EC 141, arts. 2º e 4º');
+  item('O valor da hora: o salário do mês dividido por 210 nas 42 horas e por 200 nas 40 horas (antes, 220). Se a convenção, o acordo ou o contrato já usam um divisor menor, ele continua: vale o mais favorável ao empregado.', 'Decreto ' + DECRETO.numero + ', art. 5º');
+  item('Na 12x36, se a média do mês passar do limite da semana, a empresa compensa as horas ou paga hora extra, como a convenção ou o acordo coletivo disser. No turno ininterrupto de revezamento, 6 horas por dia, salvo convenção ou acordo.', 'Decreto ' + DECRETO.numero + ', arts. 2º e 3º');
   if (DECISAO_STF.vale) {
     item('Até ' + dataBr(DATA_40) + ', a convenção ou o acordo coletivo pode passar das 8 horas por dia pra distribuir as 42 horas. Sem convenção ou acordo até ' + dataBr('2026-12-15') + ', o STF admitiu as 42 horas em 5 dias de até 8h24, sem hora extra nos 24 minutos, até ' + dataBr(DECISAO_STF.ate) + '.', 'EC 141, art. 7º; STF, ' + DECISAO_STF.processo + ', ' + dataBr(DECISAO_STF.data) + ', item I');
     item('As folgas: o STF tirou as travas semanal e mensal; a convenção ou o acordo define como os 2 dias de repouso por semana são tirados.', 'Constituição, art. 7º, § 2º; STF, ' + DECISAO_STF.processo + ', item IV');
