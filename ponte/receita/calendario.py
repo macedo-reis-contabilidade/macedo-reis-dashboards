@@ -19,6 +19,9 @@ empresa que nunca foi consultada roda na primeira rodada.
                      (decidido depois do pgdas, em servicos.py)
     caixa_postal     todas: todo dia útil
     situacao_fiscal  todas: o dia 5 (ou o próximo dia útil); a consulta feita nos 7 dias antes dele vale por ele
+    pagamentos       todas (19/11/2026): o dia 25 (ou o próximo dia útil) — o DAS e o DARF vencem no dia 20, e o
+                     pagamento aparece no sistema da Receita em um ou dois dias; a empresa nunca consultada, na
+                     primeira rodada
 """
 import calendar
 import datetime
@@ -28,6 +31,7 @@ PRAZO_PGDAS = 20
 # a situação fiscal feita até 7 dias antes do dia marcado vale por ele (03/11/2026: as empresas que passaram a ser
 # consultadas no dia 3, com o procurador, repetiriam tudo no dia 5 — umas 240 chamadas pagas pelo mesmo retrato)
 FOLGA_SITUACAO = 7
+DIA_PAGAMENTOS = 25
 
 
 def dia_util(d):
@@ -208,6 +212,13 @@ def marca_situacao(hoje):
     return _ultima([dia_ou_proximo_util(hoje.year, hoje.month, 5), dia_ou_proximo_util(ano, mes, 5)], hoje)
 
 
+def marca_pagamentos(hoje):
+    """O último dia marcado dos pagamentos até hoje: o dia 25 (ou o próximo dia útil) deste mês ou do passado."""
+    ano, mes = _mes_antes(hoje.year, hoje.month)
+    return _ultima([dia_ou_proximo_util(hoje.year, hoje.month, DIA_PAGAMENTOS),
+                    dia_ou_proximo_util(ano, mes, DIA_PAGAMENTOS)], hoje)
+
+
 def pendente(consultada_em, marca):
     """A consulta ainda não foi feita desde o dia marcado (nunca feita = pendente)."""
     return marca is not None and (not consultada_em or str(consultada_em) < marca.isoformat())
@@ -228,6 +239,8 @@ def servicos_do_dia(hoje, empresa, estado):
     if pendente(estado.consultada_em('situacao_fiscal', doc),
                 marca - datetime.timedelta(days=FOLGA_SITUACAO) if marca else None):
         s.add('situacao_fiscal')
+    if pendente(estado.consultada_em('pagamentos', doc), marca_pagamentos(hoje)):
+        s.add('pagamentos')
     return s
 
 

@@ -18,6 +18,12 @@ No fim da rodada de produção (09/11/2026), o PDF do relatório de situação f
 pela função do sistema (relatorios.py) — o desta rodada e os que ficaram das de antes; o que der errado ali fica pra
 próxima e não muda o código de saída.
 
+Os pagamentos (19/11/2026, a 0.4.0): no dia 25 (ou no primeiro dia útil depois), as guias pagas de cada empresa com a
+autorização, na janela que sai do estado (a primeira vez desde 01/01/2025; depois, do fim da última menos 45 dias, até
+ontem). A recusa por falta de autorização desta consulta (o cliente autorizou o escritório sem o serviço de pagamentos)
+vai no `faltou` e não mexe na autorização da empresa. Em produção, cada empresa consultada ganha a cópia das guias no
+PC (receita\\pagamentos\\<CNPJ>.json), de onde o rascunho do fechamento da contabilidade lê o dia e o valor.
+
 O procurador (03/11/2026, o Autentica Procurador): com o [integra] procurador_* preenchido, a autorização confere
 também a procuração pro CPF dele; a empresa ativa por ela é consultada em nome dele (o autor de cada consulta), e o lote
 de eventos da Caixa Postal sai um por autor. Sem o token dele nesta rodada, essas consultas vão pro `faltou` como erro
@@ -87,6 +93,7 @@ def executar(cli, empresas, est, hoje, so, pasta, reg):
 
     planos = {e['documento']: _plano(hoje, e, est, so) for e in empresas}
     producao = cli.ambiente == 'producao'
+    pagos = {}                     # as guias pagas de cada empresa consultada nesta rodada (a cópia no PC, no fim)
 
     # 1. a autorização primeiro: sem ela (em produção), as outras consultas nem são feitas
     negados, respondidas = set(), set()
@@ -153,7 +160,7 @@ def executar(cli, empresas, est, hoje, so, pasta, reg):
             for s in sorted(plano - {'autorizacao', 'caixa_postal', 'faturamento'}):
                 faltou.append({'documento': doc, 'servico': s, 'motivo': 'sem_autorizacao'})
             # a autorização de hoje já disse que não há procuração: até o próximo dia marcado não volta
-            for s in ('pgdas', 'situacao_fiscal'):
+            for s in ('pgdas', 'situacao_fiscal', 'pagamentos'):
                 if s in plano:
                     est.marcar_consulta(s, doc, hoje)
             mes = mes_pendente(doc, plano) if quer_faturamento else None
@@ -201,6 +208,23 @@ def executar(cli, empresas, est, hoje, so, pasta, reg):
                 falta(doc, 'situacao_fiscal', f)
                 if f.feita:
                     est.marcar_consulta('situacao_fiscal', doc, hoje)
+        if 'pagamentos' in plano:
+            de, ate = servicos.janela_pagamentos(est.pagamentos_ate(doc), hoje)
+            try:
+                bloco, problema = servicos.pagamentos(cli, e, de, ate, autor=autor)
+                est.marcar_consulta('pagamentos', doc, hoje)
+                if problema:
+                    falta(doc, 'pagamentos', servicos.Falta('a_conferir', problema))
+                else:
+                    dados.setdefault(doc, {})['pagamentos'] = bloco
+                    est.guardar_pagamentos_ate(doc, bloco['ate'])
+                    pagos[doc] = bloco['documentos']
+            except servicos.Falta as f:
+                # a recusa (o cliente autorizou o escritório sem o serviço de pagamentos) fica só nesta consulta: vai
+                # no faltou, não mexe na autorização da empresa e volta no próximo dia 25
+                falta(doc, 'pagamentos', f)
+                if f.feita:
+                    est.marcar_consulta('pagamentos', doc, hoje)
 
     # 3. Caixa Postal: os eventos em lote e as mensagens só de quem teve novidade
     cp = [e for e in empresas if 'caixa_postal' in planos[e['documento']] and e['documento'] not in negados]
@@ -263,6 +287,15 @@ def executar(cli, empresas, est, hoje, so, pasta, reg):
                 f'(vão no faltou como erro): ' + ', '.join(sumidas[:10]) + (' …' if len(sumidas) > 10 else ''), 'aviso')
         reg(f'receita: caixa postal — {len(cnpjs)} empresa(s) no lote, {com_novidade} com novidade, '
             f'{mensagens_novas} mensagem(ns) nova(s)')
+
+    # 4. a cópia das guias pagas no PC (só em produção): o rascunho do fechamento da contabilidade lê dela
+    if pagos and producao:
+        try:
+            total = sum(est_mod.guardar_copia_pagamentos(pasta, doc, docs) for doc, docs in pagos.items())
+            reg(f'receita: pagamentos — {len(pagos)} empresa(s) consultada(s), '
+                f'{sum(len(d) for d in pagos.values())} guia(s) na janela; a cópia no PC tem {total} guia(s)')
+        except OSError as ex:
+            reg(f'receita: pagamentos — não consegui gravar a cópia no PC: {type(ex).__name__}', 'aviso')
     return dados, faltou
 
 

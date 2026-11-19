@@ -9,6 +9,8 @@
     pdfs\\                   os PDFs da declaração e da situação fiscal (apagados depois de 30 dias)
     relatorios.json         o dia do último relatório de situação fiscal de cada empresa que foi pro Drive
                             (relatorios.py, 09/11/2026)
+    pagamentos\\<CNPJ>.json  as guias pagas de cada empresa (19/11/2026), juntadas pelo número do documento: a cópia
+                            de que o rascunho do fechamento da contabilidade lê o dia e o valor de cada pagamento
 
 Nada disso entra no repositório. Do PC, sai só o PDF do relatório de situação fiscal, pra pasta da empresa no Drive
 (relatorios.py); o resto fica aqui.
@@ -43,7 +45,8 @@ def _gravar_json(arq, dados):
 
 class Estado:
     VAZIO = {'autorizacao': {}, 'pgdas_meses': {}, 'pgdas_consultado': {}, 'declaracoes_lidas': {},
-             'declaracoes_tentadas': {}, 'eventos': {}, 'mensagens_lidas_em': {}, 'mensagens': {}, 'situacao_fiscal': {}}
+             'declaracoes_tentadas': {}, 'eventos': {}, 'mensagens_lidas_em': {}, 'mensagens': {}, 'situacao_fiscal': {},
+             'pagamentos': {}}
 
     def __init__(self, pasta, gravar=True):
         self.arq = pasta / 'estado.json'
@@ -69,6 +72,7 @@ class Estado:
         self.d['pgdas_consultado'].pop(doc, None)
         self.d['situacao_fiscal'].pop(doc, None)
         self.d['declaracoes_tentadas'].pop(doc, None)
+        (self.d['pagamentos'].get(doc) or {}).pop('consultada_em', None)
 
     # — a data da última consulta (o calendário "a partir do dia")
     def consultada_em(self, servico, doc):
@@ -78,6 +82,8 @@ class Estado:
             return self.d['pgdas_consultado'].get(doc)
         if servico == 'situacao_fiscal':
             return self.d['situacao_fiscal'].get(doc)
+        if servico == 'pagamentos':
+            return (self.d['pagamentos'].get(doc) or {}).get('consultada_em')
         return None
 
     def marcar_consulta(self, servico, doc, hoje, situacao=None):
@@ -94,6 +100,16 @@ class Estado:
             self.d['pgdas_consultado'][doc] = hoje.isoformat()
         elif servico == 'situacao_fiscal':
             self.d['situacao_fiscal'][doc] = hoje.isoformat()
+        elif servico == 'pagamentos':
+            self.d['pagamentos'][doc] = {**(self.d['pagamentos'].get(doc) or {}), 'consultada_em': hoje.isoformat()}
+
+    # — pagamentos (19/11/2026): o fim da última janela consultada com resposta boa (a janela seguinte sai dele)
+    def pagamentos_ate(self, doc):
+        return (self.d['pagamentos'].get(doc) or {}).get('ate')
+
+    def guardar_pagamentos_ate(self, doc, ate):
+        antes = self.pagamentos_ate(doc)
+        self.d['pagamentos'][doc] = {**(self.d['pagamentos'].get(doc) or {}), 'ate': max(str(ate), str(antes or ''))}
 
     def conhece_autorizacao(self, doc):
         """Alguma consulta da autorização já disse a situação da empresa (ativa, vencida ou sem)."""
@@ -195,6 +211,22 @@ class Contador:
             return
         self.d[servico] = int(self.d.get(servico, 0)) + 1
         _gravar_json(self.arq, self.d)
+
+
+def guardar_copia_pagamentos(pasta, doc, documentos):
+    """A cópia no PC das guias pagas da empresa (pagamentos\\<CNPJ>.json): as de antes mais as desta consulta, pelo
+    número do documento (a vista de novo troca a de antes), na ordem do dia do pagamento. Devolve quantas guias a
+    cópia tem. Nunca vai pro repositório nem sai do PC."""
+    p = pasta / 'pagamentos'
+    p.mkdir(parents=True, exist_ok=True)
+    arq = p / f'{doc}.json'
+    lidas = _ler_json(arq, {})
+    guias = {g['numero']: g for g in (lidas.get('documentos') or []) if isinstance(g, dict) and g.get('numero')}
+    for g in documentos:
+        guias[g['numero']] = g
+    lista = sorted(guias.values(), key=lambda g: (str(g.get('arrecadado_em') or ''), str(g['numero'])))
+    _gravar_json(arq, {'documento': doc, 'documentos': lista})
+    return len(lista)
 
 
 def pasta_pdfs(pasta):

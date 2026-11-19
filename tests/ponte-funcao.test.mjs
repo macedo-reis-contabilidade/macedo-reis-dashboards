@@ -116,6 +116,52 @@ chk('empresa sem bloco nenhum passa (só o CNPJ)', validarPacote({ ...BOM(), emp
   chk('a empresa que ficou sem nada a gravar não vai (não cria a linha vazia dela)', r4.ok && r4.pacote.empresas.length === 0 && r4.pacote.faltou.length === 1, r4);
 }
 
+console.log('Os pagamentos (PAGTOWEB, 19/11/2026):');
+{
+  const PAG = () => ({ ...BOM(), empresas: [{ documento: DOC, pagamentos: { de: '2025-01-01', ate: '2026-11-24', extra: 'x', documentos: [
+    { numero: ' 07202500000000001 ', tipo_codigo: 'DAS', tipo: 'Documento de Arrecadação\ndo Simples Nacional', periodo_apuracao: '2025-09-01',
+      arrecadado_em: '2025-10-14', vencimento: '2025-10-20', receita_codigo: '3333', receita: 'DAS', referencia: null,
+      valor_total: '1234.564', principal: 1234.56, multa: 0, juros: 0, saldo: 0, cpf: '12345678901',
+      partes: [{ receita_codigo: '1001', receita: 'IRPJ', periodo_apuracao: '2025-09-01', vencimento: '2025-10-20', valor_total: 100.5, principal: 100.5, nome: 'x' }] },
+    { numero: '07202500000000002', arrecadado_em: '2025-12-03', valor_total: 1300.1, principal: 1250, multa: 25, juros: 25.1 }] } }],
+    faltou: [{ documento: '22333444000100', servico: 'pagamentos', motivo: 'sem_autorizacao' }] });
+  const r = validarPacote(PAG()), pg = r.ok && r.pacote.empresas[0] && r.pacote.empresas[0].pagamentos;
+  chk('o bloco dos pagamentos do contrato passa, com a janela e as guias', !!pg && pg.de === '2025-01-01' && pg.ate === '2026-11-24' && pg.documentos.length === 2 && r.recusadas.length === 0, r);
+  const d0 = pg && pg.documentos[0];
+  chk('a guia sai só com o que o contrato prevê (o número sem espaço, o texto numa linha, o dinheiro com centavos)',
+    d0 && d0.numero === '07202500000000001' && d0.tipo === 'Documento de Arrecadação do Simples Nacional' && d0.valor_total === 1234.56
+    && !('cpf' in d0) && !('extra' in pg) && d0.partes.length === 1 && !('nome' in d0.partes[0]) && d0.partes[0].valor_total === 100.5, d0);
+  chk('o que não veio na guia fica null (nunca um zero inventado)', pg && pg.documentos[1].tipo === null && pg.documentos[1].saldo === null
+    && pg.documentos[1].periodo_apuracao === null && Array.isArray(pg.documentos[1].partes) && pg.documentos[1].partes.length === 0, pg && pg.documentos[1]);
+  chk('a recusa da consulta de pagamentos vai pro faltou como sem autorização (o banco não tira a autorização da empresa por ela)',
+    r.ok && r.pacote.faltou.some(f => f.servico === 'pagamentos' && f.motivo === 'sem_autorizacao'), r);
+  const p2 = PAG(); p2.empresas[0].pagamentos.documentos.push({ ...p2.empresas[0].pagamentos.documentos[1], valor_total: 1 });
+  const r2 = validarPacote(p2);
+  chk('a mesma guia duas vezes (de duas páginas): fica a primeira', r2.ok && r2.pacote.empresas[0].pagamentos.documentos.length === 2
+    && r2.pacote.empresas[0].pagamentos.documentos[1].valor_total === 1300.1, r2);
+  const r3 = validarPacote({ ...BOM(), empresas: [{ documento: DOC, pagamentos: { de: '2026-10-01', ate: '2026-11-24', documentos: [] } }], faltou: [] });
+  chk('a janela sem nenhuma guia é "nada pago na janela": vai, com a lista vazia', r3.ok && r3.pacote.empresas.length === 1
+    && r3.pacote.empresas[0].pagamentos.documentos.length === 0, r3);
+  const foraPag = (mudar, campo) => {
+    const p = PAG(); p.empresas[0].autorizacao = { situacao: 'ativa', valida_ate: '2027-03-31' }; mudar(p.empresas[0].pagamentos);
+    const x = validarPacote(p);
+    const emp = x.ok && x.pacote.empresas[0];
+    return emp && !('pagamentos' in emp) && 'autorizacao' in emp && x.recusadas.length === 1 && x.recusadas[0].campo === campo
+      && x.pacote.faltou.some(f => f.servico === 'pagamentos' && f.motivo === 'erro' && f.documento === DOC) ? x : null;
+  };
+  chk('sem a janela, ou com o começo depois do fim: só os pagamentos da empresa ficam de fora',
+    !!foraPag(b => { delete b.de; }, 'empresas[0].pagamentos.de') && !!foraPag(b => { b.ate = null; }, 'empresas[0].pagamentos.ate')
+    && !!foraPag(b => { b.de = '2026-12-01'; }, 'empresas[0].pagamentos.de'));
+  chk('guia sem número, sem o dia do pagamento ou sem o valor: os pagamentos da empresa ficam de fora',
+    !!foraPag(b => { b.documentos[0].numero = '  '; }, 'empresas[0].pagamentos.documentos[0].numero')
+    && !!foraPag(b => { b.documentos[1].arrecadado_em = '03/12/2025'; }, 'empresas[0].pagamentos.documentos[1].arrecadado_em')
+    && !!foraPag(b => { delete b.documentos[1].valor_total; }, 'empresas[0].pagamentos.documentos[1].valor_total'));
+  chk('valor negativo, data que não existe ou guias demais: os pagamentos da empresa ficam de fora',
+    !!foraPag(b => { b.documentos[0].juros = -1; }, 'empresas[0].pagamentos.documentos[0].juros')
+    && !!foraPag(b => { b.documentos[0].partes[0].vencimento = '2025-02-30'; }, 'empresas[0].pagamentos.documentos[0].partes[0].vencimento')
+    && !!foraPag(b => { b.documentos = Array.from({ length: LIMITES.pagamentos + 1 }, (_, i) => ({ numero: 'N' + i, arrecadado_em: '2026-01-01', valor_total: 1 })); }, 'empresas[0].pagamentos.documentos'));
+}
+
 console.log('A lista de empresas pra ponte:');
 const carteira = [{ cliente_id: 'a', entrada: '2025-01-01', saida: null }, { cliente_id: 'b', entrada: '2025-01-01', saida: '2026-01-31' },
   { cliente_id: 'c', entrada: '2025-01-01', saida: '2026-12-31' }, { cliente_id: 'd', entrada: null, saida: null }, { cliente_id: 'e', entrada: '2025-01-01', saida: null },

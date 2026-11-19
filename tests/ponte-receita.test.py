@@ -48,6 +48,13 @@ dígito verificador errado; o do escritório, com letras, montado aqui).
       novo, o recusado não; o sistema fora para no primeiro sem mudar o código de saída; o receita relatorios manda o
       que faltou sem chamar o Serpro; só o relatório das empresas da lista, o mais velho primeiro, nunca a declaração;
       o --falso, o --sem-enviar e a demonstração não mandam — e cada pedido passou pelo validarRelatorio de verdade
+  14. os pagamentos (19/11/2026, PAGTOWEB · PAGAMENTOS71): o pedido (a janela da primeira vez, desde 01/01/2025, e a
+      seguinte, do fim da anterior menos 45 dias, até ontem), cada guia no contrato (as datas, os valores, a receita com
+      a extensão, as partes), as páginas (a cheia pede a seguinte, a guia repetida vai uma vez, cada página conta no
+      teto), o dia 25 (e o dia útil depois) no calendário, a recusa que não mexe na autorização nem tira a empresa das
+      outras consultas, a guia sem o valor (a_conferir, nada vai), o "nada encontrado", o teto entre as páginas (nada
+      vai pela metade, volta na próxima) e a cópia no PC juntada pelo número. A resposta do PAGAMENTOS71 em
+      tests/fixtures/receita/ foi montada no formato da documentação (19/11/2026) até a da demonstração chegar
 Termina com código 1 se alguma checagem falhar.
 """
 import base64
@@ -97,11 +104,15 @@ CONTRATO_BLOCOS = {
     'faturamento': {'competencia', 'receita_mes', 'receita_12_meses'},
     'caixa_postal': {'mensagens'},
     'situacao_fiscal': {'consultada_em', 'pendencias'},
+    'pagamentos': {'de', 'ate', 'documentos'},
 }
 CONTRATO_MES = {'competencia', 'transmitida_em', 'das_pago'}
 CONTRATO_MENSAGEM = {'id', 'assunto', 'enviada_em', 'origem', 'lida'}
 CONTRATO_PENDENCIA = {'orgao', 'titulo'}
 CONTRATO_FALTOU = {'documento', 'servico', 'motivo'}
+CONTRATO_GUIA = {'numero', 'tipo_codigo', 'tipo', 'periodo_apuracao', 'arrecadado_em', 'vencimento', 'receita_codigo',
+                 'receita', 'referencia', 'valor_total', 'principal', 'multa', 'juros', 'saldo', 'partes'}
+CONTRATO_PARTE = {'receita_codigo', 'receita', 'periodo_apuracao', 'vencimento', 'valor_total', 'principal', 'multa', 'juros'}
 
 KEY = 'CONSUMER-KEY-DE-TESTE'
 SECRET = 'CONSUMER-SECRET-DE-TESTE'
@@ -1083,8 +1094,8 @@ def caso_servicos(srp, sis):
     ok(versoes == {'SOLICITARPROTOCOLO91': '2.0', 'RELATORIOSITFIS92': '2.0'},
        f'situacao_fiscal: a versão 2.0 do SITFIS (a 1.0 a Receita desligou em 11/2026) — {versoes}')
     ok(faltou(pac) == [], 'nada no faltou')
-    ok(pac and pac['tipo'] == 'receita' and pac['versao'] == 1 and pac['rodada']['ponte'] == '0.3.0'
-       and pac['rodada']['ambiente'] == 'producao', 'o pacote: tipo receita, versão 1, ponte 0.3.0, produção')
+    ok(pac and pac['tipo'] == 'receita' and pac['versao'] == 1 and pac['rodada']['ponte'] == '0.4.0'
+       and pac['rodada']['ambiente'] == 'producao', 'o pacote: tipo receita, versão 1, ponte 0.4.0, produção')
     ok(pac and pac['rodada']['chamadas_mes'] == len(srp.pedidos), f'chamadas_mes = as chamadas do mês ({len(srp.pedidos)})')
 
     # a autorização vencida (a da demonstração, de 2023)
@@ -2225,7 +2236,8 @@ def caso_virada_do_ano(srp, sis):
             self.declarados, self.pgdas_em = declarados, pgdas_em
 
         def consultada_em(self, servico, doc):
-            return {'pgdas': self.pgdas_em, 'autorizacao': '2027-04-01', 'situacao_fiscal': '2027-04-05'}[servico]
+            return {'pgdas': self.pgdas_em, 'autorizacao': '2027-04-01', 'situacao_fiscal': '2027-04-05',
+                    'pagamentos': '2027-03-25'}[servico]
 
         def sem_autorizacao(self, doc, hoje):
             return False
@@ -2257,7 +2269,8 @@ def caso_folga_situacao():
             self.situacao_em = situacao_em
 
         def consultada_em(self, servico, doc):
-            return {'autorizacao': '2026-11-02', 'pgdas': None, 'situacao_fiscal': self.situacao_em}[servico]
+            return {'autorizacao': '2026-11-02', 'pgdas': None, 'situacao_fiscal': self.situacao_em,
+                    'pagamentos': '2026-10-26'}[servico]
 
         def sem_autorizacao(self, doc, hoje):
             return False
@@ -2561,7 +2574,8 @@ def caso_procurador(srp, sis):
     ok(autores('MSGCONTRIBUINTE61') == {A: (AUTOR_PROCURADOR, tok), C: (AUTOR_ESCRITORIO, None)}
        and len(((empresa(pac, A) or {}).get('caixa_postal') or {}).get('mensagens', [])) == 50,
        '  e as mensagens de A, em nome do procurador')
-    ok(faltou(pac) == [(B, 'caixa_postal', 'sem_autorizacao'), (B, 'situacao_fiscal', 'sem_autorizacao')],
+    ok(faltou(pac) == [(B, 'caixa_postal', 'sem_autorizacao'), (B, 'pagamentos', 'sem_autorizacao'),
+                       (B, 'situacao_fiscal', 'sem_autorizacao')],
        f'no faltou, só a B (vencida) — nenhum acesso negado ({faltou(pac)})')
     log = logs(p)
     ok('1 empresa(s) consultada(s) em nome do procurador' in log and 'o termo de autorização foi aceito' in log,
@@ -2874,6 +2888,150 @@ def caso_dominio():
         ok(g.returncode == 0, 'e o arquivo é o mesmo da main')
 
 
+# ---------------------------------------------------------------- 14. os pagamentos (19/11/2026)
+
+def _guias_falsas(n, inicio=1, dia='2026-10-20'):
+    return [{'numeroDocumento': f'0720260000{inicio + i:07d}', 'tipo': {'codigo': 'DAS', 'descricao': 'DAS'},
+             'periodoApuracao': '202609', 'dataArrecadacao': dia, 'dataVencimento': '2026-10-20',
+             'receitaPrincipal': {'codigo': '3333', 'descricao': 'SIMPLES'}, 'valorTotal': '1.234,50',
+             'valorPrincipal': 1234.5, 'valorMulta': None, 'valorJuros': None, 'valorSaldoTotal': 0, 'desmembramentos': []}
+            for i in range(n)]
+
+
+def _resposta_guias(guias):
+    return {'status': 200, 'mensagens': [{'codigo': '[Sucesso-PAGTOWEB]', 'texto': 'ok'}], 'dados': json.dumps(guias)}
+
+
+def caso_pagamentos(srp, sis):
+    titulo('14. os pagamentos (PAGTOWEB · PAGAMENTOS71, 19/11/2026)')
+    from ponte.receita import calendario
+
+    def pedidos_pag(doc=None):
+        return [json.loads(p['pedido']['pedidoDados']['dados']) for p in srp.pedidos
+                if p['servico'] == 'PAGAMENTOS71' and (doc is None or p['doc'] == doc)]
+
+    # a primeira rodada: as três empresas, a janela desde 01/01/2025 até ontem
+    pasta = pasta_nova()
+    escrever_config(pasta, sis)
+    srp.zerar()
+    sis.zerar()
+    cod, _ = rodar(pasta, srp, '--so', 'autorizacao,pagamentos', hoje='2026-11-19')
+    pac = sis.ultimo()
+    ok(cod == 0 and srp.servicos('PAGAMENTOS71') == [A, B, C], f'a primeira rodada consulta as três empresas (saiu {cod}, {srp.servicos("PAGAMENTOS71")})')
+    ped = [p for p in srp.pedidos if p['servico'] == 'PAGAMENTOS71'][0]
+    ok(ped['endpoint'] == 'Consultar' and ped['pedido']['pedidoDados']['idSistema'] == 'PAGTOWEB'
+       and ped['pedido']['pedidoDados']['versaoSistema'] == '1.0'
+       and json.loads(ped['pedido']['pedidoDados']['dados']) == {'intervaloDataArrecadacao': {'dataInicial': '2025-01-01', 'dataFinal': '2026-11-18'},
+                                                                 'primeiroDaPagina': 0, 'tamanhoDaPagina': 100},
+       '  o pedido: Consultar, PAGTOWEB, a janela de 01/01/2025 até ontem, a primeira página de 100')
+    pg = (empresa(pac, A) or {}).get('pagamentos') or {}
+    darf = {'numero': '99999999999999901', 'tipo_codigo': 'DARF', 'tipo': 'Documento de Arrecadação de Receitas Federais',
+            'periodo_apuracao': '2019-08-31', 'arrecadado_em': '2019-09-30', 'vencimento': '2019-09-30', 'receita_codigo': '9999-01',
+            'receita': 'RECEITA DE EXEMPLO', 'referencia': None, 'valor_total': 1000.5, 'principal': 1000.5, 'multa': 0.0,
+            'juros': 0.0, 'saldo': 0.0, 'partes': [{'receita_codigo': '9999-01', 'receita': 'RECEITA DE EXEMPLO',
+            'periodo_apuracao': '2019-08-31', 'vencimento': '2019-09-30', 'valor_total': 1000.5, 'principal': 1000.5, 'multa': 0.0, 'juros': 0.0}]}
+    ok(pg.get('de') == '2025-01-01' and pg.get('ate') == '2026-11-18' and len(pg.get('documentos') or []) == 2
+       and pg['documentos'][0] == darf, f"  o bloco: a janela e as guias na ordem do pagamento; o DARF inteiro, com a receita e a extensão — {(pg.get('documentos') or [None])[0]}")
+    das = (pg.get('documentos') or [None, None])[1] or {}
+    ok(das.get('multa') == 7.5 and das.get('juros') == 5.23 and das.get('receita_codigo') == '3333' and das.get('partes') == []
+       and das.get('periodo_apuracao') == '2019-09-01', f'  o DAS: a multa e os juros, a receita sem extensão, sem partes — {das}')
+    ok(set(pg) == CONTRATO_BLOCOS['pagamentos'] and all(set(g) == CONTRATO_GUIA for g in pg.get('documentos') or [])
+       and all(set(x) == CONTRATO_PARTE for g in pg.get('documentos') or [] for x in g['partes']), '  só o contrato')
+    ok(sis.validacoes and all(v['ok'] and not v['recusadas'] for v in sis.validacoes), '  e o validarPacote de verdade não recusou nada')
+    est = estado(pasta) or {}
+    ok(est.get('pagamentos', {}).get(A) == {'consultada_em': '2026-11-19', 'ate': '2026-11-18'},
+       f"  o estado lembra o dia e o fim da janela — {est.get('pagamentos', {}).get(A)}")
+    copia = pasta / 'receita' / 'pagamentos' / f'{A}.json'
+    ok(copia.is_file() and [g['numero'] for g in json.loads(copia.read_text(encoding='utf-8'))['documentos']]
+       == ['99999999999999901', '99999999999999902'], '  a cópia no PC, com as guias')
+    ok('pagamentos — 3 empresa(s) consultada(s), 6 guia(s) na janela' in logs(pasta), '  o log diz quantas empresas e guias')
+
+    # o calendário: no dia seguinte não; no dia 25, sim, com a janela do fim da anterior menos 45 dias; a página cheia
+    # pede a seguinte e a guia repetida vai uma vez
+    srp.zerar(); sis.zerar()
+    rodar(pasta, srp, hoje='2026-11-20')
+    ok(srp.servicos('PAGAMENTOS71') == [], 'no dia seguinte não consulta de novo')
+    srp.zerar(); sis.zerar()
+    pagina1 = _guias_falsas(100)
+    pagina2 = _guias_falsas(3, inicio=100)          # a primeira desta página é a última da anterior
+    srp.por_doc[('PAGAMENTOS71', A)] = [_resposta_guias(pagina1), _resposta_guias(pagina2)]
+    cod, _ = rodar(pasta, srp, hoje='2026-11-25')
+    pac = sis.ultimo()
+    pa = pedidos_pag(A)
+    ok([p['primeiroDaPagina'] for p in pa] == [0, 100]
+       and all(p['intervaloDataArrecadacao'] == {'dataInicial': '2026-10-04', 'dataFinal': '2026-11-24'} for p in pa),
+       f'no dia 25: a janela do fim da anterior menos 45 dias até ontem, e a página cheia pede a seguinte ({pa})')
+    docs = ((empresa(pac, A) or {}).get('pagamentos') or {}).get('documentos') or []
+    ok(len(docs) == 102 and len({g['numero'] for g in docs}) == 102 and docs[0]['valor_total'] == 1234.5
+       and docs[0]['multa'] is None and docs[0]['periodo_apuracao'] == '2026-09-01',
+       f'  as 102 guias, a repetida uma vez; "1.234,50" = 1234,5; o que não veio fica null; 202609 = 2026-09-01 ({len(docs)})')
+    cham = json.loads((pasta / 'receita' / 'chamadas-2026-11.json').read_text(encoding='utf-8'))
+    ok(cham.get('PAGAMENTOS71') == 3 + 2 + 2, f"  cada página conta no teto ({cham.get('PAGAMENTOS71')})")
+    ok(len(json.loads(copia.read_text(encoding='utf-8'))['documentos']) == 104, '  a cópia junta as de antes com as novas, pelo número')
+
+    # o dia 25 no sábado: o dia útil seguinte
+    class Est:
+        def __init__(self, em):
+            self.em = em
+
+        def consultada_em(self, servico, doc):
+            return {'pagamentos': self.em}.get(servico, '2026-04-27')
+
+        def sem_autorizacao(self, doc, hoje):
+            return False
+
+        def meses_declarados(self, doc):
+            return {}
+    d = datetime.date
+    emp = {'documento': A, 'regime': 'presumido'}
+    ok('pagamentos' not in calendario.servicos_do_dia(d(2026, 4, 24), emp, Est('2026-03-25'))
+       and 'pagamentos' in calendario.servicos_do_dia(d(2026, 4, 27), emp, Est('2026-03-25'))
+       and 'pagamentos' in calendario.servicos_do_dia(d(2026, 4, 28), emp, Est('2026-03-25'))
+       and 'pagamentos' not in calendario.servicos_do_dia(d(2026, 4, 28), emp, Est('2026-04-27'))
+       and 'pagamentos' in calendario.servicos_do_dia(d(2026, 4, 2), emp, Est(None)),
+       'o 25/04/2026 é sábado: roda na segunda 27 (ou na primeira rodada depois); a empresa nova, na primeira rodada')
+
+    # a recusa (o cliente autorizou o escritório sem o serviço de pagamentos), a guia sem o valor e o "nada encontrado"
+    pasta2 = pasta_nova()
+    escrever_config(pasta2, sis)
+    srp.zerar(); sis.zerar()
+    rodar(pasta2, srp, '--so', 'autorizacao', hoje='2026-11-19')
+    srp.zerar(); sis.zerar()
+    srp.por_doc[('PAGAMENTOS71', B)] = [403]
+    srp.por_doc[('PAGAMENTOS71', C)] = [_resposta_guias([{'numeroDocumento': 'X1', 'dataArrecadacao': '2026-10-20'}])]
+    srp.por_doc[('PAGAMENTOS71', A)] = [(404, {'status': 404, 'mensagens': [
+        {'codigo': '[Aviso-PAGTOWEB-404]', 'texto': 'Não foram encontrados documentos de arrecadação para os filtros informados.'}]}, {})]
+    cod, _ = rodar(pasta2, srp, '--so', 'pagamentos', hoje='2026-11-19')
+    pac = sis.ultimo()
+    ok(faltou(pac) == [(B, 'pagamentos', 'sem_autorizacao'), (C, 'pagamentos', 'a_conferir')],
+       f'a recusa vai no faltou como sem autorização; a guia sem o valor, como a conferir ({faltou(pac)})')
+    ok((empresa(pac, A) or {}).get('pagamentos', {}).get('documentos') == [] and not (empresa(pac, C) or {}).get('pagamentos'),
+       '  o "nada encontrado" é a lista vazia; da guia sem o valor, nada vai')
+    ok(sis.validacoes and all(v['ok'] and not v['recusadas'] for v in sis.validacoes), '  e o validarPacote não recusou nada')
+    est2 = estado(pasta2) or {}
+    ok(est2.get('autorizacao', {}).get(B, {}).get('situacao') == 'ativa' and est2.get('pagamentos', {}).get(B) == {'consultada_em': '2026-11-19'}
+       and est2.get('pagamentos', {}).get(C) == {'consultada_em': '2026-11-19'},
+       f"  a autorização de B segue ativa; B e C marcadas como consultadas, sem o fim da janela ({est2.get('pagamentos')})")
+    srp.zerar(); sis.zerar()
+    rodar(pasta2, srp, '--so', 'situacao_fiscal', hoje='2026-11-20')
+    ok(B in srp.servicos('SOLICITARPROTOCOLO91'), '  e B segue nas outras consultas')
+    srp.zerar(); sis.zerar()
+    rodar(pasta2, srp, hoje='2026-11-23')
+    ok(srp.servicos('PAGAMENTOS71') == [], '  a recusa e a guia sem o valor voltam só no dia 25')
+
+    # o teto entre as páginas: nada vai pela metade, e a consulta volta na próxima rodada
+    pasta3 = pasta_nova()
+    escrever_config(pasta3, sis, teto=1)
+    srp.zerar(); sis.zerar()
+    srp.por_doc[('PAGAMENTOS71', A)] = [_resposta_guias(_guias_falsas(100))]
+    rodar(pasta3, srp, '--so', 'pagamentos', '--empresas', '1', hoje='2026-11-19')
+    pac = sis.ultimo()
+    est3 = estado(pasta3) or {}
+    ok(len(pedidos_pag(A)) == 1 and faltou(pac) == [(A, 'pagamentos', 'teto')] and not (empresa(pac, A) or {}).get('pagamentos')
+       and not (est3.get('pagamentos') or {}).get(A) and not (pasta3 / 'receita' / 'pagamentos' / f'{A}.json').exists(),
+       f'o teto entre as páginas: nada vai, nada é lembrado, sem cópia — volta na próxima ({faltou(pac)})')
+
+
 def main():
     global VALIDADOR
     pasta_js = pasta_nova()
@@ -2901,7 +3059,8 @@ def main():
                      lambda: caso_respostas_da_funcao(srp, sis), lambda: caso_faturamento_pendente(srp, sis),
                      lambda: caso_virada_do_ano(srp, sis), caso_folga_situacao, lambda: caso_certificado_do_serpro(srp, sis),
                      lambda: caso_caixa_postal_revisao(srp, sis), caso_termo, lambda: caso_procurador(srp, sis),
-                     lambda: caso_relatorios(srp, sis), lambda: caso_validacoes(sis), caso_dominio):
+                     lambda: caso_relatorios(srp, sis), lambda: caso_pagamentos(srp, sis), lambda: caso_validacoes(sis),
+                     caso_dominio):
             try:
                 caso()
             except Exception as e:   # um caso que quebra no meio não esconde os outros

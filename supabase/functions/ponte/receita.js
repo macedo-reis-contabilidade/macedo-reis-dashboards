@@ -1,6 +1,7 @@
 // ============================================================
 // MACEDO & REIS — Edge Function ponte: as regras puras (23/10/2026)
-// O pacote da Receita que a ponte do PC do escritório manda (o contrato está em docs/FILA-CODE-2026-10-23.md, 2.5) é
+// O pacote da Receita que a ponte do PC do escritório manda (o contrato está em docs/FILA-CODE-2026-10-23.md, 2.5, e o
+// bloco dos pagamentos, de 19/11/2026, em docs/FILA-CODE-2026-11-19-PAGAMENTOS.md) é
 // conferido campo a campo e montado de novo só com o que o contrato prevê: o que vier a mais fica de fora, texto é
 // cortado, número e data têm de ser de verdade. Quem grava é o banco (receita_gravar), com o pacote que sai daqui.
 // O bloco de uma empresa fora do contrato fica de fora sozinho (vai pro faltou com 'erro'); só o que é da rodada recusa
@@ -11,8 +12,9 @@
 
 // corpo: o maior pacote que a função aceita (05/11/2026: de 5 pra 16 MB — o do Domínio da versão 2, 14 meses de 474
 // empresas com os valores em reais, passou dos 5; o banco o recebe em partes, gravarDominio em servidor.js)
-export const LIMITES = { empresas: 3000, meses: 36, mensagens: 300, pendencias: 100, faltou: 6000, corpo: 16 * 1024 * 1024 };
-export const SERVICOS = ['autorizacao', 'pgdas', 'faturamento', 'caixa_postal', 'situacao_fiscal'];
+// pagamentos e partes (19/11/2026): as guias pagas de uma empresa num pacote e os tributos de cada uma
+export const LIMITES = { empresas: 3000, meses: 36, mensagens: 300, pendencias: 100, pagamentos: 1000, partes: 60, faltou: 6000, corpo: 16 * 1024 * 1024 };
+export const SERVICOS = ['autorizacao', 'pgdas', 'faturamento', 'caixa_postal', 'situacao_fiscal', 'pagamentos'];
 export const MOTIVOS = ['sem_autorizacao', 'teto', 'erro', 'a_conferir'];
 export const REGIME = { 'Simples Nacional': 'simples', MEI: 'mei', 'Lucro Presumido': 'presumido', 'Lucro Real': 'real' };
 
@@ -123,6 +125,45 @@ const BLOCOS = {
       if (!titulo) recusar(w + '.titulo', 'pendência sem título');
       return { orgao: texto(x.orgao, 30) || 'Receita', titulo };
     }) };
+  },
+  // os pagamentos (19/11/2026, PAGTOWEB · PAGAMENTOS71, com o "pode ligar" do Samuel de 18/11): a janela consultada (de,
+  // até: as datas de pagamento que o pedido cobriu) e cada guia paga nela — o número (a chave: o mesmo de novo atualiza),
+  // o tipo, o período de apuração, o dia do pagamento, o vencimento, a receita, os valores e a parte de cada tributo. A
+  // lista vazia é "nada pago na janela"; sem a janela, nada a gravar (não daria pra saber o que foi consultado)
+  pagamentos(b, onde) {
+    objeto(b, onde);
+    const de = dataDe(b.de, onde + '.de'), ate = dataDe(b.ate, onde + '.ate');
+    if (!de) recusar(onde + '.de', 'falta o começo da janela consultada');
+    if (!ate) recusar(onde + '.ate', 'falta o fim da janela consultada');
+    if (de > ate) recusar(onde + '.de', 'o começo da janela depois do fim');
+    const vistos = new Set(), documentos = [];
+    lista(b.documentos, LIMITES.pagamentos, onde + '.documentos').forEach((d, j) => {
+      const w = onde + '.documentos[' + j + ']';
+      objeto(d, w);
+      const numero = texto(d.numero, 40);
+      if (!numero) recusar(w + '.numero', 'guia sem o número do documento');
+      const arrecadado = dataDe(d.arrecadado_em, w + '.arrecadado_em');
+      if (!arrecadado) recusar(w + '.arrecadado_em', 'guia sem o dia do pagamento');
+      const total = valorDe(d.valor_total, w + '.valor_total');
+      if (total == null) recusar(w + '.valor_total', 'guia sem o valor pago');
+      const partes = lista(d.partes, LIMITES.partes, w + '.partes').map((x, k) => {
+        const u = w + '.partes[' + k + ']';
+        objeto(x, u);
+        return { receita_codigo: texto(x.receita_codigo, 12), receita: texto(x.receita, 120),
+          periodo_apuracao: dataDe(x.periodo_apuracao, u + '.periodo_apuracao'), vencimento: dataDe(x.vencimento, u + '.vencimento'),
+          valor_total: valorDe(x.valor_total, u + '.valor_total'), principal: valorDe(x.principal, u + '.principal'),
+          multa: valorDe(x.multa, u + '.multa'), juros: valorDe(x.juros, u + '.juros') };
+      });
+      const doc = { numero, tipo_codigo: texto(d.tipo_codigo, 10), tipo: texto(d.tipo, 60),
+        periodo_apuracao: dataDe(d.periodo_apuracao, w + '.periodo_apuracao'), arrecadado_em: arrecadado,
+        vencimento: dataDe(d.vencimento, w + '.vencimento'), receita_codigo: texto(d.receita_codigo, 12), receita: texto(d.receita, 120),
+        referencia: texto(d.referencia, 60), valor_total: total, principal: valorDe(d.principal, w + '.principal'),
+        multa: valorDe(d.multa, w + '.multa'), juros: valorDe(d.juros, w + '.juros'), saldo: valorDe(d.saldo, w + '.saldo'), partes };
+      if (vistos.has(numero)) return;          // a mesma guia duas vezes (de duas páginas): fica a primeira
+      vistos.add(numero);
+      documentos.push(doc);
+    });
+    return { de, ate, documentos };
   }
 };
 

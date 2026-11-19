@@ -8,6 +8,8 @@
     caixa_postal     EVENTOSATUALIZACAO · SOLICEVENTOSPJ132 + OBTEREVENTOSPJ134 (o evento E0601, Caixa Postal, em lote
                      de até 1.000 CNPJs) e, só de quem teve novidade, CAIXAPOSTAL · MSGCONTRIBUINTE61
     situacao_fiscal  SITFIS · SOLICITARPROTOCOLO91 (Apoiar) + RELATORIOSITFIS92 (Emitir) — do PDF, as pendências
+    pagamentos       PAGTOWEB · PAGAMENTOS71 (19/11/2026) — as guias pagas numa janela de datas de pagamento (o DAS, o
+                     DARF), com o dia, os valores e a parte de cada tributo; em páginas de 100, cada uma uma chamada
 
 Toda consulta passa por consultar(): o teto do mês, o Serpro fora do ar, o acesso negado (= o cliente não autorizou)
 e a recusa viram Falta, que a rodada põe no `faltou` com o motivo (sem_autorizacao, teto, erro, a_conferir). A Falta
@@ -437,3 +439,186 @@ def situacao_fiscal(cli, empresa, hoje, pasta, tentativas=6, autor=None):
         bloco['pendencias'] = bloco['pendencias'][:MAX_PENDENCIAS]
         return bloco, None, f'{n} pendências no relatório: vão as {MAX_PENDENCIAS} primeiras (o PDF ficou em {guardado.name})'
     return bloco, None, None
+
+
+# ---------------------------------------------------------------- pagamentos (19/11/2026)
+# O "pode ligar" do Samuel de 18/11/2026: a consulta de pagamentos do Integra, uma vez por mês por empresa, pra a
+# importação da contabilidade (o pagamento no dia e no valor de verdade) e a conferência do que foi pago. O formato da
+# resposta é o da documentação do Serpro (a lista dos documentos de arrecadação no `dados`); as datas e os valores são
+# lidos em mais de um formato, e a guia sem o número, o dia do pagamento ou o valor faz o bloco não ir (a_conferir) —
+# o sistema recusaria o bloco inteiro.
+
+INICIO_PAGAMENTOS = datetime.date(2025, 1, 1)   # a primeira janela de cada empresa: o que as contabilidades em aberto pedem
+SOBREPOSICAO_PAGAMENTOS = 45                    # dias: a janela seguinte começa antes do fim da anterior
+PAGINA_PAGAMENTOS = 100
+PAGINAS_PAGAMENTOS = 10                         # até 1.000 guias por empresa numa consulta (o limite do sistema)
+NADA_PAGO = re.compile(r'n[aã]o (foi|foram) encontrad|nenhum (documento|pagamento|registro)|sem (documentos?|pagamentos?)',
+                       re.IGNORECASE)
+
+
+def janela_pagamentos(ate_anterior, hoje):
+    """(de, até) da consulta: até ontem; na primeira vez desde INICIO_PAGAMENTOS, depois do `até` da última janela boa
+    menos SOBREPOSICAO_PAGAMENTOS dias — o pagamento que aparece atrasado no sistema da Receita entra, sem chamada a
+    mais (é a mesma página)."""
+    ate = hoje - datetime.timedelta(days=1)
+    de = INICIO_PAGAMENTOS
+    if ate_anterior:
+        try:
+            de = datetime.date.fromisoformat(str(ate_anterior)[:10]) - datetime.timedelta(days=SOBREPOSICAO_PAGAMENTOS)
+        except ValueError:
+            de = INICIO_PAGAMENTOS
+    de = min(max(de, INICIO_PAGAMENTOS), ate)
+    return de, ate
+
+
+def _dia(valor):
+    """A data em AAAA-MM-DD, de AAAA-MM-DD (com ou sem a hora), AAAAMMDD (com ou sem a hora) ou DD/MM/AAAA; None se
+    não for uma data."""
+    s = str(valor if valor is not None else '').strip()
+    m = re.match(r'^(\d{4})-(\d{2})-(\d{2})(?:[T ].*)?$', s) or re.match(r'^(\d{4})(\d{2})(\d{2})(?:\d{4,6})?$', s)
+    if m:
+        a, b, c = m.groups()
+    else:
+        m = re.match(r'^(\d{2})/(\d{2})/(\d{4})$', s)
+        if not m:
+            return None
+        c, b, a = m.groups()
+    try:
+        return datetime.date(int(a), int(b), int(c)).isoformat()
+    except ValueError:
+        return None
+
+
+def _periodo(valor):
+    """O período de apuração: a data, quando vem inteira; o mês (AAAAMM, AAAA-MM ou MM/AAAA) vira o dia 1."""
+    d = _dia(valor)
+    if d:
+        return d
+    s = str(valor if valor is not None else '').strip()
+    m = re.match(r'^(\d{4})-?(\d{2})$', s)
+    if m:
+        a, b = m.groups()
+    else:
+        m = re.match(r'^(\d{2})/(\d{4})$', s)
+        if not m:
+            return None
+        b, a = m.groups()
+    try:
+        return datetime.date(int(a), int(b), 1).isoformat()
+    except ValueError:
+        return None
+
+
+def _valor(v):
+    """O valor com 2 casas: número, '1234.56' ou '1.234,56'. Sem valor, ou o que não é número, None — nunca um 0
+    inventado; negativo também vira None (o contrato não tem valor negativo)."""
+    if v is None or isinstance(v, bool) or v == '':
+        return None
+    if isinstance(v, (int, float)):
+        n = float(v)
+    else:
+        t = str(v).strip().replace(' ', '')
+        if ',' in t:
+            t = t.replace('.', '').replace(',', '.')
+        try:
+            n = float(t)
+        except ValueError:
+            return None
+    if n != n or n in (float('inf'), float('-inf')) or n < 0:
+        return None
+    return round(n, 2)
+
+
+def _txt(v, n):
+    t = re.sub(r'\s+', ' ', str(v if v is not None else '')).strip()
+    return t[:n] if t else None
+
+
+def _receita(r):
+    """(o código, com '-' e a extensão quando ela vem; a descrição) da receitaPrincipal."""
+    r = r if isinstance(r, dict) else {}
+    cod, ext = _txt(r.get('codigo'), 12), _txt(r.get('extensaoReceita'), 6)
+    if cod and ext:
+        cod = f'{cod}-{ext}'[:12]
+    return cod, _txt(r.get('descricao'), 120)
+
+
+def guia_do_pagamento(g):
+    """Uma guia da resposta no formato do contrato: (guia, None), ou (None, o porquê) — sem o número, sem o dia do
+    pagamento que a ponte entenda ou sem o valor pago."""
+    if not isinstance(g, dict):
+        return None, 'uma guia que não é um objeto'
+    numero = _txt(g.get('numeroDocumento'), 40)
+    if not numero:
+        return None, 'uma guia sem o número do documento'
+    arrecadado = _dia(g.get('dataArrecadacao'))
+    if not arrecadado:
+        return None, f"uma guia com o dia do pagamento num formato que a ponte não entende ({str(g.get('dataArrecadacao'))[:20]})"
+    total = _valor(g.get('valorTotal'))
+    if total is None:
+        return None, 'uma guia sem o valor pago'
+    tipo = g.get('tipo') if isinstance(g.get('tipo'), dict) else {}
+    receita_codigo, receita = _receita(g.get('receitaPrincipal'))
+    partes = []
+    for x in (g.get('desmembramentos') if isinstance(g.get('desmembramentos'), list) else [])[:60]:
+        if not isinstance(x, dict):
+            continue
+        c, d = _receita(x.get('receitaPrincipal'))
+        partes.append({'receita_codigo': c, 'receita': d, 'periodo_apuracao': _periodo(x.get('periodoApuracao')),
+                       'vencimento': _dia(x.get('dataVencimento')), 'valor_total': _valor(x.get('valorTotal')),
+                       'principal': _valor(x.get('valorPrincipal')), 'multa': _valor(x.get('valorMulta')),
+                       'juros': _valor(x.get('valorJuros'))})
+    return {'numero': numero, 'tipo_codigo': _txt(tipo.get('codigo'), 10), 'tipo': _txt(tipo.get('descricao'), 60),
+            'periodo_apuracao': _periodo(g.get('periodoApuracao')), 'arrecadado_em': arrecadado,
+            'vencimento': _dia(g.get('dataVencimento')), 'receita_codigo': receita_codigo, 'receita': receita,
+            'referencia': _txt(g.get('referencia'), 60), 'valor_total': total, 'principal': _valor(g.get('valorPrincipal')),
+            'multa': _valor(g.get('valorMulta')), 'juros': _valor(g.get('valorJuros')), 'saldo': _valor(g.get('valorSaldoTotal')),
+            'partes': partes}, None
+
+
+def _lista_de_guias(r):
+    """A lista de guias da resposta (o `dados`, um JSON em texto); None se a resposta não trouxe uma lista."""
+    d = _json_fundo(r.dados_texto)
+    if d is None or d == '':
+        return []
+    if isinstance(d, dict):
+        for chave in ('documentos', 'pagamentos', 'lista', 'listaDocumentos'):
+            if isinstance(d.get(chave), list):
+                return d[chave]
+        return None
+    return d if isinstance(d, list) else None
+
+
+def pagamentos(cli, empresa, de, ate, autor=None):
+    """As guias pagas de `de` a `ate` (datas de pagamento): PAGTOWEB · PAGAMENTOS71, em páginas de 100 — cada página é
+    uma chamada (conta no teto); a página cheia pede a seguinte. Devolve (bloco, problema): o bloco do contrato, ou
+    (None, o porquê) quando a resposta não dá pra ler — aí nada vai e a rodada põe o a_conferir no faltou. O teto que
+    acaba entre as páginas levanta a Falta (nada vai pela metade). O "nada encontrado" da Receita é a lista vazia."""
+    doc = empresa['documento']
+    guias, vistos = [], set()
+    for pagina in range(PAGINAS_PAGAMENTOS):
+        r = consultar(cli, 'Consultar', 'PAGTOWEB', 'PAGAMENTOS71', doc,
+                      {'intervaloDataArrecadacao': {'dataInicial': de.isoformat(), 'dataFinal': ate.isoformat()},
+                       'primeiroDaPagina': pagina * PAGINA_PAGAMENTOS, 'tamanhoDaPagina': PAGINA_PAGAMENTOS},
+                      autor=autor)
+        if not r.ok() and not r.acesso_negado() and NADA_PAGO.search(r.resumo() or ''):
+            lista = []
+        else:
+            _conferir_resposta(r)
+            lista = _lista_de_guias(r)
+            if lista is None:
+                return None, 'a resposta não trouxe a lista das guias'
+        for g in lista:
+            guia, problema = guia_do_pagamento(g)
+            if problema:
+                return None, problema
+            if guia['numero'] in vistos:
+                continue
+            vistos.add(guia['numero'])
+            guias.append(guia)
+        if len(lista) < PAGINA_PAGAMENTOS:
+            break
+    else:
+        return None, f'mais de {PAGINAS_PAGAMENTOS * PAGINA_PAGAMENTOS} guias na janela (o limite de uma consulta)'
+    guias.sort(key=lambda g: (g['arrecadado_em'], g['numero']))
+    return {'de': de.isoformat(), 'ate': ate.isoformat(), 'documentos': guias}, None

@@ -2,7 +2,7 @@
 
     { "versao": 1, "tipo": "receita",
       "rodada": { id, inicio, fim, maquina, ponte, ambiente, chamadas_mes },
-      "empresas": [ { documento, autorizacao?, pgdas?, faturamento?, caixa_postal?, situacao_fiscal? } ],
+      "empresas": [ { documento, autorizacao?, pgdas?, faturamento?, caixa_postal?, situacao_fiscal?, pagamentos? } ],
       "faltou": [ { documento, servico, motivo } ] }
 
 Bloco que não está na empresa = não consultado nesta rodada (nunca um "vazio" inventado). O que a ponte não conseguiu
@@ -11,6 +11,12 @@ fora do pacote — vai só o `faltou` com `a_conferir` (no sistema, a lista nula
 nulo apagava o do mês). No pacote, só os campos daqui — a mesma trava do Domínio: o que vier a mais é descartado antes
 de montar (o PDF e o texto inteiro de uma mensagem nunca vão nele). O PDF do relatório de situação fiscal vai à parte,
 um por pedido, pra pasta da empresa no Drive (relatorios.py, 09/11/2026).
+
+Os pagamentos (19/11/2026): { de, ate, documentos: [ { numero, tipo_codigo, tipo, periodo_apuracao, arrecadado_em,
+vencimento, receita_codigo, receita, referencia, valor_total, principal, multa, juros, saldo, partes: [ { receita_codigo,
+receita, periodo_apuracao, vencimento, valor_total, principal, multa, juros } ] } ] } — a janela consultada e as guias
+pagas nela (a lista vazia = nada pago na janela). A conferência do sistema: BLOCOS.pagamentos em
+supabase/functions/ponte/receita.js.
 """
 import socket
 import uuid
@@ -21,6 +27,10 @@ MOTIVOS = ('sem_autorizacao', 'teto', 'erro', 'a_conferir')
 SITUACOES = ('ativa', 'vencida', 'sem')
 ORIGENS = ('Receita', 'Estado', 'Município')
 ORGAOS = ('Receita', 'PGFN')
+CAMPOS_GUIA = ('numero', 'tipo_codigo', 'tipo', 'periodo_apuracao', 'arrecadado_em', 'vencimento', 'receita_codigo',
+               'receita', 'referencia', 'valor_total', 'principal', 'multa', 'juros', 'saldo')
+CAMPOS_PARTE = ('receita_codigo', 'receita', 'periodo_apuracao', 'vencimento', 'valor_total', 'principal', 'multa', 'juros')
+NUMEROS = ('valor_total', 'principal', 'multa', 'juros', 'saldo')
 
 
 def _texto(v, n=300):
@@ -71,6 +81,19 @@ def limpar_bloco(servico, b):
         pend = [{'orgao': _so(x.get('orgao'), ORGAOS), 'titulo': _texto(x.get('titulo'), 200)}
                 for x in p if isinstance(x, dict)]
         return {'consultada_em': _texto(b.get('consultada_em'), 10), 'pendencias': pend}
+    if servico == 'pagamentos':
+        de, ate = _texto(b.get('de'), 10), _texto(b.get('ate'), 10)
+        if not de or not ate or not isinstance(b.get('documentos'), list):
+            return None
+        guias = []
+        for g in b['documentos']:
+            if not isinstance(g, dict):
+                continue
+            guia = {k: (_num(g.get(k)) if k in NUMEROS else _texto(g.get(k), 120)) for k in CAMPOS_GUIA}
+            guia['partes'] = [{k: (_num(x.get(k)) if k in NUMEROS else _texto(x.get(k), 120)) for k in CAMPOS_PARTE}
+                              for x in (g.get('partes') or []) if isinstance(x, dict)]
+            guias.append(guia)
+        return {'de': de, 'ate': ate, 'documentos': guias}
     return None
 
 
@@ -100,10 +123,13 @@ def montar(empresas, faltou, inicio, fim, ambiente, chamadas_mes):
 def resumo(pac):
     contas = {s: sum(1 for e in pac['empresas'] if s in e) for s in SERVICOS}
     msgs = sum(len(e['caixa_postal']['mensagens']) for e in pac['empresas'] if 'caixa_postal' in e)
+    guias = sum(len(e['pagamentos']['documentos']) for e in pac['empresas'] if 'pagamentos' in e)
     partes = [f'{s} {n}' for s, n in contas.items() if n]
     texto = f"{len(pac['empresas'])} empresa(s) com dado" + (f" ({', '.join(partes)})" if partes else '')
     if msgs:
         texto += f'; {msgs} mensagem(ns) nova(s) na Caixa Postal'
+    if contas.get('pagamentos'):
+        texto += f'; {guias} guia(s) paga(s)'
     if pac['faltou']:
         por = {}
         for f in pac['faltou']:

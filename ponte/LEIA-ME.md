@@ -314,6 +314,7 @@ mesmo que recusando; o teto e o Serpro fora deixam pra próxima rodada.
 | A última declaração de um mês (o PDF) | `faturamento`: a receita do mês (RPA) e a dos 12 meses (RBT12), com os centavos | Simples: toda rodada confere, sem custo, se há declaração a ler — o mês novo (ou retificado) que o PGDAS mostrou; uma por rodada, a mais antiga primeiro (nenhum mês fica pra trás quando o de antes não veio); na primeira vez, só a do mês mais recente. A que o Serpro respondeu sem a receita (o PDF ilegível, a recusa) volta só no dia do PGDAS |
 | A Caixa Postal | `caixa_postal`: id, assunto, data, origem (Receita, Estado, Município) e se foi lida | todo dia útil: o "quem teve novidade" em lote (até 1.000 CNPJs por pedido, o CNPJ com letras também) e as mensagens só de quem teve — o evento é só o dia da última novidade, então no dia seguinte a uma leitura, com o mesmo dia, lê de novo uma vez (a mensagem que chegou depois da rodada); as 100 mais recentes por empresa; na primeira leitura de uma empresa, só as dos últimos 90 dias (as antigas ficam no e-CAC); a já mandada não vai de novo, salvo a mandada como não lida que depois aparece lida |
 | A situação fiscal (o relatório em PDF) | `situacao_fiscal`: o título de cada pendência e o órgão (Receita ou PGFN); sem pendência = lista vazia | o dia 5 (ou o próximo dia útil); a feita até 7 dias antes vale por ele (03/11/2026: a empresa consultada no dia 3 não repete no dia 5) |
+| Os pagamentos (as guias pagas: o DAS, o DARF) | `pagamentos`: a janela consultada (`de`, `ate`) e cada guia — o número, o tipo, o período de apuração, o dia do pagamento, o vencimento, a receita (com a extensão), o valor pago, o principal, a multa, os juros, o saldo e a parte de cada tributo | o dia 25 (ou o próximo dia útil), uma vez por mês por empresa, de todos os regimes; a empresa nova, na primeira rodada |
 
 Sem procuração (ou vencida), as outras consultas da empresa nem são feitas: vão pro `faltou` como `sem_autorizacao` — também nos dias em que a autorização dela não é consultada (o `estado.json` lembra a última resposta; cada recusa seria uma chamada paga), até a próxima consulta da autorização.
 
@@ -322,6 +323,22 @@ O `faltou` diz também o que parou no `teto`, o que deu `erro` e o que ficou `a_
 conseguiu ler: o bloco **não vai** no pacote (nada de `null` que no sistema viraria "sem pendência" ou apagaria o
 faturamento do mês; nunca um número inventado), só o `faltou`, e o PDF fica guardado. A lista de pendências maior que
 100 vai cortada nas 100 primeiras, com o aviso no log.
+
+**Os pagamentos (19/11/2026, ponte 0.4.0; o "pode ligar" do Samuel de 18/11):** o `PAGTOWEB · PAGAMENTOS71` devolve
+as guias pagas numa janela de **datas de pagamento**. A primeira consulta de cada empresa vai de **01/01/2025** até
+ontem (o que as contabilidades em aberto pedem); as seguintes, do fim da janela anterior **menos 45 dias** até ontem —
+o pagamento que entra atrasado no sistema da Receita aparece na consulta seguinte, sem chamada a mais. A resposta vem
+em páginas de 100: **cada página é uma chamada** (conta no teto), e a página cheia pede a seguinte (até 10 páginas,
+1.000 guias; a guia repetida entre as páginas vai uma vez). O "nada encontrado" da Receita é a lista vazia. A guia sem
+o número, sem o dia do pagamento ou sem o valor pago faz o bloco **não ir** (`a_conferir`, com o porquê no log): o
+sistema recusaria o bloco inteiro, e um número inventado não serve à contabilidade. O teto do mês que acaba entre as
+páginas não manda nada pela metade: a consulta fica pendente pra próxima rodada com chamadas livres. **A recusa não mexe na autorização:** o cliente pode ter dado
+a procuração sem o serviço de pagamentos; a recusa vai pro `faltou` como `sem_autorizacao` (com o serviço
+`pagamentos`), o sistema não marca a empresa como sem autorização, e as outras consultas dela seguem. Recusada ou
+`a_conferir`, a consulta volta no próximo dia 25. Pra que serve: a importação da contabilidade (o pagamento no dia e
+no valor de verdade, com a multa e os juros) e a conferência do que foi pago. **O que a demonstração do Serpro devolve
+ainda não foi conferido** (a resposta de exemplo dos testes, `tests\fixtures\receita\PAGTOWEB-PAGAMENTOS71.json`,
+foi montada pela documentação até a da demonstração chegar).
 
 **O que o sistema responde:** `"gravado": true` (do ambiente de demonstração e do `--falso`, `false`: nada gravado),
 quantas empresas e as `recusadas` — o bloco de uma empresa que saiu do contrato fica de fora sozinho (o resto é
@@ -415,7 +432,7 @@ Os campos (`[integra]`, opcionais, em branco = desligado): `procurador_cpf`, `pr
 ```
 py -3 -m ponte chave                                              # gera a chave da ponte e mostra a impressão digital
 py -3 -m ponte receita conferir                                   # não grava nem manda nada
-py -3 -m ponte receita rodar --demonstracao --sem-enviar --so autorizacao,pgdas,faturamento,caixa_postal,situacao_fiscal --saida demo.json
+py -3 -m ponte receita rodar --demonstracao --sem-enviar --so autorizacao,pgdas,faturamento,caixa_postal,situacao_fiscal,pagamentos --saida demo.json
 py -3 -m ponte receita rodar --falso --sem-enviar                 # o Serpro de mentira dos testes (da pasta do repositório)
 py -3 -m ponte receita relatorios                                 # os PDFs da situação fiscal que faltam, pro Drive (sem o Serpro)
 ```
@@ -456,14 +473,17 @@ prévia de 5 empresas no e-CAC; o e-CAC, só onde o cruzamento do sistema não b
 
 - `C:\ponte-dominio\receita\estado.json` — o que já foi consultado e mandado: a última procuração de cada empresa (e se
   ela é pro CPF do procurador, `via: procurador`), os meses declarados, a declaração já lida de cada mês, a última
-  novidade da Caixa Postal, as mensagens já mandadas e o dia da última consulta da procuração, do PGDAS e da situação
-  fiscal (o "a partir do dia").
+  novidade da Caixa Postal, as mensagens já mandadas e o dia da última consulta da procuração, do PGDAS, da situação
+  fiscal e dos pagamentos (o "a partir do dia"; nos pagamentos, também o fim da última janela que foi, de onde a
+  seguinte começa).
   Só é gravado quando o pacote foi (ou ficou em pendentes) — um envio recusado não perde nada.
 - `C:\ponte-dominio\receita\chamadas-AAAA-MM.json` — as chamadas ao Serpro no mês, por serviço (o teto).
 - `C:\ponte-dominio\receita\pdfs\` — os PDFs da declaração e da situação fiscal, apagados depois de 30 dias. Nunca no
   repositório, nunca no pacote; o da situação fiscal vai também pra pasta da empresa no Drive (acima).
 - `C:\ponte-dominio\receita\relatorios.json` — o dia do último relatório de situação fiscal de cada empresa que foi
   pro Drive (o que está lá não vai de novo).
+- `C:\ponte-dominio\receita\pagamentos\<CNPJ>.json` — as guias pagas de cada empresa, juntadas pelo número a cada
+  consulta (a cópia no PC, pro arquivo de importação da contabilidade; tem dado dos clientes: nunca no repositório).
 - Os logs e os pendentes são os mesmos da ponte do Domínio.
 
 ## O certificado do Serpro
