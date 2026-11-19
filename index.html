@@ -41,6 +41,14 @@
     @media (max-width: 980px) { .pn-hero { grid-template-columns:1fr; } .dashboard-grid { grid-template-columns:repeat(2, minmax(0, 1fr)); } }
     @media (max-width: 640px) { .pn-hero h1 { font-size:2rem; } .dashboard-grid { grid-template-columns:1fr; } }
     @media (prefers-reduced-motion: reduce) { .pn-chip, .pn-anel, #pnAnelArco { transition:none; } .pn-chip:hover, .pn-anel:hover { transform:none; } }
+    /* A Ajuda é uma faixa embaixo dos cards (19/11/2026, com o card Integrações): os seis módulos seguem em três colunas
+       e duas linhas, e o manual, que não tem número, fica numa linha só, da largura toda */
+    .dashboard-card.pn-faixa { grid-column:1 / -1; flex-direction:row; align-items:center; gap:16px; min-height:0; padding:16px 24px; }
+    .dashboard-card.pn-faixa .dashboard-card-icon { margin:0; width:40px; height:40px; flex:none; }
+    .dashboard-card.pn-faixa h3 { margin:0; flex:none; }
+    .dashboard-card.pn-faixa p { flex:1 1 auto; min-width:0; }
+    .dashboard-card.pn-faixa .dashboard-card-footer { margin:0; padding:0; border:0; min-height:0; flex:none; }
+    @media (max-width: 640px) { .dashboard-card.pn-faixa { flex-wrap:wrap; gap:10px 14px; } .dashboard-card.pn-faixa p { flex-basis:100%; } .dashboard-card.pn-faixa .dashboard-card-footer { margin-left:auto; } }
 
     /* Cor de identidade por grupo (no ícone; o assets/js/cards-painel.js leva a mesma cor pro card inteiro) */
     a[href="agenda.html"]         .dashboard-card-icon { background: rgba(120,170,230,.16); color:#8FC0F0; }
@@ -49,6 +57,7 @@
     a[href="ajuda.html"]          .dashboard-card-icon { background: rgba(224,143,168,.15); color:#E08FA8; }
     a[href="noticias.html"]       .dashboard-card-icon { background: rgba(227,179,65,.15);  color:#E3B341; }
     a[href="atendimento.html"]    .dashboard-card-icon { background: rgba(63,176,122,.15);  color:#3FB07A; }
+    a[href="integracoes.html"]    .dashboard-card-icon { background: rgba(178,145,234,.15); color:#B291EA; }
 
     /* Selo "hoje" (urgência do dia) — canto superior direito */
     .badge-hoje { position:absolute; top:14px; right:14px; background:rgba(227,179,65,.18); border:1px solid rgba(227,179,65,.5); color:var(--warn); font-size:11px; font-weight:700; padding:3px 10px; border-radius:999px; letter-spacing:.04em; text-transform:uppercase; box-shadow:0 0 0 3px rgba(227,179,65,.06); }
@@ -169,7 +178,21 @@
           </div>
         </a>
 
-        <a href="ajuda.html" class="dashboard-card">
+        <a href="integracoes.html" class="dashboard-card">
+          <div class="dashboard-card-icon">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M12 22v-5"/><path d="M9 8V2"/><path d="M15 8V2"/><path d="M18 8v5a4 4 0 0 1-4 4h-4a4 4 0 0 1-4-4V8Z"/>
+            </svg>
+          </div>
+          <h3>Integrações</h3>
+          <p>O que o Domínio e a Receita trazem sozinhos pro sistema, empresa por empresa da carteira.</p>
+          <div class="dashboard-card-footer">
+            <span>Acessar →</span>
+            <span class="badge card-status st-load">·</span>
+          </div>
+        </a>
+
+        <a href="ajuda.html" class="dashboard-card pn-faixa">
           <div class="dashboard-card-icon">
             <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
               <circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/>
@@ -335,6 +358,7 @@
       lerAbertura();
       pintarNoticias(user);
       pintarAtendimento(user);
+      pintarIntegracoes(user);
       await pintarSelosDoDia(user);
     })();
 
@@ -351,6 +375,21 @@
         const n = (data || []).filter(c => ehPraMim(c, user.email)).length;
         st.textContent = n ? n + ' pra você' : 'Em dia';
         st.className = 'badge card-status ' + (n ? 'st-open' : 'st-clear');
+      } catch (e) { st.remove(); }
+    }
+
+    // o card das Integrações (19/11/2026): as duas pontes do PC do escritório em dia, ou quantas estão atrasadas
+    async function pintarIntegracoes(user) {
+      const card = document.querySelector('a.dashboard-card[href="integracoes.html"]');
+      const st = card && card.querySelector('.card-status');
+      if (!st || !user) return;
+      try {
+        const { lerSaude, seloDasPontes } = await import('./assets/js/integracoes.js');
+        const s = await lerSaude(supabase);
+        if (s.dominio.estado === 'erro' && s.receita.estado === 'erro') { st.remove(); return; }
+        const selo = seloDasPontes([s.dominio, s.receita]);
+        st.textContent = selo.texto;
+        st.className = 'badge card-status ' + selo.classe;
       } catch (e) { st.remove(); }
     }
 

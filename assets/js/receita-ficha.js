@@ -28,8 +28,9 @@ export const temDado = d => !!(d && (d.empresa || (d.pgdas && d.pgdas.length) ||
 export const linkDoRelatorio = u => (typeof u === 'string' && /^https:\/\/drive\.google\.com\/file\/d\/[A-Za-z0-9_-]{10,100}\/view$/.test(u) ? u : null);
 
 // o PDF do relatório na linha da situação fiscal: o do mesmo dia das pendências mostradas, um de antes (o mais novo não
-// foi pro Drive) ou um mais novo, que a ponte não conseguiu ler (aí as pendências mostradas são as do relatório de antes)
-function oRelatorio(e) {
+// foi pro Drive) ou um mais novo, que a ponte não conseguiu ler (aí as pendências mostradas são as do relatório de antes).
+// O perfil da empresa nas Integrações (assets/js/integracoes-tela.js) usa a mesma linha.
+export function oRelatorio(e) {
   const url = linkDoRelatorio(e.situacao_fiscal_pdf_url);
   if (!url) return { antes: '', depois: '' };
   const a = rotulo => '<a href="' + esc(url) + '" target="_blank" rel="noopener noreferrer">' + esc(rotulo) + '</a>';

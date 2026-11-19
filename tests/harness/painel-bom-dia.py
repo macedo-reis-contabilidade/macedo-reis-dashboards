@@ -223,8 +223,15 @@ def main():
         cards = p.evaluate("""() => [...document.querySelectorAll('.dashboard-card')].map(c => { const st = c.querySelector('.card-status'), ic = c.querySelector('.dashboard-card-icon');
           return { href: c.getAttribute('href'), cor: c.style.getPropertyValue('--cor'), icone: getComputedStyle(ic).color, texto: st ? st.textContent.trim() : null, b: st && st.querySelector('b') ? st.querySelector('b').textContent : null,
             desc: c.querySelector('p').title, linhas: Math.round(c.querySelector('p').getBoundingClientRect().height / parseFloat(getComputedStyle(c.querySelector('p')).lineHeight)) }; })""")
-        ok(len(cards) == 6 and all(c['cor'] and c['cor'] == c['icone'] for c in cards), f'cada card com a cor do próprio ícone ({[c["cor"] for c in cards]})')
-        ok(len(set(c['cor'] for c in cards)) == 6, 'e as seis cores são diferentes')
+        # sete: os seis módulos (com as Integrações, desde 19/11/2026) e a Ajuda, que virou a faixa de baixo
+        ok(len(cards) == 7 and all(c['cor'] and c['cor'] == c['icone'] for c in cards), f'cada card com a cor do próprio ícone ({[c["cor"] for c in cards]})')
+        ok(len(set(c['cor'] for c in cards)) == 7, 'e as sete cores são diferentes')
+        grade = p.evaluate("""() => { const cs = [...document.querySelectorAll('.dashboard-grid > .dashboard-card')].map(c => { const r = c.getBoundingClientRect(); return { href: c.getAttribute('href'), x: Math.round(r.left), y: Math.round(r.top), w: Math.round(r.width) }; });
+          const g = document.querySelector('.dashboard-grid').getBoundingClientRect(); return { cs, largura: Math.round(g.width) }; }""")
+        linhas_da_grade = sorted(set(c['y'] for c in grade['cs']))
+        ok(len(linhas_da_grade) == 3 and [sum(1 for c in grade['cs'] if c['y'] == y) for y in linhas_da_grade] == [3, 3, 1], f'os seis módulos em três colunas e duas linhas, e a Ajuda numa linha só embaixo ({[sum(1 for c in grade["cs"] if c["y"] == y) for y in linhas_da_grade]})')
+        ajuda = grade['cs'][-1]
+        ok(ajuda['href'] == 'ajuda.html' and abs(ajuda['w'] - grade['largura']) <= 1 and grade['cs'][5]['href'] == 'integracoes.html', f'a Ajuda da largura toda, depois das Integrações ({ajuda["w"]} de {grade["largura"]} px)')
         com_num = [c for c in cards if c['texto'] and re.match(r'^\d', c['texto'])]
         ok(len(com_num) >= 2 and all(c['b'] and c['texto'].startswith(c['b'] + ' ') for c in com_num), f'o número na frente, em <b>, com o texto igual ({[c["texto"] for c in com_num]})')
         ok(all(c['desc'] and c['linhas'] <= 2 for c in cards), 'a descrição em até duas linhas, inteira no title')

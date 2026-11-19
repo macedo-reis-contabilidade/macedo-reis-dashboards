@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Integrações — Macedo & Reis</title>
+  <link rel="icon" href="assets/favicon.ico">
+  <link rel="stylesheet" href="assets/css/style.css">
+  <script type="module" src="assets/js/auth-guard.js"></script>
+  <style>
+    /* Integrações (19/11/2026, pedido do Samuel): o que o sistema busca sozinho nos sistemas de fora. Um card por
+       integração, com o que ela traz, como está hoje e quantas empresas da carteira alcança. As regras ficam em
+       assets/js/integracoes.js; as duas telas, em assets/js/integracoes-tela.js. */
+    .dashboard-grid { grid-template-columns:repeat(2, minmax(0, 1fr)); max-width:1040px; }
+    @media (max-width: 760px) { .dashboard-grid { grid-template-columns:1fr; } }
+    a[href="integracao-dominio.html"] .dashboard-card-icon { background: rgba(238,154,107,.15); color:#EE9A6B; }
+    a[href="integracao-receita.html"] .dashboard-card-icon { background: rgba(95,194,160,.15);  color:#5FC2A0; }
+    .dashboard-card p { flex:0 0 auto; }
+    .ih-traz { display:flex; flex-wrap:wrap; gap:6px; margin:14px 0 0; padding:0; list-style:none; }
+    .ih-traz li { font-size:12px; color:var(--brand-pale); padding:3px 10px; border-radius:999px; border:1px solid var(--line); background:var(--fill-1); }
+    .ih-fatos { margin:16px 0 0; padding:0; list-style:none; display:grid; gap:6px; flex:1; align-content:start; }
+    .ih-fatos li { display:flex; justify-content:space-between; gap:14px; font-size:13px; color:var(--text-muted); }
+    .ih-fatos b { color:var(--text); font-weight:600; font-variant-numeric:tabular-nums; text-align:right; }
+    .dashboard-card-footer .badge.card-status.ih-fora { color:var(--warn); font-weight:600; }
+    .ih-nota { margin-top:22px; max-width:1040px; font-size:13px; color:var(--text-muted); line-height:1.6; }
+  </style>
+</head>
+<body>
+  <div class="app-shell">
+    <header class="topbar">
+      <div class="topbar-brand">
+        <div class="topbar-logo"><img src="assets/logo-mr.png" alt="Macedo & Reis" width="32" height="32" style="display:block;object-fit:contain;"></div>
+        <div class="topbar-name">Macedo <span>&</span> Reis</div>
+      </div>
+      <div class="topbar-actions">
+        <div class="user-chip">
+          <div class="user-avatar" id="userAvatar">—</div>
+          <span id="userName">Carregando…</span>
+        </div>
+        <button class="btn btn-ghost btn-sm" id="btnLogout">Sair</button>
+      </div>
+    </header>
+
+    <main class="content">
+      <div class="page-header">
+        <div class="breadcrumb">
+          <a href="index.html">Painel central</a>
+          <span class="breadcrumb-sep">/</span>
+          <span>Integrações</span>
+        </div>
+        <div class="eyebrow">O que entra sozinho</div>
+        <h1>Integrações</h1>
+        <p>O que o sistema busca sozinho nos sistemas de fora, empresa por empresa da carteira. Abra uma integração pra ver o que ela traz de cada empresa.</p>
+      </div>
+
+      <div class="dashboard-grid">
+        <a href="integracao-dominio.html" class="dashboard-card">
+          <div class="dashboard-card-icon">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg>
+          </div>
+          <h3>Domínio</h3>
+          <p>O que a ponte lê do Domínio Web todo dia às 7h. Só os totais de cada empresa, mês a mês.</p>
+          <ul class="ih-traz" aria-label="O que traz"><li>Folha</li><li>Notas e faturamento</li><li>Impostos das notas</li><li>Contabilidade</li><li>Jornada</li></ul>
+          <ul class="ih-fatos">
+            <li><span>Última leitura</span><b id="domQuando">…</b></li>
+            <li><span>Empresas da carteira ligadas</span><b id="domLigadas">…</b></li>
+          </ul>
+          <div class="dashboard-card-footer"><span>Abrir →</span><span class="badge card-status st-load" id="stDominio">·</span></div>
+        </a>
+
+        <a href="integracao-receita.html" class="dashboard-card">
+          <div class="dashboard-card-icon">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="3" y1="22" x2="21" y2="22"/><line x1="6" y1="18" x2="6" y2="11"/><line x1="10" y1="18" x2="10" y2="11"/><line x1="14" y1="18" x2="14" y2="11"/><line x1="18" y1="18" x2="18" y2="11"/><polygon points="12 2 20 7 4 7"/></svg>
+          </div>
+          <h3>Receita Federal</h3>
+          <p>O que a ponte consulta pelo Integra Contador, de segunda a sexta às 8h30. Só consulta: nada é transmitido.</p>
+          <ul class="ih-traz" aria-label="O que traz"><li>Procuração</li><li>PGDAS e DAS</li><li>Caixa Postal</li><li>Situação fiscal</li><li>Guias pagas</li></ul>
+          <ul class="ih-fatos">
+            <li><span>Última consulta</span><b id="recQuando">…</b></li>
+            <li><span>Empresas com procuração</span><b id="recProcuracao">…</b></li>
+            <li><span>Consultas pagas no mês</span><b id="recChamadas">…</b></li>
+          </ul>
+          <div class="dashboard-card-footer"><span>Abrir →</span><span class="badge card-status st-load" id="stReceita">·</span></div>
+        </a>
+      </div>
+      <p class="ih-nota">As duas pontes rodam no PC do escritório, que fica ligado dia e noite. Só leem: nada é gravado no Domínio nem transmitido à Receita.</p>
+    </main>
+  </div>
+
+  <script type="module">
+    import { supabase, getCurrentUser, signOut } from './assets/js/supabase.js';
+    import { hojeLocal } from './assets/js/utils.js';
+    import { lerSaude, carregarResumo, quandoFoi, inteiro, TETO_MES } from './assets/js/integracoes.js';
+
+    const $ = id => document.getElementById(id);
+    const HOJE = hojeLocal();
+    $('btnLogout').addEventListener('click', signOut);
+    getCurrentUser().then(u => {
+      if (!u) return;
+      const n = u.user_metadata?.full_name || u.email?.split('@')[0] || 'Usuário';
+      $('userName').textContent = n; $('userAvatar').textContent = n.charAt(0).toUpperCase();
+    }).catch(() => {});
+
+    // o selo de cada card: "Em dia", ou o que a ponte tem de atrasado (o texto diz, a cor só acompanha)
+    const ROTULO = { ok: 'Em dia', atrasada: 'Atrasada', parada: 'Parada', nunca: 'Sem leitura', erro: '—' };
+    function pintarSelo(el, s) {
+      el.textContent = ROTULO[s.estado] || '—';
+      el.className = 'badge card-status ' + (s.estado === 'ok' ? 'st-clear' : s.estado === 'erro' ? 'st-load' : 'st-open ih-fora');
+    }
+    lerSaude(supabase).then(s => {
+      const agora = Date.now();
+      $('domQuando').textContent = s.dominio.ultima ? quandoFoi(s.dominio.ultima, agora) : '—';
+      $('recQuando').textContent = s.receita.ultima ? quandoFoi(s.receita.ultima, agora) : '—';
+      $('recChamadas').textContent = s.receita.chamadas != null ? inteiro(s.receita.chamadas) + ' de ' + inteiro(TETO_MES) : '—';
+      pintarSelo($('stDominio'), s.dominio); pintarSelo($('stReceita'), s.receita);
+    }).catch(() => { ['domQuando', 'recQuando', 'recChamadas'].forEach(id => { $(id).textContent = '—'; }); ['stDominio', 'stReceita'].forEach(id => $(id).remove()); });
+    carregarResumo(supabase, HOJE).then(r => {
+      $('domLigadas').textContent = inteiro(r.ligadas) + ' de ' + inteiro(r.carteira);
+      $('recProcuracao').textContent = inteiro(r.comProcuracao) + ' de ' + inteiro(r.consultadas);
+    }).catch(() => { $('domLigadas').textContent = '—'; $('recProcuracao').textContent = '—'; });
+  </script>
+</body>
+</html>
