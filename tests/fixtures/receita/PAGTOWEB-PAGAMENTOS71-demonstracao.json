@@ -1,0 +1,17 @@
+{
+  "http_status": 200,
+  "corpo": {
+    "contratante": null,
+    "autorPedidoDados": null,
+    "contribuinte": null,
+    "pedidoDados": null,
+    "status": 400,
+    "dados": null,
+    "mensagens": [
+      {
+        "codigo": "ERRO",
+        "texto": "Dados inválidos. Utilize o json no menu Cenário da documentação."
+      }
+    ]
+  }
+}
