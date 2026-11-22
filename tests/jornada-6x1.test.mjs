@@ -44,6 +44,48 @@ igual('a 12x36: 3,5 dias e 3,5 folgas por semana', [p12.escala, p12.dias, p12.fo
 igual('sem jornada no Domínio', padraoDoGrupo(semJornada).escala, 'sem_jornada');
 igual('a escala de ciclo (4 de 6 dias)', padraoDoGrupo({ ciclo_dias: 6, ciclo_trabalho: 4 }).dias, 4.67);
 igual('o grupo digitado na tela', padraoDoGrupo({ manual: true, escala: '6x1', dias: 6, horas: 44 }).folgas, 1);
+// o 12x36 digitado é gravado no plano só com o tipo_escala e, ao reabrir, ganha o "manual": tem de seguir 12x36
+// (voltava como "sem jornada" e passava a contar como quem muda em 16/12/2027)
+const doze36 = { tipo_escala: 1, horas_semana: 42, empregados: 2, salarios: null };
+igual('o 12x36 digitado segue 12x36 depois de gravado e reaberto, e não entra em quem muda',
+  [padraoDoGrupo(doze36).escala, padraoDoGrupo({ ...doze36, manual: true }).escala, diagnostico({ ...doze36, manual: true }, 'e40').precisa], ['12x36', '12x36', false]);
+// os 7 dias marcados no Domínio: a turma cobre a semana toda e a folga de cada um roda (não está lá)
+const sete = { codigo: 1, jornada: 14, semana: 'TTTTTTT', min_semana: 3402, min_maior_dia: 486, horas_semana: 44, controle: 1, categoria: 101, unidade: 5, empregados: 2 };
+chk('TTTTTTT: "7 dias com folga em rodízio", e o item das folgas diz que a folga de hoje não está no Domínio',
+  padraoDoGrupo(sete).rotulo === '7 dias com folga em rodízio' && diagnostico(sete, 'e42').itens[0].texto.startsWith('No Domínio a turma aparece nos 7 dias: a folga de hoje roda e não está lá.'), diagnostico(sete, 'e42').itens[0].texto);
+// a marca de 12x36 com horário de semana (existe no Domínio do escritório; a fila de 09/11/2026: "a semana vale"):
+// a semana manda, a marca vai em `marcada` e vira um aviso só do escritório (antes, a turma saía como 12x36,
+// "cabe no limite", e ficava fora de quem muda e sem escala sugerida)
+const marcadaC = { ...compensado, jornada: 21, tipo: 2, tipo_escala: 1 };
+const marcada6 = { ...seis, jornada: 22, tipo: 1, tipo_escala: 1, min_semana: 2460 };
+const pm = padraoDoGrupo(marcadaC);
+igual('TTTTTCF marcada 12x36 no Domínio: vale a semana (5x2 com o sábado compensado, 44 h), e a marca fica guardada', [pm.escala, pm.rotulo, pm.dias, pm.folgas, pm.horas, pm.marcada], ['5x2c', '5x2 com o sábado compensado', 5, 2, 44, '12x36']);
+igual('TTTTTTF marcada 12x36: 6x1; marcada 24x72: 6x1 também', [padraoDoGrupo(marcada6).escala, padraoDoGrupo(marcada6).marcada, padraoDoGrupo({ ...seis, tipo_escala: 2 }).escala, padraoDoGrupo({ ...seis, tipo_escala: 2 }).marcada], ['6x1', '12x36', '6x1', '24x72']);
+igual('sem a marca, o grupo não ganha o campo', ['marcada' in padraoDoGrupo(compensado), 'marcada' in padraoDoGrupo({ ...compensado, tipo_escala: 0 })], [false, false]);
+igual('a marca sem semana, com a semana sem dia de trabalho ou ilegível segue 12x36 (e a de ciclo, 24x72)',
+  [null, 'FFFFFFF', '-------', 'TTT'].map(semana => padraoDoGrupo({ tipo_escala: 1, semana }).escala).concat(padraoDoGrupo({ tipo_escala: 2, semana: null, ciclo_dias: 4, ciclo_trabalho: 1 }).escala), ['12x36', '12x36', '12x36', '12x36', '24x72']);
+for (const etapa of ['e42', 'e40']) for (const cct of [false, true]) {
+  const com = diagnostico(marcadaC, etapa, { cct }), sem = diagnostico(compensado, etapa, { cct });
+  igual('o que muda é o do mesmo grupo sem a marca, mais o aviso do cadastro em primeiro (' + etapa + (cct ? ', com convenção' : '') + ')',
+    [com.precisa, com.itens.slice(1).map(i => [i.tipo, i.texto]), com.itens[0].tipo, com.itens[0].interno, com.itens.filter(i => i.interno).length],
+    [sem.precisa, sem.itens.map(i => [i.tipo, i.texto]), 'conferir', true, 1]);
+}
+chk('o aviso diz a marca, que a conta segue o horário e o que fazer no Domínio',
+  /marcada como 12x36, mas o horário cadastrado é de semana: a conta segue o horário\. Se a turma trabalha mesmo em 12x36, acerte o horário da jornada no Domínio; se não, tire a marca\.$/.test(diagnostico(marcadaC, 'e42').itens[0].texto), diagnostico(marcadaC, 'e42').itens[0].texto);
+igual('sem a marca, nenhum aviso do escritório', [seis, compensado, doze, parcial, semJornada].flatMap(g => diagnostico(g, 'e42').itens).filter(i => i.interno).length, 0);
+const rm = resumoDaEmpresa([marcadaC, marcada6, doze]);
+igual('no resumo da empresa: 5 no 6x1, 3 no 5x2 compensado e só os 2 de verdade na 12x36; 8 mudam em 16/12/2026', [rm.porEscala, rm.seis, rm.e42.pessoas, rm.e40.pessoas], [{ '5x2c': 3, '6x1': 5, '12x36': 2 }, 5, 8, 8]);
+// o horário do Domínio sem as horas de cada dia (a entrada igual à saída: a ponte manda a semana sem os minutos):
+// os dias de lá podem não ser os de verdade — o grupo segue lido pela semana, com o aviso só do escritório
+const semHoras = { ...sete, min_semana: null, min_maior_dia: null };
+igual('a semana sem os minutos: o grupo ganha `semHoras`; com os minutos, digitado ou sem a semana, não',
+  [padraoDoGrupo(semHoras).semHoras, padraoDoGrupo(semHoras).escala, 'semHoras' in padraoDoGrupo(sete), 'semHoras' in padraoDoGrupo({ manual: true, escala: '6x1', dias: 6, horas: 44 }), 'semHoras' in padraoDoGrupo(semJornada), 'semHoras' in padraoDoGrupo(doze)], [true, '7x0', false, false, false, false]);
+const dsh = diagnostico(semHoras, 'e42');
+igual('o que muda é o do mesmo grupo com as horas, mais o aviso do cadastro em primeiro', [dsh.precisa, dsh.itens.map(i => i.tipo), dsh.itens[0].interno, dsh.itens.slice(1).some(i => i.interno)], [true, ['conferir', ...diagnostico({ ...sete, min_maior_dia: null }, 'e42').itens.map(i => i.tipo)], true, false]);
+chk('o aviso diz que os dias de lá podem não ser os de verdade e o que fazer', /^No Domínio o horário desta jornada está sem as horas de cada dia \(a entrada igual à saída\): os dias de trabalho de lá podem não ser os de verdade\. Confirme os dias e os horários com a empresa/.test(dsh.itens[0].texto), dsh.itens[0].texto);
+// o dia compensado que não é o sábado (de terça a sábado, com a segunda compensada)
+igual('o rótulo do dia compensado: o sábado, quando é ele; senão, "dia compensado"', ['TTTTTCF', 'CTTTTTF', 'TTCTTTF', 'TCFTTTT', 'TTTTTCC'].map(semana => padraoDoGrupo({ semana, min_semana: 2640, horas_semana: 44 }).rotulo),
+  ['5x2 com o sábado compensado', '5x2 com dia compensado', '5x2 com dia compensado', '5x2 com dia compensado', '5x2 com dia compensado']);
 igual('domingo trabalhado aparece', padraoDoGrupo({ semana: 'TTTTFFT', horas_semana: 40 }).domingo, true);
 
 console.log('O que muda em 16/12/2026 (sem convenção: as 8h24 do STF):');
@@ -135,6 +177,45 @@ chk('as seções: a lei, o retrato, as duas datas, as saídas, a escolha e os pr
   ['O que diz a lei', 'referendo do Plenário', 'dividido por 210', 'Decreto 13.173/2026', 'Como a empresa está hoje', 'até 16/12/2026', 'até 16/12/2027', 'As saídas', 'O que foi combinado', 'Os próximos passos'].every(t => tudo.includes(t)));
 chk('a observação interna não sai no PDF', !tudo.includes('NUNCA NO PDF'));
 chk('sem travessão nem reticências (a fonte do jsPDF não tem)', !/[—–…]/.test(tudo));
+
+console.log('As escalas que cabem, no relatório (21/11/2026):');
+const junto = tudo.replace(/\s+/g, ' ');
+chk('a seção, na data do simulador, com as duas turmas e os dias de hoje de cada uma',
+  ['As escalas que cabem a partir de 16/12/2026', '6x1 (5 pessoas): hoje, de segunda a sábado', '5x2 com o sábado compensado (3 pessoas): hoje, de segunda a sexta'].every(t => junto.includes(t)), junto.slice(junto.indexOf('As escalas que cabem'), junto.indexOf('As escalas que cabem') + 400));
+chk('as três opções da 6x1 e as duas do sábado compensado, com o horário de cada uma',
+  ['Opção 1: Segunda a sexta', 'Opção 2: Segunda a sábado, com uma folga pra cada um no meio da semana', 'Opção 3: Sábado sim, sábado não', '5 dias de 8h24, 42 horas por semana.',
+    'Opção 1: Os mesmos dias de hoje, com o dia mais curto', 'Opção 2: Os mesmos dias de hoje, com um dia bem mais curto', '4 dias de 8h48 e 1 de 6h48, 42 horas por semana.'].every(t => junto.includes(t)));
+chk('o que as opções exigem: uma vez só quando é o mesmo nas três; em cada uma quando muda',
+  junto.includes('até 15/12/2027. Vale pras 3 opções.') && junto.split('Vale pras').length === 2 && junto.includes('Passa das 8h24 por dia: só com convenção ou acordo coletivo.'));
+chk('a grade: os dias no cabeçalho, as turmas, quantos ficam e hoje', ['Seg', 'Sáb', 'Dom', 'Todos', 'Pessoa 5', 'Turma A (3 pessoas)', 'Turma B (2 pessoas)', 'Semana 2', 'Ficam', 'Hoje'].every(t => doc.textos.includes(t)));
+chk('as notas da turma no fim: o intervalo, 2027, a convenção e os dias seguidos; sem a do domingo (ninguém trabalha no domingo)',
+  ['CLT, art. 71, § 2º', 'EC 141, art. 6º, II', 'TST, OJ 410 da SDI-1'].every(t => junto.includes(t)) && !junto.includes('Lei 10.101/2000'));
+chk('os próximos passos apontam pras opções', junto.includes('Definir a escala nova de cada grupo (as opções acima são o ponto de partida)'));
+// só a 6x1 de 5 pessoas: "Todos" folga sábado e domingo (2); cada uma das 5 folga 1 dia e o domingo (10); nas 2 semanas
+// do sábado alternado, 2 turmas com 2 folgas cada (8) = 20 "folga" nas grades
+const so6 = relatorioJornadaPdf(PdfFalso, { empresa: { nome: 'Empresa Teste Ltda' }, grupos: [seis], opcoes: { regime: 'Simples Nacional' }, etapa: 'e42', plano: {}, hoje: '2026-11-21', dadosAte: '2026-11-19' });
+igual('as folgas das três grades da 6x1 de 5 pessoas: 2 + 10 + 8', so6.textos.filter(x => x === 'folga').length, 20);
+// na de segunda a sexta: ficam 5 de segunda a sexta e 0 no sábado; o domingo fica fora da conta ("-"); hoje, 5 de segunda a sábado
+const iFicam = so6.textos.indexOf('Ficam');
+igual('quantos ficam e hoje, na opção de segunda a sexta', [so6.textos.slice(iFicam + 1, iFicam + 8), so6.textos.slice(iFicam + 9, iFicam + 16)], [['5', '5', '5', '5', '5', '0', '-'], ['5', '5', '5', '5', '5', '5', '-']]);
+const em40 = relatorioJornadaPdf(PdfFalso, { empresa: { nome: 'Empresa Teste Ltda' }, grupos: [seis, compensado], opcoes: { regime: 'Simples Nacional' }, etapa: 'e40', plano: {}, hoje: '2026-11-21', dadosAte: '2026-11-19' }).textos.join(' ').replace(/\s+/g, ' ');
+chk('com a data de 16/12/2027 no simulador: 5 dias de 8h, 40 horas, cabendo nas 8 horas por dia',
+  em40.includes('As escalas que cabem a partir de 16/12/2027') && em40.includes('5 dias de 8h, 40 horas por semana.') && em40.includes('Cabe nas 8 horas por dia: não pede convenção nem acordo coletivo. Vale pras 3 opções.'));
+const semMudar = relatorioJornadaPdf(PdfFalso, { empresa: { nome: 'Empresa Teste Ltda' }, grupos: [parcial], opcoes: { regime: 'Simples Nacional' }, etapa: 'e42', plano: {}, hoje: '2026-11-21', dadosAte: null }).textos.join(' ').replace(/\s+/g, ' ');
+chk('quem não muda nada não ganha a seção, e os próximos passos ficam como eram', !semMudar.includes('As escalas que cabem') && semMudar.includes('Definir a escala nova de cada grupo e assinar o aditivo'));
+const digitada = relatorioJornadaPdf(PdfFalso, { empresa: { nome: 'Empresa Teste Ltda' }, grupos: [{ manual: true, escala: '6x1', dias: 6, horas: 44, empregados: 4 }, semJornada], opcoes: {}, etapa: 'e42', plano: {}, hoje: '2026-11-21', dadosAte: null }).textos.join(' ').replace(/\s+/g, ' ');
+chk('o grupo digitado sai sem os dias de hoje (são suposição), e a turma sem a semana diz o porquê de não ter opção',
+  digitada.includes('6x1 (4 pessoas)') && !digitada.includes('6x1 (4 pessoas): hoje') && digitada.includes('Sem os dias da semana desta turma'));
+chk('as escalas também saem sem travessão nem reticências', !/[—–…•]/.test(so6.textos.join(' ') + em40 + digitada));
+// a jornada marcada 12x36 com horário de semana: o relatório segue o horário, e o aviso do cadastro fica no escritório
+const comMarca = relatorioJornadaPdf(PdfFalso, { empresa: { nome: 'Empresa Teste Ltda' }, grupos: [marcadaC], opcoes: { regime: 'Simples Nacional' }, etapa: 'e42', plano: {}, hoje: '2026-11-21', dadosAte: '2026-11-19' }).textos.join(' ').replace(/\s+/g, ' ');
+chk('a turma marcada 12x36 com horário de semana sai no relatório pelo horário, com o que muda e as escalas',
+  comMarca.includes('5x2 com o sábado compensado (3 pessoas)') && comMarca.includes('precisa cair pra 42 h') && comMarca.includes('Opção 1: Os mesmos dias de hoje') && !comMarca.includes('12x36 (3 pessoas)'), comMarca.slice(0, 900));
+chk('o aviso do cadastro no Domínio não sai no relatório da empresa', !/Domínio a jornada está marcada|tire a marca|Aviso do escritório/.test(comMarca));
+const comSemHoras = relatorioJornadaPdf(PdfFalso, { empresa: { nome: 'Empresa Teste Ltda' }, grupos: [{ ...semHoras, empregados: 3 }, { ...seis, semana: 'TTTTT-T', min_semana: null, min_maior_dia: null }], opcoes: { regime: 'Simples Nacional' }, etapa: 'e42', plano: {}, hoje: '2026-11-21', dadosAte: '2026-11-19' }).textos.join(' ').replace(/\s+/g, ' ');
+chk('o horário sem as horas: as escalas saem no relatório, sem o aviso do escritório e sem dar os dias de hoje como certos',
+  comSemHoras.includes('7 dias com folga em rodízio (3 pessoas)') && comSemHoras.includes('Os 7 dias cobertos, com as folgas em rodízio de 3 semanas') && comSemHoras.includes('6x1 (5 pessoas)')
+  && !/sem as horas de cada dia|Aviso do escritório|as opções supõem|hoje, de domingo a sexta/.test(comSemHoras), comSemHoras.slice(0, 1200));
 igual('limpar troca o travessão, as reticências e o ≥', limpar('a — b … ≥ c'), 'a - b ... >= c');
 
 console.log('Os números na tela:');

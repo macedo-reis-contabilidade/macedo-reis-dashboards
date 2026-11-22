@@ -83,6 +83,8 @@ export function salarioArt8(ano) {
 
 export const ROTULOS = {
   '6x1': '6x1', '5x2': '5x2', '5x2c': '5x2 com o sábado compensado', '12x36': '12x36', '24x72': '24x72',
+  // os 7 dias marcados no Domínio: a turma cobre a semana toda e a folga de cada um roda (não está lá)
+  '7x0': '7 dias com folga em rodízio',
   escala: 'Escala (outra)', turno: 'Turno variável', sem_jornada: 'Sem jornada no Domínio'
 };
 const rotuloDe = e => ROTULOS[e] || e;
@@ -102,29 +104,41 @@ export function padraoDoGrupo(g) {
     maiorDia: num(g.min_maior_dia) != null ? arred(num(g.min_maior_dia) / 60, 2) : null,
     domingo: null, sabado: null
   };
-  if (g.manual) {
+  // a escala longa vem antes do digitado: o 12x36 digitado na tela é gravado só com o tipo_escala, e ao reabrir
+  // ganha o "manual" (sem isto, voltava como "sem jornada" e passava a contar como quem muda em 2027)
+  const te = num(g.tipo_escala);
+  if (g.manual && te !== 1 && te !== 2) {
     const dias = num(g.dias);
     return { ...base, escala: g.escala || (dias ? dias + 'x' + (7 - dias) : 'sem_jornada'), rotulo: rotuloDe(g.escala || (dias ? dias + 'x' + (7 - dias) : 'sem_jornada')),
       horas: num(g.horas) != null ? num(g.horas) : base.horas, dias, folgas: dias != null ? 7 - dias : null,
       domingo: g.domingo === true, sabado: g.sabado === true, manual: true };
   }
-  const te = num(g.tipo_escala);
-  if (te === 1 || te === 2) {
-    const escala = te === 1 ? '12x36' : '24x72';
+  // a marca de 12x36 ou 24x72 só vale sem horário de semana: no Domínio há jornada marcada 12x36 com o horário
+  // cadastrado de segunda a sexta ou a sábado (a fila de 09/11/2026: "a semana vale"). A semana com dia de trabalho
+  // manda, e a marca vai em `marcada`, pra tela mandar conferir o cadastro (antes, a turma saía como 12x36, "cabe no
+  // limite", e ficava fora de quem muda)
+  const comSemana = typeof g.semana === 'string' && /^[TCF-]{7}$/.test(g.semana);
+  const escalaLonga = te === 1 ? '12x36' : te === 2 ? '24x72' : null;
+  if (escalaLonga && !(comSemana && g.semana.includes('T'))) {
     const dias = te === 1 ? 3.5 : 1.75;
-    return { ...base, escala, rotulo: rotuloDe(escala), dias, folgas: arred(7 - dias, 2), horas: base.horas != null ? base.horas : 42 };
+    return { ...base, escala: escalaLonga, rotulo: rotuloDe(escalaLonga), dias, folgas: arred(7 - dias, 2), horas: base.horas != null ? base.horas : 42 };
   }
   const cic = num(g.ciclo_dias), trab = num(g.ciclo_trabalho);
   if (!g.semana && cic && trab != null) {
     const dias = arred(7 * trab / cic, 2);
     return { ...base, escala: 'escala', rotulo: rotuloDe('escala') + ' (' + trab + ' de ' + cic + ' dias)', dias, folgas: arred(7 - dias, 2) };
   }
-  if (typeof g.semana === 'string' && /^[TCF-]{7}$/.test(g.semana)) {
+  if (comSemana) {
     const s = g.semana;
     const t = [...s].filter(c => c === 'T').length;
     const c = [...s].filter(x => x === 'C').length;
     const escala = (t === 5 && c > 0) ? '5x2c' : (t === 6 ? '6x1' : (t === 5 ? '5x2' : t + 'x' + (7 - t)));
-    return { ...base, escala, rotulo: rotuloDe(escala), dias: t, folgas: 7 - t, domingo: s[6] === 'T', sabado: s[5] === 'T' };
+    // o dia compensado nem sempre é o sábado (quem trabalha de terça a sábado compensa a segunda)
+    const rotulo = escala === '5x2c' && !(c === 1 && s[5] === 'C') ? '5x2 com dia compensado' : rotuloDe(escala);
+    // semHoras: o horário do Domínio é só um marcador (a entrada igual à saída), e a ponte manda os dias sem os
+    // minutos — os dias de lá podem não ser os de verdade, e a tela manda confirmar
+    return { ...base, escala, rotulo, dias: t, folgas: 7 - t, domingo: s[6] === 'T', sabado: s[5] === 'T',
+      ...(escalaLonga ? { marcada: escalaLonga } : {}), ...(t > 0 && num(g.min_semana) == null ? { semHoras: true } : {}) };
   }
   if (num(g.tipo) === 3) return { ...base, escala: 'turno', rotulo: rotuloDe('turno'), dias: null, folgas: null };
   return { ...base, escala: 'sem_jornada', rotulo: rotuloDe('sem_jornada'), dias: null, folgas: null };
@@ -157,9 +171,22 @@ export function diagnostico(g, etapa, { cct = false, art8 = null } = {}) {
   const superiorTeto = num(g.superior_teto) || 0;
   const escalaLonga = p.escala === '12x36' || p.escala === '24x72';   // a média da semana conta, no item das escalas
 
+  // a marca de escala do Domínio que não confere com o horário: aviso do escritório (`interno`: fora do relatório)
+  if (p.marcada) {
+    itens.push({ tipo: 'conferir', interno: true,
+      texto: 'No Domínio a jornada está marcada como ' + p.marcada + ', mas o horário cadastrado é de semana: a conta segue o horário. Se a turma trabalha mesmo em ' + p.marcada + ', acerte o horário da jornada no Domínio; se não, tire a marca.',
+      base: 'Cadastro da jornada no Domínio. Aviso do escritório: não sai no relatório da empresa.' });
+  }
+  if (p.semHoras) {
+    itens.push({ tipo: 'conferir', interno: true,
+      texto: 'No Domínio o horário desta jornada está sem as horas de cada dia (a entrada igual à saída): os dias de trabalho de lá podem não ser os de verdade. Confirme os dias e os horários com a empresa e, se forem outros, acerte o horário da jornada no Domínio, que a conta acompanha.',
+      base: 'Cadastro da jornada no Domínio. Aviso do escritório: não sai no relatório da empresa.' });
+  }
   // as 2 folgas valem pra todo mundo a partir de 16/12/2026
   if (p.folgas != null && p.folgas < 2) {
-    itens.push({ tipo: 'folgas', texto: 'Hoje folga ' + fmtNum(p.folgas) + ' dia por semana; a partir de 16/12/2026 são 2 (um, de preferência, no domingo).',
+    itens.push({ tipo: 'folgas', texto: (p.dias === 7
+        ? 'No Domínio a turma aparece nos 7 dias: a folga de hoje roda e não está lá. A partir de 16/12/2026 são 2 por semana (uma, de preferência, no domingo).'
+        : 'Hoje folga ' + fmtNum(p.folgas) + ' dia por semana; a partir de 16/12/2026 são 2 (um, de preferência, no domingo).'),
       base: 'CF, art. 7º, XV (EC 141, art. 10, I). Com convenção ou acordo coletivo, a média de 2 no mês, com pelo menos 1 por semana (art. 7º, § 2º)'
         + (DECISAO_STF.vale ? '; o STF tirou as travas semanal e mensal: a convenção ou o acordo define como as folgas são tiradas, mantidos os 2 repousos por semana (' + textoStf + ', item IV).' : '.') });
   } else if (p.folgas == null) {

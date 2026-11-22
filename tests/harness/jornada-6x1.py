@@ -10,11 +10,19 @@ Confere:
   2. a lista pela urgência: a empresa em 6x1 primeiro, com quantos mudam, as horas e os dias-pessoa a menos;
   3. a ficha: o guia (o retrato, o simulador, o plano), os grupos do Domínio, o que muda nas duas datas, o simulador
      (contratar, hora extra, reduzir) e trocar a data refaz a conta;
+  3b. as escalas que cabem (21/11/2026): as turmas que mudam, as opções de cada uma na data do simulador, a grade
+     (quem folga em cada dia, quantos ficam e hoje), o "Pôr na escolha do plano" (entra, troca a da mesma turma, junta
+     a da outra, não repete e não passa das 300 letras), a convenção marcada e o que está digitado no plano seguindo
+     na tela quando ela se redesenha;
   4. gravar o plano: a linha em jornada_planos, com a simulação, e a situação na lista;
-  5. o relatório pra empresa (PDF): as seções, sem a observação interna;
-  6. a empresa sem jornada no Domínio: digitar o grupo, simular e gravar (os grupos ficam no plano);
-  7. o texto de fora entra como texto (o nome com <img onerror>);
+  5. o relatório pra empresa (PDF): as seções, com as escalas, sem a observação interna;
+  6. a empresa sem jornada no Domínio: digitar o grupo, simular e gravar (os grupos ficam no plano), as escalas do
+     grupo digitado (os dias são suposição, e vem dito) e o 12x36 digitado, que segue 12x36 depois de gravado;
+  7. o texto de fora entra como texto (o nome com <img onerror>, e a escala digitada com HTML);
   8. o card no DP: "1 empresa em 6x1";
+  9. o cadastro da jornada no Domínio (21/11/2026): a jornada marcada 12x36 com horário de semana segue o horário
+     (entra em quem muda e ganha as escalas), o horário sem as horas de cada dia sai como suposição, e os dois
+     avisos ficam na tela (o retrato, o que muda, as escalas) e fora do relatório da empresa;
 e nenhum erro de JavaScript. Termina com código 1 se alguma checagem falhar.
 """
 import sys, pathlib
@@ -42,8 +50,20 @@ SEMEAR = """
     ];
     v.dominio_mensal = [...(v.dominio_mensal || []), { cliente_id: 'j2', codigo: 2, competencia: '2026-10', funcionarios_ativos: 4 }];
     v.jornada_planos = [];
+    if (typeof window.__j6Extra === 'function') window.__j6Extra(v, g, cli);
   } });
 })();
+"""
+# a quarta empresa, só no cenário 9 (não muda as contas dos outros): uma jornada marcada 12x36 no Domínio com horário
+# de semana, e uma com o horário sem as horas de cada dia (a ponte manda a semana sem os minutos)
+EXTRA = """
+window.__j6Extra = (v, g, cli) => {
+  v.clientes.push(cli('j4', 'POUSADA DE TESTE LTDA', 'Simples Nacional'));
+  v.carteira_info.push({ cliente_id: 'j4', entrada: '2023-01-01', saida: null });
+  v.dominio_jornadas.push(
+    g('j4', { codigo: 4, jornada: 21, tipo: 2, tipo_escala: 1, semana: 'TTTTTCF', min_semana: 2640, min_maior_dia: 540, horas_semana: 44, empregados: 4, salarios: 9000 }),
+    g('j4', { codigo: 4, jornada: 22, semana: 'TTTTTTT', min_semana: null, min_maior_dia: null, horas_semana: 44, empregados: 3, salarios: 6600 }));
+};
 """
 DUBLE_PDF = r"""
 window.__pdfTextos = []; window.__pdfSalvo = null;
@@ -117,6 +137,50 @@ def main():
         p.select_option('#sEtapa', 'e40'); p.wait_for_timeout(200)
         ok('32 h/semana' in p.inner_text('.j6-saidas') and p.input_value('#sEtapa') == 'e40', 'trocar a data refaz a conta')
 
+        print('3b. As escalas que cabem')
+        limpo = lambda t: ' '.join(t.split())
+        sec = limpo(p.inner_text('#secEscalas'))
+        ok('a partir de 16/12/2027' in sec and '5 dias de 8h · 40 h por semana' in sec and 'Cabe nas 8 horas por dia' in sec, 'na data de 16/12/2027: 5 dias de 8 h, 40 h por semana, cabendo nas 8 horas')
+        p.select_option('#sEtapa', 'e42'); p.wait_for_timeout(200)
+        turmas = p.eval_on_selector_all('#secEscalas .j6-turma', "els => els.map(e => [e.querySelector('h4').innerText.replace(/\\s+/g, ' ').trim(), [...e.querySelectorAll('.j6-opcao')].map(o => o.dataset.opcao)])")
+        ok(turmas == [['6x1 · 5 pessoas jornada 10 · hoje, 44 h por semana, de segunda a sábado', ['seg_a_sex', 'folga_na_semana', 'sabado_alternado']],
+                      ['5x2 com o sábado compensado · 3 pessoas jornada 11 · hoje, 44 h por semana, de segunda a sexta', ['mesmos_dias', 'dia_curto']]],
+           f'as duas turmas que mudam em 16/12/2026, com as opções de cada uma ({turmas})')
+        LER_GRADE = "t => [...t.querySelectorAll('tbody tr')].map(r => [...r.children].map(c => c.classList.contains('f') ? 'folga' : c.classList.contains('t') ? 'T' : c.innerText.trim()))"
+        grade = p.eval_on_selector('#secEscalas .j6-opcao[data-opcao="folga_na_semana"] .j6-grade', LER_GRADE)
+        ok(len(grade) == 7 and grade[0] == ['Pessoa 1', 'folga', 'T', 'T', 'T', 'T', 'T', 'folga'] and grade[4] == ['Pessoa 5', 'T', 'T', 'T', 'T', 'folga', 'T', 'folga']
+           and grade[5] == ['Ficam', '4', '4', '4', '4', '4', '5', '—'] and grade[6] == ['Hoje', '5', '5', '5', '5', '5', '5', '—'],
+           f'a folga no meio da semana: uma folga pra cada um, ficam 4 de segunda a sexta e 5 no sábado, contra 5 hoje ({grade[5:]})')
+        grade = p.eval_on_selector('#secEscalas .j6-opcao[data-opcao="sabado_alternado"] .j6-grade', LER_GRADE)
+        ok([g for g in grade if g[0] in ('Semana 1', 'Semana 2', 'Ficam')] == [['Semana 1'], ['Ficam', '3', '5', '5', '5', '5', '2', '—'], ['Semana 2'], ['Ficam', '2', '5', '5', '5', '5', '3', '—']]
+           and grade[1] == ['Turma A (3)', 'T', 'T', 'T', 'T', 'T', 'folga', 'folga'], f'o sábado sim, sábado não: as duas semanas, 3 e 2 trocando ({grade})')
+        cartao = limpo(p.inner_text('#secEscalas .j6-opcao[data-opcao="seg_a_sex"]'))
+        ok('5 dias de 8h24 · 42 h por semana' in cartao and 'Até 8h24 por dia sem convenção nem acordo coletivo' in cartao and 'ADI 8.041' in cartao and 'Toda semana com 2 folgas e no máximo 5 dias seguidos de trabalho.' in cartao
+           and 'A turma deixa de trabalhar no sábado.' in cartao, 'cada opção diz o horário, as garantias e o que exige (as 8h24 do STF)')
+        ok('Passa das 8h24 por dia: só com convenção ou acordo coletivo.' in p.inner_text('#secEscalas .j6-opcao[data-opcao="dia_curto"]'), 'a de 4 dias de 8h48 e 1 de 6h48 pede convenção ou acordo')
+        gerais = p.inner_text('#secEscalas .j6-gerais')
+        ok(all(t in gerais for t in ['CLT, art. 71, § 2º', 'Em 16/12/2027 o limite cai pra 40 horas', 'item IV', 'TST, OJ 410 da SDI-1']) and 'Lei 10.101/2000' not in gerais,
+           'as notas das turmas embaixo, uma vez: o intervalo, 2027, a convenção e os dias seguidos (sem a do domingo: ninguém trabalha no domingo)')
+        eco = lambda op: p.inner_text(f'#secEscalas .j6-opcao[data-opcao="{op}"] .j6-eco')
+        p.click('#secEscalas .j6-opcao[data-opcao="seg_a_sex"] [data-escolha]')
+        ok(p.input_value('#pEscolha') == '6x1 (5 pessoas): segunda a sexta, 5 dias de 8h24' and 'Falta gravar o plano' in eco('seg_a_sex'), f'"Pôr na escolha do plano" escreve a opção na escolha ({p.input_value("#pEscolha")!r})')
+        p.click('#secEscalas .j6-opcao[data-opcao="sabado_alternado"] [data-escolha]')
+        ok(p.input_value('#pEscolha') == '6x1 (5 pessoas): sábado sim, sábado não, 5 dias de 8h24' and 'Trocada' in eco('sabado_alternado') and eco('seg_a_sex') == '', 'outra opção da mesma turma troca a de antes')
+        p.click('#secEscalas .j6-opcao[data-opcao="mesmos_dias"] [data-escolha]')
+        juntas = '6x1 (5 pessoas): sábado sim, sábado não, 5 dias de 8h24; 5x2 com o sábado compensado (3 pessoas): os mesmos dias de hoje, com o dia mais curto, 5 dias de 8h24'
+        ok(p.input_value('#pEscolha') == juntas, f'a da outra turma entra junto ({p.input_value("#pEscolha")!r})')
+        p.click('#secEscalas .j6-opcao[data-opcao="mesmos_dias"] [data-escolha]')
+        ok(p.input_value('#pEscolha') == juntas and 'Já está' in eco('mesmos_dias'), 'a mesma opção de novo não repete')
+        p.fill('#pObs', 'RASCUNHO DE TESTE')
+        p.check('#sCct'); p.wait_for_timeout(200)
+        ok('vale pela convenção' in p.inner_text('#secEscalas .j6-opcao[data-opcao="seg_a_sex"]') and p.input_value('#pEscolha') == juntas and p.input_value('#pObs') == 'RASCUNHO DE TESTE',
+           'com a convenção marcada, as 8h24 valem por ela, e o que estava digitado no plano segue na tela')
+        p.uncheck('#sCct'); p.wait_for_timeout(200)
+        p.fill('#pEscolha', 'x' * 280)
+        p.click('#secEscalas .j6-opcao[data-opcao="seg_a_sex"] [data-escolha]')
+        ok(p.input_value('#pEscolha') == 'x' * 280 and 'Não coube' in eco('seg_a_sex'), 'o que passa das 300 letras não entra, e a tela diz')
+        p.select_option('#sEtapa', 'e40'); p.wait_for_timeout(200)
+
         print('4. Gravar o plano')
         p.select_option('#pSituacao', 'definido')
         p.select_option('#pResp', 'Vitória')
@@ -133,6 +197,8 @@ def main():
         nome = p.evaluate('window.__pdfSalvo'); textos = ' '.join(p.evaluate('window.__pdfTextos'))
         ok(nome == 'Escala 6x1 - RESTAURANTE DE TESTE LTDA.pdf', f'o arquivo ({nome})')
         ok(all(t in textos for t in ['O que diz a lei', 'Como a empresa está hoje', 'O que foi combinado', '5x2 de segunda a sexta', 'Os próximos passos']), 'as seções e a escolha')
+        ok(all(t in textos for t in ['As escalas que cabem a partir de 16/12/2027', '6x1 (5 pessoas): hoje, de segunda a sábado', 'Opção 1: Segunda a sexta', '5 dias de 8h, 40 horas por semana.', 'Turma A (3 pessoas)', 'Ficam',
+                                     '(as opções acima são o ponto de partida)']), 'as escalas que cabem, na data do simulador, com a grade de cada opção')
         ok('NOTA INTERNA DE TESTE' not in textos, 'a observação interna fica fora do PDF')
         p.click('#fechar')
         ok('Definido com a empresa' in p.inner_text('#lista tr[data-id="j1"]'), 'a situação na lista')
@@ -142,21 +208,70 @@ def main():
         ok('1. O retrato' in p.inner_text('.j6-passo.is-agora'), 'o guia começa pelo retrato')
         p.select_option('#gEscala', '6x1'); p.fill('#gHoras', '44'); p.fill('#gPessoas', '4'); p.fill('#gSalario', '2000')
         p.click('#gIncluir'); p.wait_for_timeout(200)
+        ok('Grupo incluído' in p.inner_text('#pMsg'), 'o aviso de que o grupo entrou e falta gravar')
         saidas = p.inner_text('.j6-saidas')
         ok('1 pessoa' in saidas and '3.244,11' in saidas, f'o simulador com o grupo digitado (fora do Simples: R$ 3.244,11 por pessoa) ({saidas!r})')
+        sec = ' '.join(p.inner_text('#secEscalas').split())
+        ok('6x1 · 4 pessoas' in sec and 'de segunda a sábado (suposição: o grupo foi digitado sem os dias)' in sec and p.locator('#secEscalas .j6-opcao').count() == 3,
+           'as escalas do grupo digitado: três opções, com os dias de hoje ditos como suposição')
         p.click('#pGravar'); p.wait_for_timeout(500)
         pl = plano(p, 'j2')
         ok(pl and len(pl['simulacao']['grupos']) == 1 and pl['simulacao']['grupos'][0]['escala'] == '6x1', f'os grupos ficam no plano ({pl and pl["simulacao"]})')
+        p.select_option('#gEscala', '12x36'); p.fill('#gHoras', '42'); p.fill('#gPessoas', '2'); p.fill('#gSalario', '')
+        p.click('#gIncluir'); p.wait_for_timeout(200)
+        p.select_option('#sEtapa', 'e40'); p.wait_for_timeout(200)
+        p.click('#pGravar'); p.wait_for_timeout(500)
+        pl = plano(p, 'j2')
+        retrato = p.eval_on_selector_all('.j6-tab tbody tr', 'els => els.map(e => e.children[0].innerText.trim())')
+        ok(pl and len(pl['simulacao']['grupos']) == 2 and pl['simulacao']['grupos'][1].get('tipo_escala') == 1 and retrato == ['6x1', '12x36']
+           and p.locator('#secEscalas .j6-turma').count() == 1, f'o 12x36 digitado segue 12x36 depois de gravado, e não entra nas turmas que mudam em 16/12/2027 ({retrato})')
         p.click('#fechar')
-        ok('(digitado)' in p.inner_text('#lista tr[data-id="j2"]') and '4 em 6x1' in p.inner_text('#lista tr[data-id="j2"]'), 'a lista mostra o grupo digitado')
+        ok('(digitado)' in p.inner_text('#lista tr[data-id="j2"]') and '4 em 6x1' in p.inner_text('#lista tr[data-id="j2"]') and '2 em 12x36' in p.inner_text('#lista tr[data-id="j2"]'), 'a lista mostra os grupos digitados')
 
         print('7. Texto de fora')
         ok(p.evaluate('window.__pego') is None and '<img' in p.inner_text('#lista tr[data-id="j3"]'), 'o nome com <img onerror> entra como texto')
+        # a escala de um grupo digitado vem do plano gravado (um JSON do banco): com HTML dentro, entra como texto
+        p.click('#lista tr[data-id="j2"]'); p.wait_for_selector('#gIncluir', timeout=3000)
+        p.evaluate('''() => { const s = document.querySelector('#gEscala'), o = document.createElement('option'); o.value = '<img src=x onerror="window.__pego2=1">'; o.textContent = 'x'; s.append(o); s.value = o.value; }''')
+        p.fill('#gHoras', '44'); p.fill('#gPessoas', '1'); p.click('#gIncluir'); p.wait_for_timeout(300)
+        ok(p.evaluate('window.__pego2') is None and '<img' in p.inner_text('#secEscalas') and '<img' in p.inner_text('.j6-tab') and p.locator('#painel img').count() == 0,
+           'a escala digitada com HTML entra como texto no retrato e nas escalas')
+        p.click('#fechar')
 
         print('8. O card no DP')
         p.goto(base + 'dp.html'); p.wait_for_timeout(1500)
         card = p.locator('a.dashboard-card[href="dp-jornada.html"]')
         ok(card.count() == 1 and 'Escala 6x1' in card.inner_text() and '1 empresa em 6x1' in card.inner_text().lower(), f'o card ({card.inner_text() if card.count() else None!r})')
+
+        print('9. O cadastro da jornada no Domínio')
+        q = cx.new_page()
+        q.on('pageerror', lambda e: erros.append(str(e)))
+        q.route('**/cdnjs.cloudflare.com/**', lambda r: r.abort())
+        q.add_init_script(TOUR); q.add_init_script(EXTRA); q.add_init_script(SEMEAR); q.add_init_script(DUBLE_PDF)
+        q.clock.set_fixed_time('2026-11-09T12:00:00')
+        q.goto(base + 'dp-jornada.html')
+        q.wait_for_selector('#lista tr[data-id="j4"]', timeout=8000)
+        linha = q.inner_text('#lista tr[data-id="j4"]')
+        ok('4 em 5x2 com o sábado compensado' in linha and '3 em 7 dias com folga em rodízio' in linha and '7 mudam' in linha and '12x36' not in linha,
+           f'na lista, a marcada 12x36 com horário de semana conta pelo horário, e as duas turmas mudam ({linha!r})')
+        q.click('#lista tr[data-id="j4"]'); q.wait_for_selector('#fichaTitulo', timeout=3000)
+        retrato = q.eval_on_selector_all('.j6-tab tbody tr', "els => els.map(e => e.children[0].innerText.replace(/\\s+/g, ' ').trim())")
+        ok(retrato == ['5x2 com o sábado compensado · jornada 21 · marcada 12x36 no Domínio', '7 dias com folga em rodízio · jornada 22 · horário sem as horas no Domínio: dias a confirmar'],
+           f'o retrato diz o que o cadastro tem de estranho ({retrato})')
+        muda = limpo(q.inner_text('.j6-etapas'))
+        ok(muda.count('No Domínio a jornada está marcada como 12x36, mas o horário cadastrado é de semana: a conta segue o horário.') == 2
+           and muda.count('No Domínio o horário desta jornada está sem as horas de cada dia (a entrada igual à saída)') == 2 and 'precisa cair pra 42 h' in muda
+           and 'A 12x36 dá a média' not in muda, 'o que muda, nas duas datas: os dois avisos do cadastro, e a turma marcada lida pelo horário (44 h pra 42 h)')
+        turmas = q.eval_on_selector_all('#secEscalas .j6-turma', "els => els.map(e => [e.querySelector('h4').innerText.replace(/\\s+/g, ' ').trim(), [...e.querySelectorAll('.j6-opcao')].map(o => o.dataset.opcao), (e.querySelector('.j6-aviso') || {}).innerText || ''])")
+        ok(len(turmas) == 2 and turmas[0] == ['5x2 com o sábado compensado · 4 pessoas jornada 21 · hoje, 44 h por semana, de segunda a sexta', ['mesmos_dias', 'dia_curto'], '']
+           and turmas[1][:2] == ['7 dias com folga em rodízio · 3 pessoas jornada 22 · hoje, 44 h por semana', ['rodizio_3', 'rodizio_2']]
+           and turmas[1][2] == 'No Domínio o horário desta turma está sem as horas de cada dia: as opções supõem os dias que estão lá (os 7 dias, com a folga em rodízio). Confirme os dias com a empresa antes de combinar.',
+           f'as escalas das duas turmas, e o aviso de que as do horário sem as horas são suposição ({turmas})')
+        q.click('#pPdf'); q.wait_for_timeout(300)
+        textos = ' '.join(q.evaluate('window.__pdfTextos'))
+        ok(all(t in textos for t in ['5x2 com o sábado compensado (4 pessoas)', 'precisa cair pra 42 h', '7 dias com folga em rodízio (3 pessoas)', 'Os 7 dias cobertos, com as folgas em rodízio de 3 semanas'])
+           and not any(t in textos for t in ['marcada como 12x36', 'sem as horas de cada dia', 'Aviso do escritório', 'as opções supõem', 'tire a marca']),
+           'o relatório da empresa segue o horário e não leva os avisos do cadastro')
         b.close()
     srv.shutdown()
     ok(not erros, 'nenhum erro de JavaScript' + (': ' + '; '.join(erros[:3]) if erros else ''))

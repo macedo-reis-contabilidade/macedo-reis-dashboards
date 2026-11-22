@@ -66,6 +66,35 @@
     .j6-msg { font-size:12.5px; min-height:18px; margin:8px 0 0; }
     .j6-base { font-size:12.5px; color:var(--text-muted); }
     .j6-base a { color:var(--brand-light); }
+    /* as escalas que cabem */
+    .j6-turmas { display:flex; flex-direction:column; gap:18px; }
+    .j6-turma h4 { margin:0 0 8px; font-size:14px; color:var(--text); }
+    .j6-turma h4 small { color:var(--text-muted); font-weight:400; font-size:12.5px; margin-left:6px; }
+    .j6-turma .j6-aviso { margin:0 0 10px; font-size:13px; padding:8px 12px; }
+    .j6-cadastro { font-size:12px; }
+    .j6-opcoes { display:grid; grid-template-columns:repeat(auto-fit, minmax(min(340px, 100%), 1fr)); gap:12px; }
+    .j6-opcao { border:1px solid var(--line); border-radius:12px; padding:12px 14px; display:flex; flex-direction:column; gap:8px; min-width:0; }
+    .j6-opcao h5 { margin:0; font-size:13.5px; color:var(--text); }
+    .j6-horario { font-size:13px; color:var(--text-muted); }
+    .j6-opcao .j6-item { margin:0; }
+    .j6-opcao > .j6-linha:last-child { margin-top:auto !important; padding-top:2px; }
+    .j6-grade { width:100%; border-collapse:collapse; font-size:12.5px; }
+    .j6-grade th, .j6-grade td { padding:4px 6px; text-align:center; border-bottom:1px solid var(--line); white-space:nowrap; }
+    .j6-grade thead th { font-size:11px; font-weight:600; color:var(--text-muted); }
+    .j6-grade tbody th { text-align:left; font-size:12.5px; font-weight:500; color:var(--text); }
+    .j6-grade td { color:var(--text); }
+    .j6-grade td.t { color:var(--text-dim); }
+    .j6-grade td.f { background:rgba(91,130,166,.18); font-weight:600; }
+    .j6-grade tr.j6-sem th { padding-top:9px; font-size:11px; font-weight:600; color:var(--text-muted); border-bottom:0; }
+    .j6-grade tr.j6-ficam th, .j6-grade tr.j6-ficam td { font-weight:600; }
+    .j6-grade tr.j6-hoje th, .j6-grade tr.j6-hoje td { color:var(--text-muted); font-weight:400; }
+    .j6-nota { margin:0; font-size:12.5px; color:var(--text-muted); }
+    .j6-nota small { display:block; font-size:11.5px; color:var(--text-dim); margin-top:1px; }
+    .j6-gerais { display:flex; flex-direction:column; gap:6px; margin-top:14px; }
+    .j6-eco { font-size:12.5px; color:var(--text-muted); }
+    .j6-vh { position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0 0 0 0); white-space:nowrap; }
+    /* no celular, a grade da semana cabe sem rolar de lado */
+    @media (max-width:480px){ .j6-opcao { padding:12px 10px; } .j6-grade { font-size:11.5px; } .j6-grade th, .j6-grade td { padding:4px 2px; } .j6-grade tbody th { font-size:11.5px; } }
   </style>
 </head>
 <body>
@@ -132,6 +161,7 @@
       EMENDA, DECISAO_STF, DECRETO, DATA_42, DATA_40, ETAPAS, padraoDoGrupo, diagnostico, resumoDaEmpresa, simular, salarioMedio,
       encargosDoRegime, fmtNum, fmtReais, fmtHoras, SITUACOES, rotuloDaSituacao, ROTULOS
     } from './assets/js/jornada-6x1.js';
+    import { DIAS, escalasDaEmpresa, garantias } from './assets/js/jornada-escalas.js';
     import { relatorioJornadaPdf } from './assets/js/jornada-6x1-pdf.js';
 
     const $ = id => document.getElementById(id);
@@ -273,10 +303,79 @@
 
     function gruposDaFicha() { return atual.doDominio ? atual.grupos : estado.digitados; }
 
+    // ---------- as escalas que cabem (jornada-escalas.js) ----------
+    // as opções desenhadas, pela chave "turma-opção": é delas que o "Pôr na escolha do plano" tira o texto
+    let opcoesDaTela = new Map();
+    const notaHtml = n => '<p class="j6-nota">' + esc(n.texto) + (n.base ? '<small>' + esc(n.base) + '</small>' : '') + '</p>';
+    function gradeDaOpcao(o) {
+      if (o.semGrade) return '';
+      const celula = t => t ? '<td class="t"><span aria-hidden="true">•</span><span class="j6-vh">trabalha</span></td>' : '<td class="f">folga</td>';
+      const nomeDe = t => esc(t.nome) + (t.nome.startsWith('Turma') ? ' <span class="j6-dim">(' + esc(t.pessoas) + ')</span>' : '');
+      const noDia = new Set(o.cobertura.dias.map(x => x.dia));
+      const numeros = (rotulo, classe, vals) => '<tr class="' + classe + '"><th scope="row">' + esc(rotulo) + '</th>' + vals.map((v, d) => '<td>' + (noDia.has(d) ? esc(v) : '—') + '</td>').join('') + '</tr>';
+      // um corpo por semana do ciclo (o "Semana N" é o cabeçalho do grupo de linhas) e, no fim, o de hoje
+      let corpo = '';
+      for (let w = 0; w < o.ciclo; w++) {
+        corpo += '<tbody>' + (o.ciclo > 1 ? '<tr class="j6-sem"><th scope="rowgroup" colspan="8">Semana ' + (w + 1) + '</th></tr>' : '')
+          + o.turmas.map(t => '<tr><th scope="row">' + nomeDe(t) + '</th>' + t.trabalha[w].map(celula).join('') + '</tr>').join('')
+          + numeros('Ficam', 'j6-ficam', o.cobertura.nova[w]) + '</tbody>';
+      }
+      if (o.cobertura.hoje) corpo += '<tbody>' + numeros('Hoje', 'j6-hoje', o.cobertura.hoje) + '</tbody>';
+      return '<div class="j6-rola"><table class="j6-grade"><caption class="j6-vh">' + esc(o.titulo) + ': quem trabalha e quem folga em cada dia</caption><thead><tr><th scope="col"><span class="j6-vh">Quem</span></th>'
+        + DIAS.map(d => '<th scope="col">' + esc(d.charAt(0).toUpperCase() + d.slice(1)) + '</th>').join('') + '</tr></thead>' + corpo + '</table></div>';
+    }
+    function cartaoDaOpcao(o, chave) {
+      opcoesDaTela.set(chave, o);
+      const g = garantias(o);
+      return '<div class="j6-opcao" data-opcao="' + esc(o.id) + '"><h5>' + esc(o.titulo) + '</h5><div class="j6-horario">' + esc(o.horario) + ' · ' + esc(fmtNum(o.horasSemana)) + ' h por semana</div>'
+        + gradeDaOpcao(o) + (g ? '<p class="j6-nota">' + esc(g) + '</p>' : '')
+        + '<div class="j6-item t-' + (o.exige.nivel === 'nada' ? 'ok' : 'conferir') + '">' + esc(o.exige.texto) + '<small>' + esc(o.exige.base) + '</small></div>'
+        + o.notas.map(notaHtml).join('')
+        + '<div class="j6-linha" style="margin:0;"><button type="button" class="btn btn-ghost btn-sm" data-escolha="' + esc(chave) + '">Pôr na escolha do plano</button><span class="j6-eco" role="status"></span></div></div>';
+    }
+    function blocoEscalas(grupos) {
+      opcoesDaTela = new Map();
+      if (!grupos.length) return '<p class="j6-dim" style="font-size:13px;margin:0;">Sem os grupos, não dá pra sugerir a escala.</p>';
+      const turmas = escalasDaEmpresa(grupos, estado.etapa, { cct: estado.cct });
+      if (!turmas.length) return '<p class="j6-dim" style="font-size:13px;margin:0;">Nada a mudar nesta data: as escalas de hoje continuam.</p>';
+      const gerais = new Map();
+      const html = turmas.map(({ grupo: g, escalas: s }, i) => {
+        for (const n of s.notas) gerais.set(n.texto, n);
+        const p = padraoDoGrupo(g);
+        const hojeTxt = [p.horas != null ? fmtNum(p.horas) + ' h por semana' : null,
+          s.hoje ? s.hoje.texto + (s.hoje.suposto ? (s.hoje.porque === 'sem_horas' ? ' (suposição: no Domínio o horário está sem as horas)' : ' (suposição: o grupo foi digitado sem os dias)') : '') : null].filter(Boolean).join(', ');
+        return '<div class="j6-turma"><h4>' + esc(s.rotulo) + ' · ' + esc(s.pessoas) + ' ' + (s.pessoas === 1 ? 'pessoa' : 'pessoas')
+          + ' <small>' + esc([g.jornada ? 'jornada ' + g.jornada : null, hojeTxt ? 'hoje, ' + hojeTxt : null].filter(Boolean).join(' · ')) + '</small></h4>'
+          // o aviso que é só do escritório (o horário do Domínio sem as horas): a tela mostra, o relatório não
+          + (s.aviso && s.opcoes.length ? '<div class="j6-aviso">' + esc(s.aviso) + '</div>' : '')
+          + (s.opcoes.length ? '<div class="j6-opcoes">' + s.opcoes.map((o, j) => cartaoDaOpcao(o, i + '-' + j)).join('') + '</div>'
+            : '<div class="j6-item t-conferir" style="margin:0;">' + esc(s.motivo) + '</div>') + '</div>';
+      }).join('');
+      return '<div class="j6-turmas">' + html + '</div>' + (gerais.size ? '<div class="j6-gerais">' + [...gerais.values()].map(notaHtml).join('') + '</div>' : '');
+    }
+    // põe o resumo da opção na escolha do plano (o campo vai no relatório); outra opção da mesma turma troca a de antes
+    function porNaEscolha(botao) {
+      const chave = botao.dataset.escolha, o = opcoesDaTela.get(chave), campo = $('pEscolha');
+      const eco = botao.parentElement.querySelector('.j6-eco');
+      if (!o || !campo) return;
+      let texto = campo.value.trim();
+      if (texto.includes(o.resumo)) { eco.textContent = 'Já está na escolha do plano.'; return; }
+      const turma = chave.split('-')[0] + '-';
+      const anterior = [...opcoesDaTela].find(([k, x]) => k.startsWith(turma) && k !== chave && texto.includes(x.resumo));
+      texto = anterior ? texto.replace(anterior[1].resumo, () => o.resumo) : (texto ? texto + '; ' + o.resumo : o.resumo);
+      const max = campo.maxLength > 0 ? campo.maxLength : 300;
+      if (texto.length > max) { eco.textContent = 'Não coube: a escolha do plano vai até ' + max + ' letras. Encurte o que já está lá.'; return; }
+      campo.value = texto;
+      for (const e of document.querySelectorAll('#secEscalas .j6-eco')) e.textContent = '';
+      eco.textContent = (anterior ? 'Trocada na escolha do plano.' : 'Está na escolha do plano.') + ' Falta gravar o plano.';
+    }
+
     function desenharFicha() {
       const e = atual, grupos = gruposDaFicha();
       const r = resumoDaEmpresa(grupos, { cct: estado.cct });
       const plano = e.plano || {};
+      // o que está digitado no plano e ainda não foi gravado segue na tela quando ela se redesenha
+      const campos = estado.rascunho || plano;
       const passo1 = grupos.length > 0, passo2 = !!(plano.simulacao && plano.simulacao.etapa), passo3 = ['definido', 'aplicado'].includes(plano.situacao);
       const agora = !passo1 ? 1 : !passo2 ? 2 : !passo3 ? 3 : 0;
       const passo = (n, titulo, texto, feito) => '<div class="j6-passo' + (feito ? ' is-feito' : '') + (agora === n ? ' is-agora' : '') + '"><b>' + (feito ? '✓ ' : n + '. ') + esc(titulo) + '</b>' + esc(texto) + '</div>';
@@ -284,7 +383,9 @@
       const linhasGrupos = grupos.length ? grupos.map((g, i) => {
         const p = padraoDoGrupo(g);
         const med = g.salarios != null && g.empregados ? (Number(g.unidade) === 1 ? fmtReais(g.salarios / g.empregados) + ' /h' : fmtReais(g.salarios / g.empregados)) : (Number(g.empregados) < 3 && e.doDominio ? '<span class="j6-dim" title="Grupo com menos de 3 empregados: o salário fica no PC do escritório, e o simulador usa a média da empresa.">— (grupo pequeno)</span>' : '—');
-        return '<tr><td>' + esc(p.rotulo) + (g.jornada ? ' <span class="j6-dim">· jornada ' + esc(g.jornada) + '</span>' : '') + '</td><td class="j6-num">' + esc(g.empregados) + (g.afastados ? ' <span class="j6-dim">(' + esc(g.afastados) + ' afast.)</span>' : '') + '</td>'
+        // o que o cadastro da jornada no Domínio tem de estranho: a marca de escala com horário de semana, e o horário sem as horas
+        const cadastro = [p.marcada ? 'marcada ' + p.marcada + ' no Domínio' : null, p.semHoras ? 'horário sem as horas no Domínio: dias a confirmar' : null].filter(Boolean).join(' · ');
+        return '<tr><td>' + esc(p.rotulo) + (g.jornada ? ' <span class="j6-dim">· jornada ' + esc(g.jornada) + '</span>' : '') + (cadastro ? ' <span class="j6-dim j6-cadastro">· ' + esc(cadastro) + '</span>' : '') + '</td><td class="j6-num">' + esc(g.empregados) + (g.afastados ? ' <span class="j6-dim">(' + esc(g.afastados) + ' afast.)</span>' : '') + '</td>'
           + '<td class="j6-num">' + esc(fmtNum(p.horas)) + ' h</td><td class="j6-num">' + (p.dias != null ? esc(fmtNum(p.dias)) : '—') + '</td><td>' + (p.domingo === true ? 'sim' : p.domingo === false ? 'não' : '—') + '</td>'
           + '<td class="j6-num">' + med + '</td><td>' + (e.doDominio ? '' : '<button class="btn btn-ghost btn-sm" data-tira="' + i + '" aria-label="Tirar este grupo">Tirar</button>') + '</td></tr>';
       }).join('') : '<tr><td colspan="7" class="j6-dim">Nenhum grupo ainda.</td></tr>';
@@ -308,7 +409,7 @@
         </div>
         <div class="j6-sec"><h3>Por onde começar</h3><div class="j6-passos">
           ${passo(1, 'O retrato', e.doDominio ? 'Os grupos vêm do Domínio: confira se batem com a empresa.' : 'A jornada não está no Domínio: digite os grupos (a escala, as horas e quantas pessoas).', passo1)}
-          ${passo(2, 'O simulador', 'Escolha a data e veja as saídas: contratar, hora extra ou reduzir.', passo2)}
+          ${passo(2, 'O simulador', 'Escolha a data e veja as saídas (contratar, hora extra ou reduzir) e as escalas que cabem.', passo2)}
           ${passo(3, 'O plano', 'Combine com a empresa, grave a situação e baixe o relatório pra ela.', passo3)}
         </div></div>
 
@@ -343,17 +444,22 @@
           <p class="j6-base" style="margin-top:10px;">A conta: contratar = as horas que faltam ÷ ${s ? esc(s.resumo.limite) : 40} h (ou os dias-pessoa ÷ 5, o maior); a hora extra = o salário ÷ ${esc(ETAPAS[estado.etapa].divisor)} × 1,5, mais o reflexo nas 2 folgas (Súmula 172 do TST, leitura), 13º, férias e encargos. Sem vale-transporte, alimentação e benefícios da convenção.</p>
         </div>
 
+        <div class="j6-sec" id="secEscalas"><h3>As escalas que cabem <small>a partir de ${esc(fmtData(ETAPAS[estado.etapa].desde))} · a data é a do simulador</small></h3>
+          <p class="j6-base" style="margin:0 0 12px;">Pra cada turma que precisa mudar, as escalas que cabem na lei: a folga de cada um e quantos ficam em cada dia, contra hoje. São pontos de partida pra conversa: quem sabe do movimento de cada dia é a empresa. As pessoas aparecem como turmas porque a jornada vem do Domínio somada, sem nome.</p>
+          ${blocoEscalas(grupos)}
+        </div>
+
         <div class="j6-sec"><h3>O plano com a empresa</h3>
           <div class="j6-campos">
-            <label>Situação<select class="select" id="pSituacao">${SITUACOES.map(([k, v]) => '<option value="' + k + '" ' + ((plano.situacao || 'a_conversar') === k ? 'selected' : '') + '>' + esc(v) + '</option>').join('')}</select></label>
-            <label>Quem cuida<select class="select" id="pResp"><option value="">—</option>${DP.map(n => '<option ' + (plano.responsavel === n ? 'selected' : '') + '>' + esc(n) + '</option>').join('')}</select></label>
-            <label>Conversado em<input class="input" id="pConversado" type="date" value="${esc(plano.conversado_em || '')}"></label>
-            <label>Definido em<input class="input" id="pDefinido" type="date" value="${esc(plano.definido_em || '')}"></label>
-            <label>Aditivos assinados em<input class="input" id="pAditivo" type="date" value="${esc(plano.aditivo_em || '')}"></label>
-            <label>eSocial enviado em<input class="input" id="pEsocial" type="date" value="${esc(plano.esocial_em || '')}"></label>
+            <label>Situação<select class="select" id="pSituacao">${SITUACOES.map(([k, v]) => '<option value="' + k + '" ' + ((campos.situacao || 'a_conversar') === k ? 'selected' : '') + '>' + esc(v) + '</option>').join('')}</select></label>
+            <label>Quem cuida<select class="select" id="pResp"><option value="">—</option>${DP.map(n => '<option ' + (campos.responsavel === n ? 'selected' : '') + '>' + esc(n) + '</option>').join('')}</select></label>
+            <label>Conversado em<input class="input" id="pConversado" type="date" value="${esc(campos.conversado_em || '')}"></label>
+            <label>Definido em<input class="input" id="pDefinido" type="date" value="${esc(campos.definido_em || '')}"></label>
+            <label>Aditivos assinados em<input class="input" id="pAditivo" type="date" value="${esc(campos.aditivo_em || '')}"></label>
+            <label>eSocial enviado em<input class="input" id="pEsocial" type="date" value="${esc(campos.esocial_em || '')}"></label>
           </div>
-          <label style="display:flex;flex-direction:column;gap:4px;font-size:12.5px;color:var(--text-muted);margin-top:10px;">A escolha (vai no relatório)<input class="input" id="pEscolha" maxlength="300" value="${esc(plano.escolha || '')}" placeholder="Ex.: 5x2 de segunda a sexta, 8 h por dia, e 1 pessoa a mais pro sábado"></label>
-          <label style="display:flex;flex-direction:column;gap:4px;font-size:12.5px;color:var(--text-muted);margin-top:10px;">Observação interna (não sai no relatório)<textarea class="textarea" id="pObs" rows="3" maxlength="4000">${esc(plano.observacao || '')}</textarea></label>
+          <label style="display:flex;flex-direction:column;gap:4px;font-size:12.5px;color:var(--text-muted);margin-top:10px;">A escolha (vai no relatório)<input class="input" id="pEscolha" maxlength="300" value="${esc(campos.escolha || '')}" placeholder="Ex.: 5x2 de segunda a sexta, 8 h por dia, e 1 pessoa a mais pro sábado"></label>
+          <label style="display:flex;flex-direction:column;gap:4px;font-size:12.5px;color:var(--text-muted);margin-top:10px;">Observação interna (não sai no relatório)<textarea class="textarea" id="pObs" rows="3" maxlength="4000">${esc(campos.observacao || '')}</textarea></label>
           <div class="j6-linha" style="margin-top:12px;"><button class="btn btn-primary" id="pGravar" ${planosOk ? '' : 'disabled'}>Gravar o plano</button><button class="btn btn-ghost" id="pPdf" ${grupos.length ? '' : 'disabled'}>Baixar o relatório pra empresa (PDF)</button></div>
           <p class="j6-msg" id="pMsg" role="status"></p>
         </div>
@@ -367,6 +473,8 @@
       if ($('sCct')) estado.cct = $('sCct').checked;
       if ($('sPresenca')) estado.presenca = $('sPresenca').checked;
       if ($('sAnexo')) estado.anexoIV = $('sAnexo').checked;
+      if ($('pSituacao')) estado.rascunho = { situacao: $('pSituacao').value, responsavel: $('pResp').value, conversado_em: $('pConversado').value, definido_em: $('pDefinido').value,
+        aditivo_em: $('pAditivo').value, esocial_em: $('pEsocial').value, escolha: $('pEscolha').value, observacao: $('pObs').value };
     }
 
     function ligarFicha() {
@@ -381,11 +489,13 @@
         const sal = $('gSalario').value === '' ? null : Number($('gSalario').value);
         const g = escala === '12x36' ? { tipo_escala: 1, horas_semana: horas, empregados: pessoas, salarios: sal != null ? sal * pessoas : null }
           : { manual: true, escala, dias: diasEsc, horas, empregados: pessoas, salarios: sal != null ? sal * pessoas : null, domingo: $('gDomingo').checked };
+        lerEstadoDaTela();
         estado.digitados.push(g);
-        $('pMsg').textContent = 'Grupo incluído. Grave o plano pra guardar.';
         desenharFicha();
+        $('pMsg').textContent = 'Grupo incluído. Grave o plano pra guardar.';
       });
-      for (const b of document.querySelectorAll('[data-tira]')) b.addEventListener('click', () => { estado.digitados.splice(Number(b.dataset.tira), 1); desenharFicha(); });
+      for (const b of document.querySelectorAll('[data-tira]')) b.addEventListener('click', () => { lerEstadoDaTela(); estado.digitados.splice(Number(b.dataset.tira), 1); desenharFicha(); });
+      for (const b of document.querySelectorAll('[data-escolha]')) b.addEventListener('click', () => porNaEscolha(b));
       $('pGravar').addEventListener('click', gravar);
       $('pPdf').addEventListener('click', baixarPdf);
     }
@@ -411,6 +521,7 @@
       atual.digitados = ((atual.plano.simulacao || {}).grupos || []).map(g => ({ ...g, manual: true }));
       if (!atual.doDominio) { atual.grupos = atual.digitados; atual.resumo = resumoDaEmpresa(atual.grupos, { cct: estado.cct }); atual.funcionarios = atual.resumo.empregados || atual.funcionarios; }
       msg.textContent = 'Plano gravado.';
+      estado.rascunho = null;
       desenharLista();
       desenharFicha();
       $('pMsg').textContent = 'Plano gravado.';

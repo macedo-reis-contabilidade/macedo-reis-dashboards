@@ -1,11 +1,13 @@
 // =====================================================================
 // MACEDO & REIS — O relatório do fim da escala 6x1 pra empresa (dp-jornada.html, 09/11/2026), em PDF.
 // Puro: recebe o construtor do jsPDF (window.jspdf.jsPDF) e os dados da ficha. O que vai: a lei, o retrato de hoje,
-// o que muda em cada data, as saídas com o custo estimado, a escolha combinada e os próximos passos. A observação
-// interna do plano nunca entra (a regra da casa: anotação interna não sai em PDF).
+// o que muda em cada data, as saídas com o custo estimado, as escalas que cabem (21/11/2026, jornada-escalas.js: a
+// folga de cada um e quantos ficam em cada dia), a escolha combinada e os próximos passos. A observação interna do
+// plano nunca entra (a regra da casa: anotação interna não sai em PDF).
 // A fonte padrão do jsPDF não tem o travessão nem alguns símbolos: o texto passa pelo limpar().
 // =====================================================================
 import { EMENDA, DECISAO_STF, DECRETO, DATA_42, DATA_40, ETAPAS, padraoDoGrupo, diagnostico, simular, fmtNum, fmtReais } from './jornada-6x1.js';
+import { DIAS, escalasDaEmpresa, garantias } from './jornada-escalas.js';
 
 const dataBr = iso => iso ? String(iso).slice(0, 10).split('-').reverse().join('/') : '';
 export const limpar = t => String(t == null ? '' : t)
@@ -69,7 +71,8 @@ export function relatorioJornadaPdf(J, { empresa, grupos, opcoes = {}, etapa = '
     let algum = false;
     for (const g of grupos) {
       const d = diagnostico(g, id, { cct: !!opcoes.cct });
-      const itens = d.itens.filter(i => !i.ok);
+      // o aviso que é só do escritório (o cadastro da jornada no Domínio) não vai pra empresa
+      const itens = d.itens.filter(i => !i.ok && !i.interno);
       if (!itens.length) continue;
       algum = true;
       texto(d.padrao.rotulo + ' (' + g.empregados + ' ' + (Number(g.empregados) === 1 ? 'pessoa' : 'pessoas') + ')', { negrito: true, tam: 10 });
@@ -85,13 +88,71 @@ export function relatorioJornadaPdf(J, { empresa, grupos, opcoes = {}, etapa = '
   item('Reduzir: ' + fmtNum(s.reduzir.horasSemana) + ' horas por semana a menos' + (s.reduzir.presenca ? ' e ' + fmtNum(s.reduzir.presenca) + ' dia(s)-pessoa a menos' : '') + ', sem custo a mais, absorvidas no horário de funcionamento ou na distribuição dos turnos.');
   texto('Como foi calculado: salário de referência R$ ' + (s.salario != null ? fmtReais(s.salario) : '-') + '; ' + s.encargos.rotulo + '; a hora extra com 50%, o divisor ' + ETAPAS[etapa].divisor + ', o reflexo nas 2 folgas, 13º, férias e encargos. Não inclui vale-transporte, alimentação e os benefícios da convenção.', { tam: 8.5, cor: [110, 110, 110], depois: 2 });
 
+  // as escalas que cabem na data do simulador: pra cada turma que muda, as opções em grade (quem folga em cada dia e
+  // quantos ficam, contra hoje). A grade só usa texto e linha: "folga" no dia de folga, vazio no dia de trabalho.
+  const turmas = escalasDaEmpresa(grupos, etapa, { cct: !!opcoes.cct });
+  const comOpcoes = turmas.some(t => t.escalas.opcoes.length);
+  if (turmas.length) {
+    const gente = n => n + ' ' + (Number(n) === 1 ? 'pessoa' : 'pessoas');
+    const nota = (n, recuo) => { texto(n.texto, { tam: 9.5, recuo, depois: n.base ? 0.6 : 1.5 }); if (n.base) texto(n.base, { tam: 8.5, cor: [110, 110, 110], recuo: recuo + 3 }); };
+    const C0 = 42, CD = 16, ALT = 4.3;   // a primeira coluna, a de cada dia e a altura da linha, em mm
+    // a altura de uma opção até o fim da grade (o título, o horário e as linhas), pra ela não começar no pé da página
+    const linhasDaGrade = o => o.semGrade ? 0 : 1 + (o.ciclo > 1 ? o.ciclo : 0) + o.ciclo * (o.turmas.length + 1) + (o.cobertura.hoje ? 1 : 0);
+    const altura = o => Math.min(16 + linhasDaGrade(o) * ALT, 150);
+    const grade = (o, recuo) => {
+      const x0 = M + recuo;
+      const linha = (rotulo, celulas, { negrito = false, cor = [30, 30, 30] } = {}) => {
+        quebra(ALT);
+        doc.setFont('helvetica', negrito ? 'bold' : 'normal'); doc.setFontSize(8.5); doc.setTextColor(...cor);
+        if (rotulo) doc.text(limpar(rotulo), x0, y);
+        celulas.forEach((c, d) => { if (c !== '') doc.text(limpar(String(c)), x0 + C0 + d * CD, y); });
+        y += ALT;
+      };
+      const noDia = new Set(o.cobertura.dias.map(x => x.dia));
+      const numeros = vals => vals.map((v, d) => noDia.has(d) ? v : '-');
+      linha('', DIAS.map(d => d.charAt(0).toUpperCase() + d.slice(1)), { negrito: true, cor: [90, 90, 90] });
+      doc.setDrawColor(200, 200, 200); doc.line(x0, y - ALT + 1.4, x0 + C0 + 7 * CD - 4, y - ALT + 1.4);
+      y += 1;
+      for (let w = 0; w < o.ciclo; w++) {
+        if (o.ciclo > 1) { if (w) y += 0.8; linha('Semana ' + (w + 1), [], { negrito: true, cor: [90, 90, 90] }); }
+        for (const t of o.turmas) linha(t.nome + (t.nome.startsWith('Turma') ? ' (' + gente(t.pessoas) + ')' : ''), t.trabalha[w].map(x => x ? '' : 'folga'));
+        linha('Ficam', numeros(o.cobertura.nova[w]), { negrito: true });
+      }
+      if (o.cobertura.hoje) linha('Hoje', numeros(o.cobertura.hoje), { cor: [110, 110, 110] });
+      y += 1.2;
+    };
+    titulo('As escalas que cabem a partir de ' + dataBr(ETAPAS[etapa].desde));
+    texto('Pra cada turma que precisa mudar, as escalas que cabem na lei: quem folga em cada dia e quantos ficam, contra hoje. São pontos de partida: a empresa escolhe pelo movimento de cada dia e pelos horários. As pessoas aparecem como turmas (Turma A, Pessoa 1): quem entra em cada uma, a empresa decide.', { tam: 9, cor: [90, 90, 90], depois: 2.5 });
+    const gerais = new Map();
+    for (const { escalas: e } of turmas) {
+      for (const n of e.notas) gerais.set(n.texto, n);
+      y += 1; quebra(e.opcoes.length ? Math.min(18 + altura(e.opcoes[0]), 180) : 16);   // o nome da turma vai junto com a primeira opção
+      texto(e.rotulo + ' (' + gente(e.pessoas) + ')' + (e.hoje && !e.hoje.suposto ? ': hoje, ' + e.hoje.texto : ''), { negrito: true, tam: 10.5 });
+      if (!e.opcoes.length) { texto(e.motivo, { recuo: 2, depois: 2.5 }); continue; }
+      // o que as opções exigem: uma vez só, quando é o mesmo em todas
+      const juntas = e.opcoes.length > 1 && new Set(e.opcoes.map(o => o.exige.texto)).size === 1;
+      if (juntas) nota({ texto: e.opcoes[0].exige.texto + ' Vale pras ' + e.opcoes.length + ' opções.', base: e.opcoes[0].exige.base }, 2);
+      e.opcoes.forEach((o, i) => {
+        quebra(altura(o));   // a opção começa junto com a grade dela
+        texto('Opção ' + (i + 1) + ': ' + o.titulo, { negrito: true, tam: 10, recuo: 2, depois: 0.8 });
+        texto(o.horario.charAt(0).toUpperCase() + o.horario.slice(1) + ', ' + fmtNum(o.horasSemana) + ' horas por semana.', { recuo: 5, depois: 1.8 });
+        if (!o.semGrade) { grade(o, 5); texto(garantias(o), { tam: 9, cor: [90, 90, 90], recuo: 5, depois: 1.2 }); }
+        if (!juntas) nota(o.exige, 5);
+        for (const n of o.notas) nota(n, 5);
+        y += 1.5;
+      });
+    }
+    y += 1;
+    for (const n of gerais.values()) nota(n, 0);
+  }
+
   if (plano && plano.escolha) {
     titulo('O que foi combinado');
     texto(plano.escolha);
   }
 
   titulo('Os próximos passos');
-  item('Definir a escala nova de cada grupo e assinar o aditivo de jornada com cada funcionário antes de ' + dataBr(DATA_42) + '.');
+  item('Definir a escala nova de cada grupo' + (comOpcoes ? ' (as opções acima são o ponto de partida)' : '') + ' e assinar o aditivo de jornada com cada funcionário antes de ' + dataBr(DATA_42) + '.');
   item('Ajustar o horário no Domínio e mandar a alteração do contrato ao eSocial (o escritório faz).');
   item('Rever o acordo de compensação e o banco de horas pelo limite novo.');
   item('Conferir a convenção da categoria: o que ela diz de jornada e folga, e se permite passar das 8 horas por dia.');
