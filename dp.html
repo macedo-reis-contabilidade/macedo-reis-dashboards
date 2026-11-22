@@ -169,6 +169,7 @@
   <script type="module">
     import { supabase, getCurrentUser, signOut } from './assets/js/supabase.js';
     import { hojeLocal } from './assets/js/utils.js';   // dia no fuso local (toISOString é UTC)
+    import { padraoDoGrupo, comOsDiasInformados } from './assets/js/jornada-6x1.js';
     const user = await getCurrentUser();
     if (user) { const el = document.getElementById('userName'); if (el) el.textContent = user.email; const av = document.getElementById('userAvatar'); if (av) av.textContent = (user.email || '?').charAt(0).toUpperCase(); }
     const btnOut = document.getElementById('btnLogout');
@@ -225,12 +226,17 @@
           else { const n = (fs || []).filter(f => !f.saida || f.saida >= hojeLocal()).length; setBadge('dp-folha.html', n + (n === 1 ? ' funcionário' : ' funcionários')); }
         }
         {
-          // a Escala 6x1: as empresas com gente em 6 dias por semana no Domínio (o plano ainda não aplicado)
-          const { data: js, error: eJs } = await supabase.from('dominio_jornadas').select('cliente_id, semana, empregados');
+          // a Escala 6x1: as empresas com gente em 6 dias por semana no Domínio, com os dias que o escritório informou no
+          // plano quando o Domínio não os tem (a mesma conta da tela)
+          const { data: js, error: eJs } = await supabase.from('dominio_jornadas').select('codigo, cliente_id, jornada, tipo, tipo_escala, semana, min_semana, min_maior_dia, ciclo_dias, ciclo_trabalho, horas_semana, forma, controle, categoria, unidade, empregados');
           if (eJs || !(js || []).length) setBadge('dp-jornada.html', 'até 16/12');
           else {
-            const seis = new Set((js || []).filter(j => j.cliente_id && /^[TCF-]{7}$/.test(j.semana || '') && (j.semana.match(/T/g) || []).length === 6).map(j => j.cliente_id));
-            setBadge('dp-jornada.html', seis.size + (seis.size === 1 ? ' empresa em 6x1' : ' empresas em 6x1'));
+            const { data: pls } = await supabase.from('jornada_planos').select('cliente_id, simulacao');
+            const diasDe = new Map((pls || []).map(pl => [String(pl.cliente_id), pl.simulacao && pl.simulacao.dias]));
+            const porEmpresa = new Map();
+            for (const j of js || []) { if (!j.cliente_id) continue; const k = String(j.cliente_id); if (!porEmpresa.has(k)) porEmpresa.set(k, []); porEmpresa.get(k).push(j); }
+            const seis = [...porEmpresa].filter(([k, gs]) => comOsDiasInformados(gs, diasDe.get(k)).some(g => padraoDoGrupo(g).escala === '6x1')).length;
+            setBadge('dp-jornada.html', seis + (seis === 1 ? ' empresa em 6x1' : ' empresas em 6x1'));
           }
         }
         ["dp-relatorios.html", "dp-sugestoes.html", "dp-convencoes.html", "dp-custo.html", "dp-pareceres.html"].forEach(h => setBadge(h, '—'));

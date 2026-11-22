@@ -93,6 +93,21 @@
     .j6-gerais { display:flex; flex-direction:column; gap:6px; margin-top:14px; }
     .j6-eco { font-size:12.5px; color:var(--text-muted); }
     .j6-vh { position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0 0 0 0); white-space:nowrap; }
+    /* os dias que o escritório informa (quando o Domínio não os tem) */
+    .j6-tab td.j6-acoes { text-align:right; white-space:nowrap; }
+    .j6-tab td.j6-acoes .btn + .btn { margin-left:6px; }
+    .j6-diased { display:flex; flex-direction:column; gap:10px; padding:12px 14px; margin-top:12px; border:1px solid var(--brand-primary); border-radius:12px; background:rgba(91,130,166,.06); }
+    .j6-diased h4 { margin:0; font-size:14px; color:var(--text); }
+    .j6-diased h4 .j6-dim { font-weight:400; font-size:12.5px; margin-left:4px; }
+    .j6-dias-sel { display:flex; flex-wrap:wrap; gap:6px; }
+    .j6-dia { min-width:52px; padding:7px 10px; border-radius:10px; border:1px solid var(--line); background:transparent; color:var(--text-muted); font:inherit; font-size:13px; cursor:pointer; }
+    .j6-dia[aria-pressed="true"] { background:rgba(91,130,166,.22); border-color:var(--brand-primary); color:var(--text); font-weight:600; }
+    .j6-dia:focus-visible { outline:2px solid var(--text); outline-offset:2px; }
+    .j6-porpessoa { display:flex; flex-wrap:wrap; align-items:center; gap:8px; font-size:13px; color:var(--text); }
+    .j6-porpessoa .select { width:auto; min-width:64px; }
+    .j6-dias-fica { margin:0; font-size:13px; color:var(--text); min-height:18px; }
+    .j6-informar { display:flex; flex-wrap:wrap; align-items:center; gap:8px 12px; margin:0 0 10px; font-size:13px; }
+    .j6-informar > span { flex:1 1 260px; min-width:0; }
     /* no celular, a grade da semana cabe sem rolar de lado */
     @media (max-width:480px){ .j6-opcao { padding:12px 10px; } .j6-grade { font-size:11.5px; } .j6-grade th, .j6-grade td { padding:4px 2px; } .j6-grade tbody th { font-size:11.5px; } }
   </style>
@@ -159,9 +174,10 @@
     import { fmtData } from './assets/js/rescisao-datas.js';
     import {
       EMENDA, DECISAO_STF, DECRETO, DATA_42, DATA_40, ETAPAS, padraoDoGrupo, diagnostico, resumoDaEmpresa, simular, salarioMedio,
-      encargosDoRegime, fmtNum, fmtReais, fmtHoras, SITUACOES, rotuloDaSituacao, ROTULOS
+      encargosDoRegime, fmtNum, fmtReais, fmtHoras, SITUACOES, rotuloDaSituacao, ROTULOS,
+      informadoValido, precisaDosDias, chaveDaTurma, comOsDiasInformados, diasParaGravar
     } from './assets/js/jornada-6x1.js';
-    import { DIAS, escalasDaEmpresa, garantias } from './assets/js/jornada-escalas.js';
+    import { DIAS, escalasDaEmpresa, garantias, diasDoGrupo, diasPorExtenso } from './assets/js/jornada-escalas.js';
     import { relatorioJornadaPdf } from './assets/js/jornada-6x1-pdf.js';
 
     const $ = id => document.getElementById(id);
@@ -227,10 +243,11 @@
         const k = String(c.id), plano = planoDe.get(k) || null;
         const doDominio = gruposDe.get(k) || [];
         const digitados = ((plano && plano.simulacao && Array.isArray(plano.simulacao.grupos)) ? plano.simulacao.grupos : []).map(g => ({ ...g, manual: true }));
-        const grupos = doDominio.length ? doDominio : digitados;
+        // as turmas do Domínio com os dias que o escritório informou no plano (quando o Domínio não os tem)
+        const grupos = doDominio.length ? comOsDiasInformados(doDominio, plano && plano.simulacao ? plano.simulacao.dias : null) : digitados;
         const r = resumoDaEmpresa(grupos, { cct: !!(plano && plano.simulacao && plano.simulacao.cct) });
         return { id: k, nome: c.nome_fantasia || c.nome_principal, razao: c.nome_principal, regime: c.regime_tributario, cidade: c.cidade,
-          grupos, doDominio: doDominio.length > 0, digitados, funcionarios: r.empregados || (funcMes.get(k)?.n || 0), mesFunc: funcMes.get(k)?.competencia || null,
+          grupos, dominio: doDominio, doDominio: doDominio.length > 0, digitados, funcionarios: r.empregados || (funcMes.get(k)?.n || 0), mesFunc: funcMes.get(k)?.competencia || null,
           resumo: r, plano };
       }).filter(e => e.funcionarios > 0 || e.plano);
     }
@@ -294,14 +311,95 @@
       estado = {
         etapa: sim.etapa === 'e40' ? 'e40' : 'e42', cct: !!sim.cct, presenca: sim.presenca !== false,
         anexoIV: !!sim.anexoIV, salario: sim.salario != null ? sim.salario : null,
-        digitados: e.digitados.map(g => ({ ...g }))
+        digitados: e.digitados.map(g => ({ ...g })),
+        // os dias informados das turmas do Domínio, pela chave da jornada (o digitado guarda os dele nele mesmo)
+        dias: Object.fromEntries(Object.entries(sim.dias && typeof sim.dias === 'object' && !Array.isArray(sim.dias) ? sim.dias : {}).map(([k, v]) => [k, { ...v }])),
+        editando: null
       };
       desenharFicha();
       $('ov').hidden = false;
       $('fechar').focus();
     }
 
-    function gruposDaFicha() { return atual.doDominio ? atual.grupos : estado.digitados; }
+    function gruposDaFicha() { return atual.doDominio ? comOsDiasInformados(atual.dominio, estado.dias) : estado.digitados; }
+
+    // ---------- os dias que o escritório informa (quando o Domínio não os tem) ----------
+    // a turma da linha i do retrato como ela vem, sem os dias informados, e os dias que ela tem informados: na turma do
+    // Domínio, em estado.dias pela chave da jornada; no grupo digitado, nele mesmo
+    const grupoCru = i => atual.doDominio ? atual.dominio[i] : { ...estado.digitados[i], informado: null };
+    const informadoDaLinha = i => atual.doDominio ? estado.dias[chaveDaTurma(atual.dominio[i])] : (estado.digitados[i] || {}).informado;
+    const capital = d => d.charAt(0).toUpperCase() + d.slice(1);
+    function editorDosDias(i) {
+      const inf = informadoDaLinha(i);
+      let sem, dias;
+      if (informadoValido(inf)) { sem = inf.semana; dias = inf.dias; }
+      else {
+        // de partida, os dias que o Domínio (ou o digitado) diz; sem nenhum, de segunda a sexta
+        const dg = diasDoGrupo(grupoCru(i));
+        const t = dg && dg.trabalha.some(Boolean) ? dg.trabalha : [true, true, true, true, true, false, false];
+        sem = t.map(x => x ? 'T' : 'F').join('');
+        dias = Math.max(1, Math.min(6, dg ? dg.dias : 5, t.filter(Boolean).length));
+      }
+      // embaixo da tabela (e não numa linha dela): no celular a tabela rola de lado, e os dias ficariam pela metade
+      const cru = grupoCru(i), cp = padraoDoGrupo({ ...cru, informado: null }), n = Number(cru.empregados) || 0;
+      return '<div class="j6-diased" id="diasEd" data-i="' + i + '" data-quer="' + dias + '" role="group" aria-labelledby="diasTit">'
+        + '<h4 id="diasTit">Os dias da turma <span class="j6-dim">' + esc([cp.rotulo, cru.jornada ? 'jornada ' + cru.jornada : null, n + ' ' + (n === 1 ? 'pessoa' : 'pessoas')].filter(Boolean).join(' · ')) + '</span></h4>'
+        + '<p class="j6-base" style="margin:0;">Marque os dias em que a turma trabalha e quantos dias cada pessoa trabalha, pelo que a empresa informar. Com mais dias marcados que os de cada pessoa, a folga roda entre eles.</p>'
+        + '<div class="j6-dias-sel" role="group" aria-label="Os dias em que a turma trabalha">' + DIAS.map((d, k) => '<button type="button" class="j6-dia" data-dia="' + k + '" aria-pressed="' + (sem[k] === 'T' ? 'true' : 'false') + '">' + esc(capital(d)) + '</button>').join('') + '</div>'
+        + '<label class="j6-porpessoa">Cada pessoa trabalha <select class="select" id="dPorPessoa">' + [1, 2, 3, 4, 5, 6].map(n => '<option value="' + n + '"' + (n === dias ? ' selected' : '') + '>' + n + '</option>').join('') + '</select> dias por semana</label>'
+        + '<p class="j6-dias-fica" id="dFica" role="status"></p>'
+        + '<div class="j6-linha" style="margin:0;"><button type="button" class="btn btn-primary btn-sm" id="dUsar">Usar estes dias</button><button type="button" class="btn btn-ghost btn-sm" id="dCancelar">Cancelar</button>'
+        + (informadoValido(inf) ? '<button type="button" class="btn btn-ghost btn-sm" id="dTirar">' + (atual.doDominio ? 'Voltar aos dias do Domínio' : 'Tirar os dias informados') + '</button>' : '') + '</div>'
+        + '</div>';
+    }
+    // o que o editor tem marcado
+    function informadoDoEditor() {
+      const semana = [...$('diasEd').querySelectorAll('[data-dia]')].map(b => b.getAttribute('aria-pressed') === 'true' ? 'T' : 'F').join('');
+      return { semana, dias: Number($('dPorPessoa').value) };
+    }
+    // a prévia: como a turma fica com os dias marcados. Os dias de cada pessoa vão até os marcados: o que a pessoa
+    // escolheu fica guardado (data-quer) e volta quando ela marca mais dias
+    function previaDosDias() {
+      const ed = $('diasEd');
+      if (!ed) return;
+      const inf = informadoDoEditor(), cobre = [...inf.semana].filter(c => c === 'T').length, sel = $('dPorPessoa');
+      for (const o of sel.options) o.disabled = Number(o.value) > cobre;
+      if (cobre >= 1) { sel.value = String(Math.min(Number(ed.dataset.quer) || 6, cobre, 6)); inf.dias = Number(sel.value); }
+      const ok = informadoValido(inf);
+      $('dUsar').disabled = !ok;
+      if (!ok) { $('dFica').textContent = 'Marque pelo menos um dia.'; return; }
+      const g = { ...grupoCru(Number(ed.dataset.i)), informado: inf };
+      const quais = cobre === 7 ? 'nos 7 dias' : diasPorExtenso({ trabalha: diasDoGrupo(g).trabalha, dias: cobre, variavel: false });
+      $('dFica').textContent = 'Fica: ' + padraoDoGrupo(g).rotulo + ', ' + quais + '.';
+    }
+    function abrirDias(i) {
+      lerEstadoDaTela();
+      estado.editando = i;
+      desenharFicha();
+      const ed = $('diasEd');
+      if (ed) { ed.scrollIntoView({ block: 'center' }); const b = ed.querySelector('[data-dia]'); if (b) b.focus(); }
+    }
+    function fecharDias(i, msg) {
+      lerEstadoDaTela();
+      estado.editando = null;
+      desenharFicha();
+      if (msg) $('rMsg').textContent = msg;
+      const b = document.querySelector('.j6-tab [data-dias="' + i + '"]');
+      if (b) b.focus();
+    }
+    function usarDias() {
+      const i = Number($('diasEd').dataset.i), inf = informadoDoEditor();
+      if (!informadoValido(inf)) return;
+      if (atual.doDominio) estado.dias[chaveDaTurma(atual.dominio[i])] = inf;
+      else estado.digitados[i] = { ...estado.digitados[i], informado: inf };
+      fecharDias(i, 'Dias informados: o que muda, o simulador, as escalas e o relatório já usam esses dias. Grave o plano pra guardar.');
+    }
+    function tirarDias() {
+      const i = Number($('diasEd').dataset.i);
+      if (atual.doDominio) delete estado.dias[chaveDaTurma(atual.dominio[i])];
+      else { const g = { ...estado.digitados[i] }; delete g.informado; estado.digitados[i] = g; }
+      fecharDias(i, (atual.doDominio ? 'Os dias informados saíram: vale de novo o que o Domínio diz.' : 'Os dias informados saíram: os dias voltam a ser suposição.') + ' Grave o plano pra guardar.');
+    }
 
     // ---------- as escalas que cabem (jornada-escalas.js) ----------
     // as opções desenhadas, pela chave "turma-opção": é delas que o "Pôr na escolha do plano" tira o texto
@@ -344,10 +442,20 @@
         const p = padraoDoGrupo(g);
         const hojeTxt = [p.horas != null ? fmtNum(p.horas) + ' h por semana' : null,
           s.hoje ? s.hoje.texto + (s.hoje.suposto ? (s.hoje.porque === 'sem_horas' ? ' (suposição: no Domínio o horário está sem as horas)' : ' (suposição: o grupo foi digitado sem os dias)') : '') : null].filter(Boolean).join(', ');
+        // a turma que o Domínio não diz os dias (ou digitada): o porquê e o botão que abre os dias no retrato. O aviso do
+        // horário sem as horas é só do escritório: a tela mostra, o relatório não
+        const idx = grupos.indexOf(g), cru = idx >= 0 ? grupoCru(idx) : null, precisa = !!cru && precisaDosDias(cru);
+        let informar = '';
+        if (precisa) {
+          const cp = padraoDoGrupo({ ...cru, informado: null });
+          const botao = '<button type="button" class="btn btn-ghost btn-sm" data-dias="' + idx + '">' + (p.informado ? 'Mudar os dias' : 'Informar os dias') + '</button>';
+          informar = s.aviso && !p.informado ? '<div class="j6-aviso j6-informar"><span>' + esc(s.aviso) + '</span>' + botao + '</div>'
+            : '<div class="j6-informar"><span class="j6-dim">' + esc(p.informado ? 'Os dias são os informados aqui.' : cp.manual ? 'Os dias de hoje são suposição.'
+              : cp.dias === 7 ? 'No Domínio a turma tem os 7 dias: a folga de cada um não está lá.' : 'Os dias desta turma não estão no Domínio.') + '</span>' + botao + '</div>';
+        }
         return '<div class="j6-turma"><h4>' + esc(s.rotulo) + ' · ' + esc(s.pessoas) + ' ' + (s.pessoas === 1 ? 'pessoa' : 'pessoas')
           + ' <small>' + esc([g.jornada ? 'jornada ' + g.jornada : null, hojeTxt ? 'hoje, ' + hojeTxt : null].filter(Boolean).join(' · ')) + '</small></h4>'
-          // o aviso que é só do escritório (o horário do Domínio sem as horas): a tela mostra, o relatório não
-          + (s.aviso && s.opcoes.length ? '<div class="j6-aviso">' + esc(s.aviso) + '</div>' : '')
+          + informar
           + (s.opcoes.length ? '<div class="j6-opcoes">' + s.opcoes.map((o, j) => cartaoDaOpcao(o, i + '-' + j)).join('') + '</div>'
             : '<div class="j6-item t-conferir" style="margin:0;">' + esc(s.motivo) + '</div>') + '</div>';
       }).join('');
@@ -383,12 +491,20 @@
       const linhasGrupos = grupos.length ? grupos.map((g, i) => {
         const p = padraoDoGrupo(g);
         const med = g.salarios != null && g.empregados ? (Number(g.unidade) === 1 ? fmtReais(g.salarios / g.empregados) + ' /h' : fmtReais(g.salarios / g.empregados)) : (Number(g.empregados) < 3 && e.doDominio ? '<span class="j6-dim" title="Grupo com menos de 3 empregados: o salário fica no PC do escritório, e o simulador usa a média da empresa.">— (grupo pequeno)</span>' : '—');
-        // o que o cadastro da jornada no Domínio tem de estranho: a marca de escala com horário de semana, e o horário sem as horas
-        const cadastro = [p.marcada ? 'marcada ' + p.marcada + ' no Domínio' : null, p.semHoras ? 'horário sem as horas no Domínio: dias a confirmar' : null].filter(Boolean).join(' · ');
+        // o que o cadastro da jornada no Domínio tem de estranho: a marca de escala com horário de semana, e o horário sem as
+        // horas; e os dias informados aqui
+        const cadastro = [p.marcada ? 'marcada ' + p.marcada + ' no Domínio' : null,
+          p.informado ? 'dias informados aqui' : p.semHoras ? 'horário sem as horas no Domínio: dias a confirmar' : null].filter(Boolean).join(' · ');
+        const podeDias = precisaDosDias(grupoCru(i));
+        const botaoDias = podeDias ? '<button type="button" class="btn btn-ghost btn-sm" data-dias="' + i + '" aria-expanded="' + (estado.editando === i ? 'true' : 'false') + '">' + (p.informado ? 'Mudar os dias' : 'Informar os dias') + '</button>' : '';
         return '<tr><td>' + esc(p.rotulo) + (g.jornada ? ' <span class="j6-dim">· jornada ' + esc(g.jornada) + '</span>' : '') + (cadastro ? ' <span class="j6-dim j6-cadastro">· ' + esc(cadastro) + '</span>' : '') + '</td><td class="j6-num">' + esc(g.empregados) + (g.afastados ? ' <span class="j6-dim">(' + esc(g.afastados) + ' afast.)</span>' : '') + '</td>'
           + '<td class="j6-num">' + esc(fmtNum(p.horas)) + ' h</td><td class="j6-num">' + (p.dias != null ? esc(fmtNum(p.dias)) : '—') + '</td><td>' + (p.domingo === true ? 'sim' : p.domingo === false ? 'não' : '—') + '</td>'
-          + '<td class="j6-num">' + med + '</td><td>' + (e.doDominio ? '' : '<button class="btn btn-ghost btn-sm" data-tira="' + i + '" aria-label="Tirar este grupo">Tirar</button>') + '</td></tr>';
+          + '<td class="j6-num">' + med + '</td><td class="j6-acoes">' + botaoDias + (e.doDominio ? '' : '<button class="btn btn-ghost btn-sm" data-tira="' + i + '" aria-label="Tirar este grupo">Tirar</button>') + '</td></tr>';
       }).join('') : '<tr><td colspan="7" class="j6-dim">Nenhum grupo ainda.</td></tr>';
+      // os dias da turma aberta (o "Informar os dias" da linha), embaixo da tabela
+      const editando = estado.editando != null && grupos[estado.editando] && precisaDosDias(grupoCru(estado.editando)) ? editorDosDias(estado.editando) : '';
+      // ainda falta informar os dias de alguma turma que o Domínio não tem (o guia diz)
+      const faltamDias = e.doDominio && grupos.some((g, i) => !padraoDoGrupo(g).informado && precisaDosDias(grupoCru(i)));
 
       const blocoEtapa = id => {
         const itens = grupos.map(g => ({ g, d: diagnostico(g, id, { cct: estado.cct }) })).filter(x => x.d.itens.length);
@@ -408,13 +524,16 @@
           <button class="btn btn-ghost btn-sm" id="fechar">Fechar</button>
         </div>
         <div class="j6-sec"><h3>Por onde começar</h3><div class="j6-passos">
-          ${passo(1, 'O retrato', e.doDominio ? 'Os grupos vêm do Domínio: confira se batem com a empresa.' : 'A jornada não está no Domínio: digite os grupos (a escala, as horas e quantas pessoas).', passo1)}
+          ${passo(1, 'O retrato', e.doDominio ? 'Os grupos vêm do Domínio: confira se batem com a empresa' + (faltamDias ? '; os dias que o Domínio não tem, informe na linha da turma' : '') + '.'
+            : 'A jornada não está no Domínio: digite os grupos (a escala, as horas e quantas pessoas) e, na linha de cada um, os dias.', passo1)}
           ${passo(2, 'O simulador', 'Escolha a data e veja as saídas (contratar, hora extra ou reduzir) e as escalas que cabem.', passo2)}
           ${passo(3, 'O plano', 'Combine com a empresa, grave a situação e baixe o relatório pra ela.', passo3)}
         </div></div>
 
         <div class="j6-sec"><h3>O retrato de hoje <small>${e.doDominio ? 'do Domínio' + (dadosAte ? ', em ' + esc(fmtData(dadosAte)) : '') : 'digitado aqui'}</small></h3>
           <div class="j6-rola"><table class="j6-tab"><thead><tr><th>Jornada</th><th class="j6-num">Pessoas</th><th class="j6-num">Contrato</th><th class="j6-num">Dias/semana</th><th>Domingo</th><th class="j6-num">Salário médio</th><th></th></tr></thead><tbody>${linhasGrupos}</tbody></table></div>
+          ${editando}
+          <p class="j6-msg" id="rMsg" role="status"></p>
           ${e.doDominio ? '' : `<div class="j6-campos" style="margin-top:12px;">
             <label>Escala<select class="select" id="gEscala">${['6x1', '5x2', '5x2c', '12x36'].map(k => '<option value="' + k + '">' + esc(ROTULOS[k]) + '</option>').join('')}<option value="4x3">4x3</option></select></label>
             <label>Horas no contrato<input class="input" id="gHoras" type="number" min="1" max="60" step="0.5" value="44"></label>
@@ -490,11 +609,28 @@
         const g = escala === '12x36' ? { tipo_escala: 1, horas_semana: horas, empregados: pessoas, salarios: sal != null ? sal * pessoas : null }
           : { manual: true, escala, dias: diasEsc, horas, empregados: pessoas, salarios: sal != null ? sal * pessoas : null, domingo: $('gDomingo').checked };
         lerEstadoDaTela();
+        estado.editando = null;
         estado.digitados.push(g);
         desenharFicha();
         $('pMsg').textContent = 'Grupo incluído. Grave o plano pra guardar.';
       });
-      for (const b of document.querySelectorAll('[data-tira]')) b.addEventListener('click', () => { lerEstadoDaTela(); estado.digitados.splice(Number(b.dataset.tira), 1); desenharFicha(); });
+      for (const b of document.querySelectorAll('[data-tira]')) b.addEventListener('click', () => { lerEstadoDaTela(); estado.editando = null; estado.digitados.splice(Number(b.dataset.tira), 1); desenharFicha(); });
+      // os dias da turma: o botão da linha (de novo, fecha) e o das escalas abrem o mesmo lugar, no retrato
+      for (const b of document.querySelectorAll('[data-dias]')) b.addEventListener('click', () => {
+        const i = Number(b.dataset.dias);
+        if (estado.editando === i && b.closest('.j6-tab')) fecharDias(i); else abrirDias(i);
+      });
+      if ($('diasEd')) {
+        const ed = $('diasEd'), i = Number(ed.dataset.i);
+        for (const b of ed.querySelectorAll('[data-dia]')) b.addEventListener('click', () => { b.setAttribute('aria-pressed', b.getAttribute('aria-pressed') === 'true' ? 'false' : 'true'); previaDosDias(); });
+        $('dPorPessoa').addEventListener('change', () => { ed.dataset.quer = $('dPorPessoa').value; previaDosDias(); });
+        $('dUsar').addEventListener('click', usarDias);
+        $('dCancelar').addEventListener('click', () => fecharDias(i));
+        if ($('dTirar')) $('dTirar').addEventListener('click', tirarDias);
+        // Esc dentro dos dias fecha só eles (sem fechar a ficha)
+        ed.addEventListener('keydown', ev => { if (ev.key === 'Escape') { ev.stopPropagation(); fecharDias(i); } });
+        previaDosDias();
+      }
       for (const b of document.querySelectorAll('[data-escolha]')) b.addEventListener('click', () => porNaEscolha(b));
       $('pGravar').addEventListener('click', gravar);
       $('pPdf').addEventListener('click', baixarPdf);
@@ -512,14 +648,20 @@
         conversado_em: $('pConversado').value || null, definido_em: $('pDefinido').value || null,
         aditivo_em: $('pAditivo').value || null, esocial_em: $('pEsocial').value || null,
         simulacao: { etapa: estado.etapa, cct: estado.cct, presenca: estado.presenca, anexoIV: estado.anexoIV, salario: estado.salario,
-          grupos: atual.doDominio ? [] : estado.digitados.map(g => { const c = { ...g }; delete c.manual; return c; }) }
+          grupos: atual.doDominio ? [] : estado.digitados.map(g => { const c = { ...g }; delete c.manual; if (c.informado && !informadoValido(c.informado)) delete c.informado; return c; }) }
       };
+      // os dias que o escritório informou nas turmas do Domínio: só os das turmas de agora que ainda precisam deles
+      const dias = atual.doDominio ? diasParaGravar(atual.dominio, estado.dias) : {};
+      if (Object.keys(dias).length) linha.simulacao.dias = dias;
       msg.textContent = 'Gravando…';
       const { data, error } = await supabase.from('jornada_planos').upsert(linha, { onConflict: 'cliente_id' }).select('cliente_id, situacao, escolha, responsavel, simulacao, observacao, conversado_em, definido_em, aditivo_em, esocial_em, atualizado_em, atualizado_por').single();
       if (error) { msg.textContent = 'Não gravou: ' + (error.message || 'erro do banco') + '.'; return; }
       atual.plano = data || { ...linha };
       atual.digitados = ((atual.plano.simulacao || {}).grupos || []).map(g => ({ ...g, manual: true }));
-      if (!atual.doDominio) { atual.grupos = atual.digitados; atual.resumo = resumoDaEmpresa(atual.grupos, { cct: estado.cct }); atual.funcionarios = atual.resumo.empregados || atual.funcionarios; }
+      // a lista acompanha o que foi gravado (os dias informados e a convenção)
+      atual.grupos = atual.doDominio ? comOsDiasInformados(atual.dominio, (atual.plano.simulacao || {}).dias) : atual.digitados;
+      atual.resumo = resumoDaEmpresa(atual.grupos, { cct: estado.cct });
+      if (!atual.doDominio) atual.funcionarios = atual.resumo.empregados || atual.funcionarios;
       msg.textContent = 'Plano gravado.';
       estado.rascunho = null;
       desenharLista();

@@ -94,7 +94,8 @@ const arred = (v, c = 2) => Math.round(v * 10 ** c) / 10 ** c;
 
 // ---------- o padrão de cada grupo ----------
 // g: a linha de dominio_jornadas (semana, tipo, tipo_escala, ciclo_dias, ciclo_trabalho, min_semana, min_maior_dia,
-// horas_semana, …) ou um grupo digitado na tela ({ manual: true, escala, dias, horas, domingo }).
+// horas_semana, …) ou um grupo digitado na tela ({ manual: true, escala, dias, horas, domingo }); nos dois, os dias
+// que o escritório informou quando o Domínio não os tem (`informado`, abaixo).
 export function padraoDoGrupo(g) {
   const horasContrato = num(g.horas_semana);
   const horasJornada = num(g.min_semana) != null ? arred(num(g.min_semana) / 60, 2) : null;
@@ -104,6 +105,20 @@ export function padraoDoGrupo(g) {
     maiorDia: num(g.min_maior_dia) != null ? arred(num(g.min_maior_dia) / 60, 2) : null,
     domingo: null, sabado: null
   };
+  // os dias que o escritório informou (informadoDe, abaixo): mandam nos dias, e o resto vem do grupo como ele é
+  const inf = informadoDe(g);
+  if (inf) {
+    const cru = padraoDoGrupo({ ...g, informado: null });
+    const cobre = [...inf.semana].filter(c => c === 'T').length, d = inf.dias;
+    const escala = d === 6 ? '6x1' : d === 5 ? '5x2' : d + 'x' + (7 - d);
+    const roda = cobre - d;
+    return { ...base, horas: cru.horas, horasJornada: cru.horasJornada, maiorDia: cru.maiorDia, escala,
+      rotulo: rotuloDe(escala) + (roda > 1 ? ' com as folgas em rodízio' : roda === 1 ? ' com a folga em rodízio' : ''),
+      dias: d, folgas: 7 - d, domingo: inf.semana[6] === 'T', sabado: inf.semana[5] === 'T', informado: true,
+      // o que faltava no Domínio (o aviso do escritório diz), ou o grupo digitado
+      faltava: cru.manual ? 'digitado' : cru.semHoras ? 'sem_horas' : cru.dias === 7 ? 'sete_dias' : 'sem_semana',
+      ...(cru.marcada ? { marcada: cru.marcada } : {}), ...(cru.manual ? { manual: true } : {}) };
+  }
   // a escala longa vem antes do digitado: o 12x36 digitado na tela é gravado só com o tipo_escala, e ao reabrir
   // ganha o "manual" (sem isto, voltava como "sem jornada" e passava a contar como quem muda em 2027)
   const te = num(g.tipo_escala);
@@ -144,6 +159,58 @@ export function padraoDoGrupo(g) {
   return { ...base, escala: 'sem_jornada', rotulo: rotuloDe('sem_jornada'), dias: null, folgas: null };
 }
 
+// ---------- os dias que o escritório informa ----------
+// Quando o Domínio não diz os dias de uma turma — o horário sem as horas de cada dia (a entrada igual à saída), os 7
+// dias marcados (a folga de cada um roda e não está lá), a jornada sem a semana — ou o grupo foi digitado (a tela só
+// pergunta a escala), o escritório informa os dias, pelo que a empresa disser: `informado` = { semana, dias }. A
+// semana, de segunda a domingo, tem T nos dias em que a turma trabalha e F nos outros; os dias, quantos dias cada
+// pessoa trabalha, de 1 a 6. Com mais dias marcados que os de cada pessoa, a folga roda entre os dias marcados.
+export function informadoValido(inf) {
+  if (!inf || typeof inf !== 'object' || typeof inf.semana !== 'string' || !/^[TF]{7}$/.test(inf.semana)) return false;
+  const cobre = [...inf.semana].filter(c => c === 'T').length;
+  return Number.isInteger(inf.dias) && inf.dias >= 1 && inf.dias <= 6 && cobre >= inf.dias;
+}
+// a turma precisa que o escritório informe os dias: o Domínio não os tem (ou o grupo foi digitado). A 12x36, a escala
+// de ciclo, o turno e quem está fora do controle de jornada (CLT, art. 62) ficam de fora.
+export function precisaDosDias(g) {
+  if (!g || [2, 3, 6].includes(num(g.controle))) return false;
+  const p = padraoDoGrupo({ ...g, informado: null });
+  if (['12x36', '24x72', 'escala', 'turno'].includes(p.escala)) return false;
+  return !!(p.manual || p.semHoras || p.escala === 'sem_jornada' || p.dias === 7 || p.dias === 0);
+}
+// os dias informados que valem: válidos, e só enquanto a turma precisa deles (acertado o Domínio, valem os de lá)
+export function informadoDe(g) {
+  return g && informadoValido(g.informado) && precisaDosDias(g) ? g.informado : null;
+}
+// a chave da turma do Domínio nos dias informados do plano (simulacao.dias): a jornada, porque o horário é dela e os
+// grupos da mesma jornada têm os mesmos dias; sem a jornada, os campos que separam o grupo. O grupo digitado guarda os
+// dias nele mesmo (não tem chave).
+export function chaveDaTurma(g) {
+  if (!g || g.manual) return null;
+  const j = g.jornada == null || g.jornada === '' ? null : String(g.jornada);
+  return String(g.codigo == null ? '' : g.codigo) + ':' + (j != null ? j
+    : '-:' + [g.horas_semana, g.forma, g.controle, g.categoria, g.unidade].map(v => v == null ? '' : String(v)).join('/'));
+}
+// os grupos do Domínio com os dias informados do plano (dias: { chave: { semana, dias } }); os que não precisam ficam como estão
+export function comOsDiasInformados(grupos, dias) {
+  const mapa = dias && typeof dias === 'object' && !Array.isArray(dias) ? dias : {};
+  return (grupos || []).map(g => {
+    if (!g || g.manual) return g;
+    const inf = mapa[chaveDaTurma(g)];
+    return informadoValido(inf) && precisaDosDias(g) ? { ...g, informado: { semana: inf.semana, dias: inf.dias } } : g;
+  });
+}
+// o que gravar no plano: só os dias das turmas do Domínio de agora que ainda precisam deles
+export function diasParaGravar(grupos, dias) {
+  const mapa = dias && typeof dias === 'object' && !Array.isArray(dias) ? dias : {};
+  const out = {};
+  for (const g of grupos || []) {
+    const k = chaveDaTurma(g);
+    if (k && informadoValido(mapa[k]) && precisaDosDias(g)) out[k] = { semana: mapa[k].semana, dias: mapa[k].dias };
+  }
+  return out;
+}
+
 // ---------- o que muda em cada etapa ----------
 // O limite de horas que a empresa consegue usar em 5 dias: em 16/12/2026, as 42 h — com convenção ou acordo coletivo
 // (EC 141, art. 7º) ou, sem eles, pela decisão do STF de 12/11/2026 (8h24 por dia até 15/12/2027, DECISAO_STF). Se a
@@ -175,6 +242,13 @@ export function diagnostico(g, etapa, { cct = false, art8 = null } = {}) {
   if (p.marcada) {
     itens.push({ tipo: 'conferir', interno: true,
       texto: 'No Domínio a jornada está marcada como ' + p.marcada + ', mas o horário cadastrado é de semana: a conta segue o horário. Se a turma trabalha mesmo em ' + p.marcada + ', acerte o horário da jornada no Domínio; se não, tire a marca.',
+      base: 'Cadastro da jornada no Domínio. Aviso do escritório: não sai no relatório da empresa.' });
+  }
+  if (p.informado && !p.manual) {
+    const falta = { sem_horas: 'no Domínio o horário da jornada está sem as horas de cada dia', sete_dias: 'no Domínio a jornada tem os 7 dias, sem a folga de cada um',
+      sem_semana: 'no Domínio a jornada está sem os dias da semana' }[p.faltava] || 'no Domínio faltam os dias';
+    itens.push({ tipo: 'conferir', interno: true,
+      texto: 'Os dias desta turma são os informados aqui: ' + falta + '.' + (p.faltava === 'sete_dias' ? '' : ' Acertado o horário da jornada no Domínio, a conta volta a usar o de lá.'),
       base: 'Cadastro da jornada no Domínio. Aviso do escritório: não sai no relatório da empresa.' });
   }
   if (p.semHoras) {

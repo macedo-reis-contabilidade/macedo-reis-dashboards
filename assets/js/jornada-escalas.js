@@ -21,7 +21,7 @@
 // O que as escalas NÃO sabem: os horários de entrada e de saída, o movimento de cada dia e o que a convenção da
 // categoria diz. Por isso cada opção diz o que exige e manda conferir.
 // =====================================================================
-import { DECISAO_STF, diagnostico, limiteDaEtapa, diaMaxDaEtapa, fmtHoras } from './jornada-6x1.js';
+import { DECISAO_STF, diagnostico, limiteDaEtapa, diaMaxDaEtapa, fmtHoras, informadoDe } from './jornada-6x1.js';
 
 export const DIAS = ['seg', 'ter', 'qua', 'qui', 'sex', 'sáb', 'dom'];
 export const DIAS_NOME = ['segunda', 'terça', 'quarta', 'quinta', 'sexta', 'sábado', 'domingo'];
@@ -43,9 +43,16 @@ const repartir = (n, k) => { const q = Math.min(n, k); return Array.from({ lengt
 // trabalha: os 7 dias, de segunda a domingo; variavel: a turma cobre os 7 dias (ou trabalha no domingo sem dizer a
 // folga), então a folga de hoje roda e não está no Domínio; suposto: os dias não são certos, e isso vem dito — o
 // grupo digitado na tela, que só pergunta a escala e se trabalha no domingo (os dias contam a partir da segunda), e,
-// com `semHoras`, o horário do Domínio sem as horas de cada dia (a ponte manda os dias sem os minutos).
+// com `semHoras`, o horário do Domínio sem as horas de cada dia (a ponte manda os dias sem os minutos). Com os dias
+// informados pelo escritório (`informado`), valem eles: os dias marcados e quantos cada pessoa trabalha (com mais
+// dias marcados que os de cada pessoa, a folga roda entre eles).
 export function diasDoGrupo(g) {
   if (!g) return null;
+  const inf = informadoDe(g);
+  if (inf) {
+    const trabalha = [...inf.semana].map(c => c === 'T');
+    return { trabalha, dias: inf.dias, variavel: trabalha.filter(Boolean).length > inf.dias, informado: true };
+  }
   if (g.manual) {
     const d = num(g.dias);
     if (!d || d < 1 || d > 7 || !Number.isInteger(d)) return null;
@@ -64,13 +71,22 @@ export function diasDoGrupo(g) {
 // "de segunda a sábado", "de terça a domingo", "segunda, quarta e sexta": os dias de trabalho de hoje, por extenso
 export function diasPorExtenso(dg) {
   if (!dg) return null;
-  if (dg.variavel) return dg.dias === 7 ? 'os 7 dias, com a folga em rodízio' : dg.dias + ' dias por semana, com a folga em rodízio';
-  const dias = dg.trabalha.map((x, d) => x ? d : -1).filter(d => d >= 0);
-  // um bloco só de dias seguidos (a semana dá a volta: de sexta a terça)
-  const comecos = dias.filter(d => !dg.trabalha[(d + 6) % 7]);
-  if (dias.length >= 3 && comecos.length === 1) return 'de ' + DIAS_NOME[comecos[0]] + ' a ' + DIAS_NOME[(comecos[0] + dias.length - 1) % 7];
-  return juntar(dias.map(d => DIAS_NOME[d]));
+  if (dg.variavel) {
+    if (dg.dias === 7) return 'os 7 dias, com a folga em rodízio';
+    // os dias informados com a folga em rodízio só entre alguns dias: "5 dias por semana, de segunda a sábado, …"
+    const cobre = dg.trabalha.filter(Boolean).length;
+    const quais = cobre < 7 ? (blocoDeDias(dg.trabalha) ? ', ' + blocoDeDias(dg.trabalha) : ' entre ' + listaDeDias(dg.trabalha)) : '';
+    return dg.dias + ' dias por semana' + quais + ', com ' + (cobre - dg.dias > 1 ? 'as folgas' : 'a folga') + ' em rodízio';
+  }
+  return blocoDeDias(dg.trabalha) || listaDeDias(dg.trabalha);
 }
+// um bloco só de dias seguidos, de 3 ou mais (a semana dá a volta: de sexta a terça): "de segunda a sábado"; senão, null
+function blocoDeDias(trabalha) {
+  const dias = trabalha.map((x, d) => x ? d : -1).filter(d => d >= 0);
+  const comecos = dias.filter(d => !trabalha[(d + 6) % 7]);
+  return dias.length >= 3 && comecos.length === 1 ? 'de ' + DIAS_NOME[comecos[0]] + ' a ' + DIAS_NOME[(comecos[0] + dias.length - 1) % 7] : null;
+}
+const listaDeDias = trabalha => juntar(trabalha.map((x, d) => x ? DIAS_NOME[d] : null).filter(Boolean));
 
 // ---------- o que cada escala exige ----------
 // maiorDia: o dia mais longo da escala, em horas
@@ -248,11 +264,12 @@ export function escalasSugeridas(g, etapa, { cct = false } = {}) {
   const d = diagnostico(g, etapa, { cct });
   const p = d.padrao, n = d.empregados;
   const dg = diasDoGrupo(g);
-  // hoje: os dias de trabalho por extenso (suposto: os dias não são certos; porque: 'digitado' ou 'sem_horas'); nos
+  // hoje: os dias de trabalho por extenso (suposto: os dias não são certos; porque: 'digitado' ou 'sem_horas';
+  // informado: os dias são os que o escritório informou, pelo que a empresa disse); nos
   // 7 dias do Domínio, o nome da turma já diz. aviso: só do escritório (a tela mostra, o relatório não) — o horário
   // do Domínio sem as horas de cada dia, em que as opções supõem os dias que estão lá
   const saida = { rotulo: p.rotulo, pessoas: n, etapa, precisa: d.precisa, motivo: null, opcoes: [], notas: [],
-    hoje: dg && p.escala !== '7x0' ? { texto: diasPorExtenso(dg), suposto: !!dg.suposto, porque: dg.suposto ? (dg.semHoras ? 'sem_horas' : 'digitado') : null } : null,
+    hoje: dg && p.escala !== '7x0' ? { texto: diasPorExtenso(dg), suposto: !!dg.suposto, porque: dg.suposto ? (dg.semHoras ? 'sem_horas' : 'digitado') : null, informado: !!dg.informado } : null,
     aviso: dg && dg.semHoras ? 'No Domínio o horário desta turma está sem as horas de cada dia: as opções supõem os dias que estão lá (' + diasPorExtenso(dg) + '). Confirme os dias com a empresa antes de combinar.' : null };
   if (!n) return { ...saida, motivo: 'Turma sem pessoas.' };
   if (!d.precisa) return { ...saida, motivo: 'Nada a mudar nesta data: a escala de hoje continua.' };

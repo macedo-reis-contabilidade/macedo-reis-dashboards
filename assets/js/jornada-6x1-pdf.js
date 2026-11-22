@@ -50,7 +50,10 @@ export function relatorioJornadaPdf(J, { empresa, grupos, opcoes = {}, etapa = '
   }
 
   titulo('Como a empresa está hoje');
-  texto(dadosAte ? 'Pelo Domínio, em ' + dataBr(dadosAte) + '.' : 'Pelo que a empresa informou.', { tam: 9, cor: [90, 90, 90] });
+  // as turmas do Domínio cujos dias o escritório informou (o Domínio não os tinha): a empresa vê de onde veio cada coisa
+  const informadas = dadosAte ? grupos.filter(g => { const p = padraoDoGrupo(g); return p.informado && !p.manual; }).length : 0;
+  texto(dadosAte ? 'Pelo Domínio, em ' + dataBr(dadosAte) + (informadas ? '; os dias de ' + informadas + (informadas === 1 ? ' turma' : ' turmas') + ', pelo que a empresa informou' : '') + '.'
+    : 'Pelo que a empresa informou.', { tam: 9, cor: [90, 90, 90] });
   const cols = [['Jornada', 70], ['Pessoas', 25], ['Horas no contrato', 40], ['Dias por semana', 39]];
   quebra(8);
   doc.setFont('helvetica', 'bold'); doc.setFontSize(9); doc.setTextColor(60, 60, 60);
@@ -127,7 +130,7 @@ export function relatorioJornadaPdf(J, { empresa, grupos, opcoes = {}, etapa = '
     for (const { escalas: e } of turmas) {
       for (const n of e.notas) gerais.set(n.texto, n);
       y += 1; quebra(e.opcoes.length ? Math.min(18 + altura(e.opcoes[0]), 180) : 16);   // o nome da turma vai junto com a primeira opção
-      texto(e.rotulo + ' (' + gente(e.pessoas) + ')' + (e.hoje && !e.hoje.suposto ? ': hoje, ' + e.hoje.texto : ''), { negrito: true, tam: 10.5 });
+      texto(e.rotulo + ' (' + gente(e.pessoas) + ')' + (e.hoje && !e.hoje.suposto ? ': hoje, ' + e.hoje.texto + (e.hoje.informado && dadosAte ? ' (pelo que a empresa informou)' : '') : ''), { negrito: true, tam: 10.5 });
       if (!e.opcoes.length) { texto(e.motivo, { recuo: 2, depois: 2.5 }); continue; }
       // o que as opções exigem: uma vez só, quando é o mesmo em todas
       const juntas = e.opcoes.length > 1 && new Set(e.opcoes.map(o => o.exige.texto)).size === 1;

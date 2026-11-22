@@ -23,6 +23,10 @@ Confere:
   9. o cadastro da jornada no Domínio (21/11/2026): a jornada marcada 12x36 com horário de semana segue o horário
      (entra em quem muda e ganha as escalas), o horário sem as horas de cada dia sai como suposição, e os dois
      avisos ficam na tela (o retrato, o que muda, as escalas) e fora do relatório da empresa;
+  10. os dias que o escritório informa (21/11/2026), quando o Domínio não os tem: o "Informar os dias" na linha da
+     turma (os dias marcados e quantos cada pessoa trabalha, com a prévia), o que muda, as escalas e o relatório com
+     esses dias, o plano gravado com eles, a lista acompanhando, o "Voltar aos dias do Domínio", o Esc que fecha só
+     os dias, o grupo digitado com os dias informados e o card do DP contando com eles;
 e nenhum erro de JavaScript. Termina com código 1 se alguma checagem falhar.
 """
 import sys, pathlib
@@ -63,6 +67,8 @@ window.__j6Extra = (v, g, cli) => {
   v.dominio_jornadas.push(
     g('j4', { codigo: 4, jornada: 21, tipo: 2, tipo_escala: 1, semana: 'TTTTTCF', min_semana: 2640, min_maior_dia: 540, horas_semana: 44, empregados: 4, salarios: 9000 }),
     g('j4', { codigo: 4, jornada: 22, semana: 'TTTTTTT', min_semana: null, min_maior_dia: null, horas_semana: 44, empregados: 3, salarios: 6600 }));
+  // o plano da j4 com os dias da jornada 22 informados (só no teste do card do DP)
+  if (window.__j6PlanoJ4) v.jornada_planos.push({ cliente_id: 'j4', situacao: 'a_conversar', simulacao: { etapa: 'e42', dias: { '4:22': { semana: 'TTTTTTF', dias: 6 } } } });
 };
 """
 DUBLE_PDF = r"""
@@ -262,7 +268,7 @@ def main():
         ok(muda.count('No Domínio a jornada está marcada como 12x36, mas o horário cadastrado é de semana: a conta segue o horário.') == 2
            and muda.count('No Domínio o horário desta jornada está sem as horas de cada dia (a entrada igual à saída)') == 2 and 'precisa cair pra 42 h' in muda
            and 'A 12x36 dá a média' not in muda, 'o que muda, nas duas datas: os dois avisos do cadastro, e a turma marcada lida pelo horário (44 h pra 42 h)')
-        turmas = q.eval_on_selector_all('#secEscalas .j6-turma', "els => els.map(e => [e.querySelector('h4').innerText.replace(/\\s+/g, ' ').trim(), [...e.querySelectorAll('.j6-opcao')].map(o => o.dataset.opcao), (e.querySelector('.j6-aviso') || {}).innerText || ''])")
+        turmas = q.eval_on_selector_all('#secEscalas .j6-turma', "els => els.map(e => [e.querySelector('h4').innerText.replace(/\\s+/g, ' ').trim(), [...e.querySelectorAll('.j6-opcao')].map(o => o.dataset.opcao), (e.querySelector('.j6-aviso > span') || {}).innerText || ''])")
         ok(len(turmas) == 2 and turmas[0] == ['5x2 com o sábado compensado · 4 pessoas jornada 21 · hoje, 44 h por semana, de segunda a sexta', ['mesmos_dias', 'dia_curto'], '']
            and turmas[1][:2] == ['7 dias com folga em rodízio · 3 pessoas jornada 22 · hoje, 44 h por semana', ['rodizio_3', 'rodizio_2']]
            and turmas[1][2] == 'No Domínio o horário desta turma está sem as horas de cada dia: as opções supõem os dias que estão lá (os 7 dias, com a folga em rodízio). Confirme os dias com a empresa antes de combinar.',
@@ -272,6 +278,88 @@ def main():
         ok(all(t in textos for t in ['5x2 com o sábado compensado (4 pessoas)', 'precisa cair pra 42 h', '7 dias com folga em rodízio (3 pessoas)', 'Os 7 dias cobertos, com as folgas em rodízio de 3 semanas'])
            and not any(t in textos for t in ['marcada como 12x36', 'sem as horas de cada dia', 'Aviso do escritório', 'as opções supõem', 'tire a marca']),
            'o relatório da empresa segue o horário e não leva os avisos do cadastro')
+
+        print('10. Os dias que o escritório informa')
+        LER_RETRATO = "els => els.map(e => e.children[0].innerText.replace(/\\s+/g, ' ').trim())"
+        ok(q.inner_text('#secEscalas .j6-turma:nth-child(2) .j6-aviso [data-dias]') == 'Informar os dias' and q.locator('#secEscalas .j6-turma:nth-child(1) [data-dias]').count() == 0
+           and q.inner_text('.j6-tab [data-dias="1"]') == 'Informar os dias' and q.locator('.j6-tab [data-dias="0"]').count() == 0,
+           'o "Informar os dias" só na turma que o Domínio não diz os dias (no retrato e no aviso das escalas)')
+        ok('os dias que o Domínio não tem, informe na linha da turma' in q.inner_text('.j6-passos'), 'o guia diz pra informar os dias')
+        q.click('#secEscalas .j6-turma:nth-child(2) .j6-aviso [data-dias]'); q.wait_for_timeout(200)
+        lidos = lambda: q.eval_on_selector_all('#diasEd [data-dia]', "els => els.map(e => e.getAttribute('aria-pressed') === 'true' ? 'T' : 'F').join('')")
+        ok(q.locator('#diasEd').count() == 1 and lidos() == 'TTTTTTT' and q.input_value('#dPorPessoa') == '6' and q.inner_text('#dFica') == 'Fica: 6x1 com a folga em rodízio, nos 7 dias.'
+           and ' '.join(q.inner_text('#diasTit').split()) == 'Os dias da turma 7 dias com folga em rodízio · jornada 22 · 3 pessoas'
+           and q.get_attribute('.j6-tab [data-dias="1"]', 'aria-expanded') == 'true' and q.evaluate("document.activeElement && document.activeElement.dataset.dia") == '0',
+           f'o botão das escalas abre os dias no retrato: os 7 do Domínio, 6 por pessoa, com a prévia ({lidos()!r}, {q.inner_text("#dFica")!r})')
+        q.click('#diasEd [data-dia="6"]')
+        ok(q.inner_text('#dFica') == 'Fica: 6x1, de segunda a sábado.', f'sem o domingo: 6x1 de segunda a sábado ({q.inner_text("#dFica")!r})')
+        for k in range(6): q.click(f'#diasEd [data-dia="{k}"]')
+        ok(q.inner_text('#dFica') == 'Marque pelo menos um dia.' and q.is_disabled('#dUsar'), 'sem nenhum dia marcado, não dá pra usar')
+        for k in range(4): q.click(f'#diasEd [data-dia="{k}"]')
+        quatro = [q.input_value('#dPorPessoa'), q.eval_on_selector('#dPorPessoa option[value="5"]', 'o => o.disabled'), q.inner_text('#dFica')]
+        ok(quatro == ['4', True, 'Fica: 4x3, de segunda a quinta.'], f'com 4 dias marcados, cada pessoa vai até 4 (o que passa vira 4) ({quatro})')
+        for k in (4, 5): q.click(f'#diasEd [data-dia="{k}"]')
+        q.select_option('#dPorPessoa', '6')
+        q.keyboard.press('Escape'); q.wait_for_timeout(200)
+        ok(q.locator('#diasEd').count() == 0 and not q.locator('#ov').is_hidden() and q.evaluate("document.activeElement && document.activeElement.dataset.dias") == '1',
+           'o Esc dentro dos dias fecha só eles (a ficha fica, e o foco volta ao botão)')
+        q.click('.j6-tab [data-dias="1"]'); q.wait_for_timeout(200)
+        q.click('#diasEd [data-dia="6"]'); q.click('#dUsar'); q.wait_for_timeout(200)
+        retrato = q.eval_on_selector_all('.j6-tab tbody tr', LER_RETRATO)
+        ok(retrato == ['5x2 com o sábado compensado · jornada 21 · marcada 12x36 no Domínio', '6x1 · jornada 22 · dias informados aqui'] and q.inner_text('.j6-tab [data-dias="1"]') == 'Mudar os dias'
+           and 'Grave o plano pra guardar' in q.inner_text('#rMsg') and 'os dias que o Domínio não tem' not in q.inner_text('.j6-passos'),
+           f'usados os dias: o retrato diz "dias informados aqui", e o guia não pede mais ({retrato})')
+        muda = limpo(q.inner_text('.j6-etapas'))
+        ok(muda.count('Os dias desta turma são os informados aqui: no Domínio o horário da jornada está sem as horas de cada dia. Acertado o horário da jornada no Domínio, a conta volta a usar o de lá.') == 2
+           and 'sem as horas de cada dia (a entrada igual à saída)' not in muda and 'Hoje folga 1 dia por semana' in muda, 'o que muda usa os dias informados, com o aviso do escritório')
+        turmas = q.eval_on_selector_all('#secEscalas .j6-turma', "els => els.map(e => [e.querySelector('h4').innerText.replace(/\\s+/g, ' ').trim(), [...e.querySelectorAll('.j6-opcao')].map(o => o.dataset.opcao), (e.querySelector('.j6-informar') || {}).innerText || ''])")
+        ok(turmas[1][0] == '6x1 · 3 pessoas jornada 22 · hoje, 44 h por semana, de segunda a sábado' and turmas[1][1] == ['seg_a_sex', 'folga_na_semana', 'sabado_alternado']
+           and ' '.join(turmas[1][2].split()) == 'Os dias são os informados aqui. Mudar os dias' and q.locator('#secEscalas .j6-turma:nth-child(2) .j6-aviso').count() == 0,
+           f'as escalas da turma com os dias informados: as de segunda a sábado, sem o aviso de suposição ({turmas[1]})')
+        q.click('#pPdf'); q.wait_for_timeout(300)
+        textos = ' '.join(q.evaluate('window.__pdfTextos'))
+        ok('Pelo Domínio, em 09/11/2026; os dias de 1 turma, pelo que a empresa informou.' in textos and '6x1 (3 pessoas): hoje, de segunda a sábado (pelo que a empresa informou)' in textos
+           and not any(t in textos for t in ['informados aqui', 'Aviso do escritório', 'sem as horas de cada dia']), 'o relatório diz que os dias vieram da empresa, sem o aviso do escritório')
+        q.click('#pGravar'); q.wait_for_timeout(500)
+        pl = plano(q, 'j4')
+        ok(pl and pl['simulacao'].get('dias') == {'4:22': {'semana': 'TTTTTTF', 'dias': 6}} and pl['simulacao']['grupos'] == [], f'o plano guarda os dias pela jornada ({pl and pl["simulacao"]})')
+        q.click('#fechar')
+        linha = q.inner_text('#lista tr[data-id="j4"]')
+        ok('3 em 6x1' in linha and '4 em 5x2 com o sábado compensado' in linha and '7 mudam' in linha, f'a lista acompanha os dias gravados ({linha!r})')
+        q.click('#lista tr[data-id="j4"]'); q.wait_for_selector('#fichaTitulo', timeout=3000)
+        ok(q.eval_on_selector_all('.j6-tab tbody tr', LER_RETRATO)[1] == '6x1 · jornada 22 · dias informados aqui', 'reaberta a ficha, os dias informados seguem')
+        q.click('.j6-tab [data-dias="1"]'); q.wait_for_timeout(200)
+        ok(lidos() == 'TTTTTTF' and q.input_value('#dPorPessoa') == '6' and q.inner_text('#dTirar') == 'Voltar aos dias do Domínio', 'o "Mudar os dias" abre com os informados e o "Voltar aos dias do Domínio"')
+        q.click('#dTirar'); q.wait_for_timeout(200)
+        ok(q.eval_on_selector_all('.j6-tab tbody tr', LER_RETRATO)[1] == '7 dias com folga em rodízio · jornada 22 · horário sem as horas no Domínio: dias a confirmar'
+           and 'vale de novo o que o Domínio diz' in q.inner_text('#rMsg'), 'voltando aos dias do Domínio, a turma volta a ser a do Domínio')
+        q.click('#fechar')
+        # o grupo digitado (a empresa sem a jornada no Domínio): os dias dele ficam nele mesmo
+        q.click('#lista tr[data-id="j2"]'); q.wait_for_selector('#gIncluir', timeout=3000)
+        q.select_option('#gEscala', '6x1'); q.fill('#gHoras', '44'); q.fill('#gPessoas', '4'); q.click('#gIncluir'); q.wait_for_timeout(200)
+        q.click('.j6-tab [data-dias="0"]'); q.wait_for_timeout(200)
+        ok(lidos() == 'TTTTTTF' and q.input_value('#dPorPessoa') == '6' and q.locator('#dTirar').count() == 0, 'no digitado, os dias de partida são os da suposição (de segunda a sábado)')
+        q.click('#diasEd [data-dia="0"]'); q.click('#diasEd [data-dia="6"]')
+        ok(q.inner_text('#dFica') == 'Fica: 6x1, de terça a domingo.', 'de terça a domingo')
+        q.click('#dUsar'); q.wait_for_timeout(200)
+        sec = limpo(q.inner_text('#secEscalas'))
+        ids = q.eval_on_selector_all('#secEscalas .j6-opcao', 'els => els.map(e => e.dataset.opcao)')
+        ok('hoje, 44 h por semana, de terça a domingo' in sec and 'suposição' not in sec and ids == ['domingo_1_em_3', 'domingo_1_em_2', 'fecha_domingo'],
+           f'as escalas do digitado com os dias informados: as de quem trabalha no domingo, sem a suposição ({ids})')
+        q.click('#pGravar'); q.wait_for_timeout(500)
+        pl = plano(q, 'j2')
+        ok(pl and pl['simulacao']['grupos'][0].get('informado') == {'semana': 'FTTTTTT', 'dias': 6} and 'dias' not in pl['simulacao'], f'o digitado guarda os dias nele mesmo ({pl and pl["simulacao"]})')
+        q.click('#fechar')
+        q.close()
+        # o card do DP conta a empresa com os dias informados no plano (a jornada 22 da j4, de segunda a sábado: 6x1)
+        r = cx.new_page()
+        r.on('pageerror', lambda e: erros.append(str(e)))
+        r.route('**/cdnjs.cloudflare.com/**', lambda x: x.abort())
+        r.add_init_script(TOUR); r.add_init_script('window.__j6PlanoJ4 = true'); r.add_init_script(EXTRA); r.add_init_script(SEMEAR)
+        r.goto(base + 'dp.html'); r.wait_for_timeout(1500)
+        card = r.locator('a.dashboard-card[href="dp-jornada.html"]').inner_text().lower()
+        ok('2 empresas em 6x1' in card, f'o card do DP conta a j4 pelos dias informados no plano ({card!r})')
+        r.close()
         b.close()
     srv.shutdown()
     ok(not erros, 'nenhum erro de JavaScript' + (': ' + '; '.join(erros[:3]) if erros else ''))
