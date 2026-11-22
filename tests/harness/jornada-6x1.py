@@ -13,7 +13,8 @@ Confere:
   3b. as escalas que cabem (21/11/2026): as turmas que mudam, as opções de cada uma na data do simulador, a grade
      (quem folga em cada dia, quantos ficam e hoje), o "Pôr na escolha do plano" (entra, troca a da mesma turma, junta
      a da outra, não repete e não passa das 300 letras), a convenção marcada e o que está digitado no plano seguindo
-     na tela quando ela se redesenha;
+     na tela quando ela se redesenha; e (22/11/2026) uma opção por linha, sem vazio ao lado, com a grade à esquerda e
+     os dias alinhados de uma opção pra outra, e no celular uma embaixo da outra;
   4. gravar o plano: a linha em jornada_planos, com a simulação, e a situação na lista;
   5. o relatório pra empresa (PDF): as seções, com as escalas, sem a observação interna;
   6. a empresa sem jornada no Domínio: digitar o grupo, simular e gravar (os grupos ficam no plano), as escalas do
@@ -167,6 +168,25 @@ def main():
         gerais = p.inner_text('#secEscalas .j6-gerais')
         ok(all(t in gerais for t in ['CLT, art. 71, § 2º', 'Em 16/12/2027 o limite cai pra 40 horas', 'item IV', 'TST, OJ 410 da SDI-1']) and 'Lei 10.101/2000' not in gerais,
            'as notas das turmas embaixo, uma vez: o intervalo, 2027, a convenção e os dias seguidos (sem a do domingo: ninguém trabalha no domingo)')
+        # 22/11/2026: uma opção por linha, sem vazio ao lado (em duas colunas, a terceira opção ficava sozinha); larga, a
+        # grade à esquerda e o resto à direita, com os dias de uma opção embaixo dos da outra; no celular, uma embaixo da outra
+        LAYOUT = """() => [...document.querySelectorAll('#secEscalas .j6-opcoes')].map(box => {
+          const r = box.getBoundingClientRect();
+          return [...box.querySelectorAll(':scope > .j6-opcao')].map(c => {
+            const q = c.getBoundingClientRect(), g = c.querySelector('.j6-op-grade').getBoundingClientRect(), f = c.querySelector('.j6-op-info').getBoundingClientRect();
+            const rola = c.querySelector('.j6-rola');
+            return { cheia: Math.abs(q.width - r.width) < 1 && Math.abs(q.left - r.left) < 1, lado: g.right <= f.left, embaixo: g.bottom <= f.top,
+                     seg: Math.round(c.querySelectorAll('.j6-grade thead th')[1].getBoundingClientRect().left), rola: rola.scrollWidth > rola.clientWidth + 1 };
+          });
+        })"""
+        lay = p.evaluate(LAYOUT)
+        ok([len(t) for t in lay] == [3, 2] and all(o['cheia'] and o['lado'] and not o['rola'] for t in lay for o in t) and all(len({o['seg'] for o in t}) == 1 for t in lay),
+           f'uma opção por linha, sem vazio ao lado: a grade à esquerda e o resto à direita, os dias de uma opção embaixo dos da outra ({lay})')
+        p.set_viewport_size({'width': 400, 'height': 900}); p.wait_for_timeout(200)
+        lay = p.evaluate(LAYOUT)
+        ok(all(o['cheia'] and o['embaixo'] and not o['rola'] for t in lay for o in t) and p.evaluate("() => { const e = document.querySelector('#painel'); return e.scrollWidth <= e.clientWidth + 1; }"),
+           f'no celular, a grade em cima e o resto embaixo, sem rolar de lado ({lay})')
+        p.set_viewport_size({'width': 1400, 'height': 900}); p.wait_for_timeout(200)
         eco = lambda op: p.inner_text(f'#secEscalas .j6-opcao[data-opcao="{op}"] .j6-eco')
         p.click('#secEscalas .j6-opcao[data-opcao="seg_a_sex"] [data-escolha]')
         ok(p.input_value('#pEscolha') == '6x1 (5 pessoas): segunda a sexta, 5 dias de 8h24' and 'Falta gravar o plano' in eco('seg_a_sex'), f'"Pôr na escolha do plano" escreve a opção na escolha ({p.input_value("#pEscolha")!r})')

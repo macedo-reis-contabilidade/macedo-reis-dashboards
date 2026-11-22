@@ -72,12 +72,17 @@
     .j6-turma h4 small { color:var(--text-muted); font-weight:400; font-size:12.5px; margin-left:6px; }
     .j6-turma .j6-aviso { margin:0 0 10px; font-size:13px; padding:8px 12px; }
     .j6-cadastro { font-size:12px; }
-    .j6-opcoes { display:grid; grid-template-columns:repeat(auto-fit, minmax(min(340px, 100%), 1fr)); gap:12px; }
-    .j6-opcao { border:1px solid var(--line); border-radius:12px; padding:12px 14px; display:flex; flex-direction:column; gap:8px; min-width:0; }
+    /* uma opção por linha, da largura toda (22/11/2026: em duas colunas, a terceira opção ficava sozinha, com um vazio
+       ao lado). Larga, a opção põe a grade (com as garantias) à esquerda e o resto à direita; estreita, tudo numa coluna */
+    .j6-opcoes { display:flex; flex-direction:column; gap:12px; }
+    .j6-opcao { container:j6op / inline-size; border:1px solid var(--line); border-radius:12px; padding:12px 14px; min-width:0; }
+    .j6-op { display:flex; flex-direction:column; gap:8px; }
+    .j6-op-cab, .j6-op-grade, .j6-op-info { display:flex; flex-direction:column; gap:8px; min-width:0; }
+    .j6-op-cab { gap:3px; }
     .j6-opcao h5 { margin:0; font-size:13.5px; color:var(--text); }
     .j6-horario { font-size:13px; color:var(--text-muted); }
     .j6-opcao .j6-item { margin:0; }
-    .j6-opcao > .j6-linha:last-child { margin-top:auto !important; padding-top:2px; }
+    .j6-op-info > .j6-linha:last-child { padding-top:2px; }
     .j6-grade { width:100%; border-collapse:collapse; font-size:12.5px; }
     .j6-grade th, .j6-grade td { padding:4px 6px; text-align:center; border-bottom:1px solid var(--line); white-space:nowrap; }
     .j6-grade thead th { font-size:11px; font-weight:600; color:var(--text-muted); }
@@ -88,6 +93,25 @@
     .j6-grade tr.j6-sem th { padding-top:9px; font-size:11px; font-weight:600; color:var(--text-muted); border-bottom:0; }
     .j6-grade tr.j6-ficam th, .j6-grade tr.j6-ficam td { font-weight:600; }
     .j6-grade tr.j6-hoje th, .j6-grade tr.j6-hoje td { color:var(--text-muted); font-weight:400; }
+    /* (depois das regras da grade, pra valerem sobre elas) */
+    @container j6op (min-width: 740px) {
+      .j6-op { display:grid; grid-template-columns:minmax(0, 440px) minmax(0, 1fr); grid-template-areas:"cab cab" "grade info"; gap:12px 26px; }
+      .j6-op-cab { grid-area:cab; }
+      .j6-op-grade { grid-area:grade; }
+      .j6-op-info { grid-area:info; }
+      .j6-opcao.sem-grade .j6-op { grid-template-columns:minmax(0, 1fr); grid-template-areas:"cab" "info"; }
+    }
+    /* as colunas dos dias do mesmo tamanho em todas as opções: os dias ficam um embaixo do outro */
+    @container j6op (min-width: 461px) {
+      .j6-grade { table-layout:fixed; }
+      .j6-grade thead th:first-child { width:96px; }
+    }
+    /* estreita (o celular), a grade da semana cabe sem rolar de lado */
+    @container j6op (max-width: 460px) {
+      .j6-grade { font-size:11.5px; }
+      .j6-grade th, .j6-grade td { padding:4px 2px; }
+      .j6-grade tbody th { font-size:11.5px; }
+    }
     .j6-nota { margin:0; font-size:12.5px; color:var(--text-muted); }
     .j6-nota small { display:block; font-size:11.5px; color:var(--text-dim); margin-top:1px; }
     .j6-gerais { display:flex; flex-direction:column; gap:6px; margin-top:14px; }
@@ -108,8 +132,7 @@
     .j6-dias-fica { margin:0; font-size:13px; color:var(--text); min-height:18px; }
     .j6-informar { display:flex; flex-wrap:wrap; align-items:center; gap:8px 12px; margin:0 0 10px; font-size:13px; }
     .j6-informar > span { flex:1 1 260px; min-width:0; }
-    /* no celular, a grade da semana cabe sem rolar de lado */
-    @media (max-width:480px){ .j6-opcao { padding:12px 10px; } .j6-grade { font-size:11.5px; } .j6-grade th, .j6-grade td { padding:4px 2px; } .j6-grade tbody th { font-size:11.5px; } }
+    @media (max-width:480px){ .j6-opcao { padding:12px 10px; } }
   </style>
 </head>
 <body>
@@ -422,14 +445,19 @@
       return '<div class="j6-rola"><table class="j6-grade"><caption class="j6-vh">' + esc(o.titulo) + ': quem trabalha e quem folga em cada dia</caption><thead><tr><th scope="col"><span class="j6-vh">Quem</span></th>'
         + DIAS.map(d => '<th scope="col">' + esc(d.charAt(0).toUpperCase() + d.slice(1)) + '</th>').join('') + '</tr></thead>' + corpo + '</table></div>';
     }
+    // a opção em três partes: o título, a grade com as garantias e o resto (o que exige, as notas, o botão). Larga, a
+    // grade fica à esquerda e o resto à direita; estreita, uma embaixo da outra (o CSS decide pela largura do cartão)
     function cartaoDaOpcao(o, chave) {
       opcoesDaTela.set(chave, o);
       const g = garantias(o);
-      return '<div class="j6-opcao" data-opcao="' + esc(o.id) + '"><h5>' + esc(o.titulo) + '</h5><div class="j6-horario">' + esc(o.horario) + ' · ' + esc(fmtNum(o.horasSemana)) + ' h por semana</div>'
-        + gradeDaOpcao(o) + (g ? '<p class="j6-nota">' + esc(g) + '</p>' : '')
-        + '<div class="j6-item t-' + (o.exige.nivel === 'nada' ? 'ok' : 'conferir') + '">' + esc(o.exige.texto) + '<small>' + esc(o.exige.base) + '</small></div>'
+      const esquerda = gradeDaOpcao(o) + (g ? '<p class="j6-nota">' + esc(g) + '</p>' : '');
+      return '<div class="j6-opcao' + (esquerda ? '' : ' sem-grade') + '" data-opcao="' + esc(o.id) + '"><div class="j6-op">'
+        + '<div class="j6-op-cab"><h5>' + esc(o.titulo) + '</h5><div class="j6-horario">' + esc(o.horario) + ' · ' + esc(fmtNum(o.horasSemana)) + ' h por semana</div></div>'
+        + (esquerda ? '<div class="j6-op-grade">' + esquerda + '</div>' : '')
+        + '<div class="j6-op-info"><div class="j6-item t-' + (o.exige.nivel === 'nada' ? 'ok' : 'conferir') + '">' + esc(o.exige.texto) + '<small>' + esc(o.exige.base) + '</small></div>'
         + o.notas.map(notaHtml).join('')
-        + '<div class="j6-linha" style="margin:0;"><button type="button" class="btn btn-ghost btn-sm" data-escolha="' + esc(chave) + '">Pôr na escolha do plano</button><span class="j6-eco" role="status"></span></div></div>';
+        + '<div class="j6-linha" style="margin:0;"><button type="button" class="btn btn-ghost btn-sm" data-escolha="' + esc(chave) + '">Pôr na escolha do plano</button><span class="j6-eco" role="status"></span></div></div>'
+        + '</div></div>';
     }
     function blocoEscalas(grupos) {
       opcoesDaTela = new Map();
