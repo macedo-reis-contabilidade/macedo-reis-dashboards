@@ -77,9 +77,14 @@
     .cc-adv-body { padding:0 18px 18px; }
     .cc-adv-body h4 { color:var(--text); font-size:13px; margin:10px 0 8px; }
     .cc-tbl { width:100%; border-collapse:collapse; margin-bottom:10px; }
-    .cc-tbl th { font-size:10.5px; color:var(--text-muted); text-transform:uppercase; letter-spacing:.03em; text-align:left; padding:4px 6px; font-weight:600; }
+    /* o título termina onde termina o número da caixa: a margem da célula (6) + a borda (1) + a de dentro da caixa (7) */
+    .cc-tbl th { font-size:10.5px; color:var(--text-muted); text-transform:uppercase; letter-spacing:.03em; text-align:right; padding:4px 14px 4px 6px; font-weight:600; }
     .cc-tbl td { padding:3px 6px; }
-    .cc-tbl input { width:100%; padding:6px 7px; font-size:12.5px; text-align:right; }
+    .cc-tbl input { width:100%; box-sizing:border-box; padding:6px 7px; font-size:12.5px; text-align:right; background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); color:var(--text); font-family:var(--font-body); }
+    .cc-tbl input:focus { outline:none; border-color:var(--brand-primary); box-shadow:0 0 0 3px rgba(91, 130, 166, 0.15); }
+    /* sem as setinhas do número: elas guardavam um espaço à direita e o valor não ficava embaixo do título */
+    .cc-tbl input[type=number] { -moz-appearance:textfield; appearance:textfield; }
+    .cc-tbl input::-webkit-outer-spin-button, .cc-tbl input::-webkit-inner-spin-button { -webkit-appearance:none; margin:0; }
     .cc-tbl input[readonly] { opacity:.5; }
     .cc-adv-grid { display:grid; grid-template-columns:1fr 1fr; gap:8px 14px; }
     .cc-adv-grid .cc-field > span { font-size:11.5px; }
@@ -274,7 +279,7 @@
                   <tr><td><input type="number" step="0.01" id="irLim2" value="2826.65"></td><td><input type="number" step="0.01" id="irAliq2" value="7.5"></td><td><input type="number" step="0.01" id="irParc2" value="182.16"></td></tr>
                   <tr><td><input type="number" step="0.01" id="irLim3" value="3751.05"></td><td><input type="number" step="0.01" id="irAliq3" value="15"></td><td><input type="number" step="0.01" id="irParc3" value="394.16"></td></tr>
                   <tr><td><input type="number" step="0.01" id="irLim4" value="4664.68"></td><td><input type="number" step="0.01" id="irAliq4" value="22.5"></td><td><input type="number" step="0.01" id="irParc4" value="675.49"></td></tr>
-                  <tr><td style="padding-left:12px;color:var(--text-muted);font-size:12px;">acima da anterior</td><td><input type="number" step="0.01" id="irAliq5" value="27.5"></td><td><input type="number" step="0.01" id="irParc5" value="908.73"></td></tr>
+                  <tr><td style="text-align:right;padding-right:14px;color:var(--text-muted);font-size:12px;">acima da anterior</td><td><input type="number" step="0.01" id="irAliq5" value="27.5"></td><td><input type="number" step="0.01" id="irParc5" value="908.73"></td></tr>
                 </tbody>
               </table>
               <div class="cc-adv-grid" style="margin-top:8px;">

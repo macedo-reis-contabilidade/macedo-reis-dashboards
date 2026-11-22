@@ -45,6 +45,19 @@
     .j6-rola { overflow-x:auto; -webkit-overflow-scrolling:touch; }
     .j6-tab th { text-align:left; font-size:11px; font-weight:600; text-transform:uppercase; letter-spacing:.05em; color:var(--text-muted); padding:6px 8px; border-bottom:1px solid var(--line); }
     .j6-tab td { padding:7px 8px; border-bottom:1px solid var(--line); color:var(--text); vertical-align:top; }
+    /* o título da coluna de número fica em cima do número: o .j6-tab th e o .table thead th, mais fortes, puxavam pra esquerda */
+    .j6-tab th.j6-num, .table thead th.j6-num { text-align:right; }
+    .j6-lista .j6-plano { white-space:nowrap; }
+    /* a lista no celular: o cartão de cada empresa com o nome da coluna à esquerda e o valor à direita, todos do mesmo lado */
+    @media (max-width:768px){
+      .j6-lista tbody td { gap:4px 14px; align-items:flex-start; }
+      .j6-lista tbody td::before { flex:none; padding-top:2px; }
+      .j6-lista tbody td[colspan] { display:block; }
+      .j6-lista .j6-v { min-width:0; margin-left:auto; text-align:right; }
+      /* as jornadas que não cabem do lado do nome da coluna descem pra linha de baixo, com a largura toda */
+      .j6-lista tbody td.j6-td-quebra { flex-wrap:wrap; }
+      .j6-lista .j6-chip { margin:2px 0 2px 4px; max-width:100%; white-space:normal; }
+    }
     .j6-etapas { display:grid; grid-template-columns:1fr 1fr; gap:14px; }
     @media (max-width:800px){ .j6-etapas { grid-template-columns:1fr; } }
     .j6-etapa h4 { margin:0 0 8px; font-size:14px; color:var(--text); }
@@ -176,7 +189,7 @@
       </div>
 
       <div class="table-wrap" style="overflow-x:auto;">
-        <table class="table">
+        <table class="table j6-lista">
           <thead><tr><th>Empresa</th><th class="j6-num">Funcionários</th><th>Jornadas hoje</th><th>Em 16/12/2026</th><th>Plano</th></tr></thead>
           <tbody id="lista"><tr><td colspan="5" class="j6-dim">Carregando…</td></tr></tbody>
         </table>
@@ -304,9 +317,11 @@
           : r.pessoas ? r.pessoas + ' ' + (r.pessoas === 1 ? 'muda' : 'mudam') + (r.horasPerdidas ? ' · ' + fmtNum(r.horasPerdidas) + ' h/semana a menos' : '') + (r.presencaPerdida ? ' · ' + fmtNum(r.presencaPerdida) + ' dia(s)-pessoa a menos' : '')
           : '<span class="j6-dim">nada a mudar' + (r.semDados ? ' (' + r.semDados + ' a conferir)' : '') + '</span>';
         const sit = e.plano ? esc(rotuloDaSituacao(e.plano.situacao)) : '<span class="j6-dim">A conversar</span>';
-        return '<tr class="is-clickable" data-id="' + esc(e.id) + '" tabindex="0"><td><div class="table-name">' + esc(e.nome) + '</div>'
-          + (e.razao && e.razao !== e.nome ? '<div class="table-sub">' + esc(e.razao) + '</div>' : '') + '</td>'
-          + '<td class="j6-num">' + e.funcionarios + '</td><td>' + chips(e) + '</td><td>' + muda + '</td><td>' + sit + '</td></tr>';
+        // cada valor numa caixa só (.j6-v): no celular a linha vira um cartão, com o nome da coluna à esquerda e o valor à direita
+        return '<tr class="is-clickable" data-id="' + esc(e.id) + '" tabindex="0"><td data-label="Empresa"><div class="j6-v"><div class="table-name">' + esc(e.nome) + '</div>'
+          + (e.razao && e.razao !== e.nome ? '<div class="table-sub">' + esc(e.razao) + '</div>' : '') + '</div></td>'
+          + '<td class="j6-num" data-label="Funcionários"><span class="j6-v">' + e.funcionarios + '</span></td><td class="j6-td-quebra" data-label="Jornadas hoje"><div class="j6-v">' + chips(e) + '</div></td>'
+          + '<td data-label="Em 16/12/2026"><div class="j6-v">' + muda + '</div></td><td data-label="Plano"><span class="j6-v j6-plano">' + sit + '</span></td></tr>';
       }).join('') : '<tr><td colspan="5" class="j6-dim">Nenhuma empresa ' + (foco === 'todas' ? '' : 'neste filtro') + (q ? ' com essa busca' : '') + '.</td></tr>';
       $('rodape').innerHTML = 'A jornada vem do Domínio, pela ponte do escritório, somada por empresa e por jornada (nome e CPF ficam no PC)'
         + (dadosAte ? '; a última leitura é de ' + esc(fmtData(dadosAte)) : '') + '. As contas do simulador são estimativas: o custo não inclui vale-transporte, alimentação e os benefícios da convenção.';

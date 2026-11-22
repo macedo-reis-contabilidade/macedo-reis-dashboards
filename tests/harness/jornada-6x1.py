@@ -7,9 +7,12 @@ parado em 09/11/2026. O jsPDF do CDN fica de fora: entra um dublê que anota o q
 
 Confere:
   1. as datas (16/12/2026 e 16/12/2027, com os dias que faltam) e os números dos filtros;
-  2. a lista pela urgência: a empresa em 6x1 primeiro, com quantos mudam, as horas e os dias-pessoa a menos;
+  2. a lista pela urgência: a empresa em 6x1 primeiro, com quantos mudam, as horas e os dias-pessoa a menos; e
+     (22/11/2026) o título "Funcionários" em cima do número e, no celular, cada linha um cartão com o nome da coluna
+     à esquerda e o valor à direita, todos os valores terminando no mesmo lugar;
   3. a ficha: o guia (o retrato, o simulador, o plano), os grupos do Domínio, o que muda nas duas datas, o simulador
-     (contratar, hora extra, reduzir) e trocar a data refaz a conta;
+     (contratar, hora extra, reduzir) e trocar a data refaz a conta; e (22/11/2026) as colunas do retrato retas: o
+     título de cada coluna de número termina onde termina o número, o de texto começa onde começa o texto;
   3b. as escalas que cabem (21/11/2026): as turmas que mudam, as opções de cada uma na data do simulador, a grade
      (quem folga em cada dia, quantos ficam e hoje), o "Pôr na escolha do plano" (entra, troca a da mesma turma, junta
      a da outra, não repete e não passa das 300 letras), a convenção marcada e o que está digitado no plano seguindo
@@ -89,6 +92,24 @@ window.__pdfTextos = []; window.__pdfSalvo = null;
 TOUR = "(() => { const g = Storage.prototype.getItem; Storage.prototype.getItem = function (k) { return String(k).startsWith('mr_tour_') ? 'ok' : g.call(this, k); }; })()"
 
 falhas = 0
+# cada coluna da tabela: onde o título e os valores começam (texto) ou terminam (número, a classe j6-num)
+COLUNAS = """sel => [...document.querySelectorAll(sel)].flatMap(t => {
+  const borda = el => { const r = document.createRange(); r.selectNodeContents(el); const q = r.getBoundingClientRect(); return [Math.round(q.left), Math.round(q.right)]; };
+  return [...t.tHead.rows[0].cells].map((th, i) => {
+    if (!th.textContent.trim()) return null;
+    const vals = [...t.tBodies[0].rows].map(tr => tr.cells[i]).filter(c => c && c.colSpan === 1 && c.textContent.trim());
+    if (!vals.length) return null;
+    const num = th.classList.contains('j6-num');
+    return { col: th.textContent.trim(), num, cab: borda(th)[num ? 1 : 0], vals: vals.map(c => borda(c)[num ? 1 : 0]) };
+  }).filter(Boolean);
+})"""
+# a primeira linha da lista no celular: o nome de cada coluna (o ::before) e onde termina cada valor
+CARTAO = """() => { const tr = document.querySelector('#lista tr[data-id]');
+  const td = tr.cells[0], cs = getComputedStyle(td), r = td.getBoundingClientRect();
+  return { rotulos: [...tr.cells].map(c => getComputedStyle(c, '::before').content.replace(/^"|"$/g, '')),
+    direitas: [...tr.querySelectorAll('.j6-v')].map(v => { const g = document.createRange(); g.selectNodeContents(v); return Math.round(g.getBoundingClientRect().right); }),
+    borda: Math.round(r.right - parseFloat(cs.paddingRight)) }; }"""
+
 def ok(cond, msg):
     global falhas
     print(('  ✓ ' if cond else '  ✗ ') + msg)
@@ -127,6 +148,15 @@ def main():
         ok('5 em 6x1' in linha and '3 em 5x2 com o sábado compensado' in linha and '8 mudam' in linha and '16 h/semana a menos' in linha and '5 dia(s)-pessoa a menos' in linha,
            f'quantos mudam, as horas e os dias-pessoa ({linha!r})')
         ok('nada a mudar' in p.inner_text('#lista tr[data-id="j3"]'), 'a de 40 h em 5 dias: nada a mudar')
+        cols = p.evaluate(COLUNAS, '.j6-lista')
+        ok(cols and all(all(abs(v - c['cab']) <= 1 for v in c['vals']) for c in cols) and any(c['num'] for c in cols),
+           f'as colunas da lista retas: o título começa (ou, no número, termina) onde o valor ({cols})')
+        p.set_viewport_size({'width': 400, 'height': 900}); p.wait_for_timeout(200)
+        cart = p.evaluate(CARTAO)
+        ok(cart['rotulos'] == ['Empresa', 'Funcionários', 'Jornadas hoje', 'Em 16/12/2026', 'Plano'] and len(set(cart['direitas'])) == 1
+           and cart['direitas'][0] == cart['borda'] and p.evaluate('() => document.documentElement.scrollWidth') == 400,
+           f'no celular, o cartão de cada empresa: o nome da coluna e o valor terminando no mesmo lugar ({cart})')
+        p.set_viewport_size({'width': 1400, 'height': 900}); p.wait_for_timeout(200)
 
         print('3. A ficha')
         p.click('#lista tr[data-id="j1"]')
@@ -134,6 +164,9 @@ def main():
         ok(p.inner_text('#fichaTitulo') == 'RESTAURANTE DE TESTE LTDA', 'abre a empresa')
         ok(p.locator('.j6-passo.is-agora').count() == 1 and '2. O simulador' in p.inner_text('.j6-passo.is-agora'), 'o guia: o retrato feito, o simulador agora')
         ok(p.locator('.j6-tab tbody tr').count() == 2, 'os dois grupos do Domínio')
+        cols = p.evaluate(COLUNAS, '.j6-tab')
+        ok(len(cols) == 6 and all(all(abs(v - c['cab']) <= 1 for v in c['vals']) for c in cols),
+           f'as colunas do retrato retas: o título de número termina onde o número, o de texto começa onde o texto ({cols})')
         muda = p.inner_text('.j6-etapas')
         ok('16/12/2026: 42 h e 2 folgas' in muda and 'precisa cair pra 42 h' in muda and 'O dia mais longo tem 8h48: passar das 8h24' in muda and 'ADI 8.041' in muda, 'o que muda em 16/12/2026 (sem convenção, as 8h24 do STF)')
         saidas = p.inner_text('.j6-saidas')

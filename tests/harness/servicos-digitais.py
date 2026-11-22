@@ -19,7 +19,8 @@ Confere:
      NFS-e da Thalia (fiscal, alta, no próximo dia útil) e a segunda venda entra na mesma; o dia no futuro não passa; o
      Desfazer volta a venda e tira a linha da tarefa; a NFS-e marca a linha; entregar, devolver (com o motivo) e
      cancelar; a venda que mudou por baixo não é gravada; a venda paga não muda de valor;
-  6. os números por mês e o teste de parar;
+  6. os números por mês e o teste de parar; e (22/11/2026) o título de cada mês em cima do número (o .table thead th
+     puxava pra esquerda), o total embaixo dele e, no celular, os números seguindo em tabela, com o mês em cima;
   7. os links diretos (?s=, ?aba=);
 e nenhum erro de JavaScript. Tira as fotos da tela nos dois temas em .harness/fotos.
 Termina com código 1 se alguma checagem falhar. Pré-requisito: pip install playwright e python -m playwright install chromium
@@ -119,6 +120,15 @@ TOUR = "(() => { const g = Storage.prototype.getItem; Storage.prototype.getItem 
 TITULO = 'Emitir as NFS-e dos serviços digitais'
 
 falhas = 0
+# onde começa (a primeira coluna, de texto) ou termina (as outras, de número) o que está em cada coluna: o título, a
+# primeira linha e o total
+COLUNAS_NUMEROS = """() => {
+  const t = document.querySelector('#numeros table');
+  const borda = (c, i) => { const r = document.createRange(); r.selectNodeContents(c); const q = r.getBoundingClientRect(); return Math.round(i ? q.right : q.left); };
+  const linha = tr => [...tr.cells].map(borda);
+  return { cab: linha(t.tHead.rows[0]), corpo: linha(t.tBodies[0].rows[0]), total: linha(t.tFoot.rows[0]) };
+}"""
+
 def ok(cond, msg):
     global falhas
     print(('  ✓ ' if cond else '  ✗ ') + msg)
@@ -414,6 +424,14 @@ def main():
         ok(texto(p, '.sv-num-resumo') == 'No período: 2 vendas pagas, R$ 194,00 · 2 devolvidas. O mês é o do pagamento.', '6. o resumo do período → ' + str(texto(p, '.sv-num-resumo')))
         testes = p.evaluate("() => [...document.querySelectorAll('#numeros .sv-testes li')].map(li => li.textContent.trim())")
         ok(testes == ['Planilha de teste no ar: Reavaliar em 31/01/2027 (76 dias): menos de 5 vendas, encerra · até aqui, 2 vendas, R$ 194,00.'], f'6. o teste de parar dos serviços pagos no ar → {testes}')
+        cols = p.evaluate(COLUNAS_NUMEROS)
+        ok(cols['cab'] == cols['corpo'] == cols['total'] and len(cols['cab']) == 4, f'6. as colunas retas: o mês começa onde o nome e termina onde o número, e o total embaixo → {cols}')
+        p.set_viewport_size({'width': 400, 'height': 950}); p.wait_for_timeout(150)
+        cel = p.evaluate("() => ({ cab: getComputedStyle(document.querySelector('#numeros thead')).display, td: getComputedStyle(document.querySelector('#numeros tbody td')).display, larg: document.documentElement.scrollWidth })")
+        cols = p.evaluate(COLUNAS_NUMEROS)
+        ok(cel == {'cab': 'table-header-group', 'td': 'table-cell', 'larg': 400} and cols['cab'] == cols['corpo'] == cols['total'],
+           f'6. no celular os números seguem em tabela (rolando de lado), com o mês em cima → {cel} {cols}')
+        p.set_viewport_size({'width': 1500, 'height': 950}); p.wait_for_timeout(150)
         p.click('#numeros .sv-testes button'); p.wait_for_function("() => document.getElementById('ovServico').classList.contains('is-open')")
         ok(texto(p, '#sTitulo') == 'Planilha de teste no ar', '6. o nome leva à ficha')
         p.keyboard.press('Escape'); p.wait_for_timeout(150)

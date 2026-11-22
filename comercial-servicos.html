@@ -973,8 +973,20 @@
     .sv-tabela th, .sv-tabela td { white-space:nowrap; text-align:right; padding:12px 16px; font-size:13.5px; }
     .sv-tabela tbody th { font-weight:500; color:var(--text); border-bottom:1px solid var(--border-soft); }
     .sv-tabela tbody tr:last-child th { border-bottom:none; }
+    /* o título do mês fica em cima do número (o .table thead th, mais forte, puxava pra esquerda), e a margem de
+       dentro é a mesma em cima, no meio e no total: 20 px dos lados, a do .table */
+    .table.sv-tabela thead th { text-align:right; }
+    .sv-tabela tbody th, .sv-tabela tfoot th, .sv-tabela tfoot td { padding-left:20px; padding-right:20px; }
     .sv-tabela th[scope="row"], .sv-tabela thead th:first-child { text-align:left; white-space:normal; }
     .sv-tabela tfoot th, .sv-tabela tfoot td { border-top:1px solid var(--line-strong); font-weight:600; }
+    /* no celular os números seguem em tabela, rolando de lado: o cartão das listas (o .table do celular) tirava o
+       mês de cima de cada número */
+    @media (max-width:768px) {
+      .table.sv-tabela thead { display:table-header-group; }
+      .table.sv-tabela tbody tr { display:table-row; padding:0; border-bottom:0; }
+      .table.sv-tabela tbody td { display:table-cell; padding:16px 20px; border-bottom:1px solid var(--border-soft); }
+      .table.sv-tabela tbody td::before { content:none; }
+    }
     .sv-zero { color:var(--text-dim); }
     .sv-dev { color:var(--text-muted); }
     .sv-testes { margin:0 0 20px; padding-left:20px; font-size:14px; color:var(--text-2); display:flex; flex-direction:column; gap:4px; }

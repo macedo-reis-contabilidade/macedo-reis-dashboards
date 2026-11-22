@@ -37,6 +37,8 @@
     td.ant .novo { color:var(--brand-light); font-size:11px; font-weight:600; letter-spacing:.04em; }
     .w-obs { min-width:150px; }
     td.num { color:var(--text-muted); text-align:center; width:30px; }
+    table.bo th.num { text-align:center; }
+    table.bo th.ant { text-align:right; }
     .st, .cb { border-radius:7px; padding:5px 6px; font-size:12px; font-weight:600; border:1px solid var(--fill-3); font-family:inherit; cursor:pointer; background:var(--fill-1); color:var(--text); }
     .st { width:128px; }
     .cb { width:138px; }
@@ -132,7 +134,7 @@
         <table class="bo" id="tbl">
           <thead>
             <tr>
-              <th>#</th><th>Cliente</th><th>Ano ant.</th><th>Honorário</th><th>Canal</th>
+              <th class="num">#</th><th>Cliente</th><th class="ant">Ano ant.</th><th>Honorário</th><th>Canal</th>
               <th>1º contato</th><th>Entrega</th><th>Situação</th><th>Cobrança</th><th>Observações</th><th></th>
             </tr>
           </thead>
