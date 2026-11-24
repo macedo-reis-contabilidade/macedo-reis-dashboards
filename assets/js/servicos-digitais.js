@@ -489,7 +489,7 @@ export function guiaDoComeco(servicos, vendas, hoje) {
 
 // ---------- a tarefa das NFS-e (fiscal, Thalia): uma linha por venda paga ----------
 export const TITULO_TAREFA_NOTAS = 'Emitir as NFS-e dos serviços digitais';
-export const INTRO_TAREFA_NOTAS = 'As vendas pagas dos serviços digitais (Comercial › Serviços digitais). Emita a NFS-e de cada uma e informe o número na venda:';
+export const INTRO_TAREFA_NOTAS = 'As vendas pagas dos serviços digitais (Comercial › Vitrine de serviços). Emita a NFS-e de cada uma e informe o número na venda:';
 const RE_LINHA_NOTA = /^([☐☑]) Venda nº (\d+) · /;
 const linhaDaVenda = (l, numero) => { const m = RE_LINHA_NOTA.exec(l); return m && Number(m[2]) === Number(numero) ? m[1] : null; };
 

@@ -171,7 +171,7 @@ def main():
         p.goto(base + 'comercial.html')
         p.wait_for_function("() => { const e = document.querySelector('.card-status[data-mod=\"comercial-servicos.html\"]'); return e && !e.classList.contains('st-load'); }", timeout=6000)
         ok(texto(p, '.card-status[data-mod="comercial-servicos.html"]') == '2 no ar', '1. o card diz "2 no ar" → ' + str(texto(p, '.card-status[data-mod="comercial-servicos.html"]')))
-        ok(p.evaluate("() => !!document.querySelector('a[href=\"comercial-servicos.html\"] h3') && document.querySelector('a[href=\"comercial-servicos.html\"] h3').textContent === 'Serviços digitais'"), '1. o card tem o nome e leva à tela')
+        ok(p.evaluate("() => !!document.querySelector('a[href=\"comercial-servicos.html\"] h3') && document.querySelector('a[href=\"comercial-servicos.html\"] h3').textContent === 'Vitrine de serviços'"), '1. o card tem o nome e leva à tela')
         p.close()
 
         print('2. A vitrine')

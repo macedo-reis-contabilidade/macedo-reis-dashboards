@@ -56,7 +56,7 @@
         </div>
         <div class="eyebrow">Setor</div>
         <h1>Comercial</h1>
-        <p>Módulos do setor: carteira, precificação, transição, serviços digitais, tarefas, relatórios, reuniões.</p>
+        <p>Módulos do setor: carteira, precificação, transição, vitrine de serviços, tarefas, relatórios, reuniões.</p>
       </div>
 
       <div class="dashboard-grid">
@@ -91,8 +91,8 @@
           <div class="dashboard-card-icon">
             <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 0 1-8 0"/></svg>
           </div>
-          <h3>Serviços digitais</h3>
-          <p>A vitrine do que o escritório vende pela internet: a régua de cada serviço, as vendas e os números.</p>
+          <h3>Vitrine de serviços</h3>
+          <p>O que o escritório vende, pela internet ou não: a régua de cada serviço, as vendas e os números.</p>
           <div class="dashboard-card-footer"><span>Acessar →</span><span class="badge card-status st-load" data-mod="comercial-servicos.html">·</span></div>
         </a>
 
@@ -162,7 +162,8 @@
         const { count: trans } = await supabase.from('transicoes')
           .select('id', { count: 'exact', head: true }).eq('status', 'em_andamento');
         setBadge('comercial-transicao.html', (trans ?? 0) + ' em andamento');
-        // Serviços digitais: quantos no ar ou, sem nenhum, quantos em preparo (a leitura que falha deixa o traço)
+        // Vitrine de serviços (o nome desde 24/11/2026; era Serviços digitais): quantos no ar ou, sem nenhum, quantos em preparo
+        // (a leitura que falha deixa o traço)
         const { data: servs, error: eServs } = await supabase.from('servicos_digitais').select('situacao');
         setBadge('comercial-servicos.html', eServs ? '—' : seloDoCard(servs || []));
         ["comercial-relatorios.html", "comercial-reunioes.html"].forEach(h => setBadge(h, '—'));
