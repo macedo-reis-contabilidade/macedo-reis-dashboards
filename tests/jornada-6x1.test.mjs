@@ -3,7 +3,7 @@
 // simulador (contratar, hora extra, reduzir). Os números são contas à mão, no comentário de cada caso.
 // Rodar com: node tests/jornada-6x1.test.mjs
 import {
-  DATA_42, DATA_40, DECISAO_STF, DECRETO, diaMaxDaEtapa, padraoDoGrupo, diagnostico, resumoDaEmpresa, limiteDaEtapa, salarioArt8, encargosDoRegime,
+  DATA_42, DATA_40, DECISAO_STF, DECRETO, PORTARIA, repousosDoMes, diaMaxDaEtapa, padraoDoGrupo, diagnostico, resumoDaEmpresa, limiteDaEtapa, salarioArt8, encargosDoRegime,
   custoMensal, salarioMedio, simular, fmtHoras, fmtReais, PROVISOES,
   informadoValido, precisaDosDias, informadoDe, chaveDaTurma, comOsDiasInformados, diasParaGravar
 } from '../assets/js/jornada-6x1.js';
@@ -167,6 +167,13 @@ const dp = diagnostico(parcial, 'e42');
 igual('30 h em 5 dias: não reduz e já tem as 2 folgas (EC 141, art. 4º); não precisa mudar', [dp.precisa, dp.itens.map(i => i.tipo)], [false, ['horas']]);
 const dh = diagnostico(horista, 'e42');
 chk('o horista: a hora sobe 4,76% (44 ÷ 42) pra não perder no mês', dh.itens.some(i => i.tipo === 'salario' && i.texto.includes('4,76%')));
+chk('o horista pela Portaria MTE 2.041 (art. 10, §§ 4º e 5º): manter a média do mês dos 12 meses antes de 16/12/2026',
+  dh.itens.some(i => i.tipo === 'salario' && i.base.includes('Portaria MTE 2.041/2026, art. 10, §§ 4º e 5º') && i.texto.includes('média dos 12 meses')));
+// a portaria: número, dia e o DOU; os repousos do mês no regime compensatório = ⌈2 × dias ÷ 7⌉: 60/7 = 8,57 → 9; 62/7 = 8,86 → 9; 56/7 = 8
+igual('a portaria: o número, o dia e o DOU', [PORTARIA.numero, PORTARIA.data, PORTARIA.fonte.includes('in.gov.br')], ['2.041/2026', '2026-11-19', true]);
+igual('os repousos do mês no regime compensatório (art. 4º, § 4º): 30, 31 e 28 dias', [repousosDoMes(30), repousosDoMes(31), repousosDoMes(28)], [9, 9, 8]);
+chk('as folgas: o regime compensatório da portaria na base (1 a cada 6 dias seguidos)',
+  diagnostico(seis, 'e42').itens.some(i => i.tipo === 'folgas' && i.base.includes('art. 4º, §§ 3º e 4º') && i.base.includes('6 dias seguidos')));
 const d12a = diagnostico(doze, 'e42'), d12b = diagnostico(doze, 'e40');
 chk('a 12x36 cabe nas 42 h de 2026 e fica a conferir nas 40 h de 2027',
   !d12a.precisa && d12a.itens.some(i => i.texto.includes('cabe no limite')) && d12b.itens.some(i => i.tipo === 'conferir' && i.texto.includes('acima das 40 h')));
@@ -180,7 +187,7 @@ chk('nas 40 h, o 200 do art. 5º, II (10% mais cara) e o divisor mais favorável
   sal40.base.includes('art. 5º, II') && sal40.base.includes('mais favorável') && sal40.texto.includes('10%'), sal40.base);
 const doze40 = d12b.itens.find(i => i.tipo === 'conferir');
 chk('a 12x36 nas 40 h: compensar ou pagar hora extra pela convenção (Decreto, art. 3º); nas 42 h, sem o decreto na base',
-  doze40.texto.includes('compensar') && doze40.base.includes('Decreto 13.173/2026, art. 3º') && !d12a.itens.find(i => i.tipo === 'conferir').base.includes('Decreto'));
+  doze40.texto.includes('compensar') && doze40.base.includes('Decreto 13.173/2026, art. 3º') && !d12a.itens.find(i => i.tipo === 'conferir').base.includes('Decreto') && doze40.base.includes('Portaria MTE 2.041/2026, art. 8º'));
 const dturno = diagnostico({ tipo: 3, empregados: 2, horas_semana: 44 }, 'e42');
 chk('o turno variável: a conferir se é turno ininterrupto (6 h por dia, Decreto, art. 2º)',
   dturno.itens.some(i => i.tipo === 'conferir' && i.texto.includes('6 h por dia') && i.base.includes('art. 2º')));
@@ -214,9 +221,11 @@ igual('o salário médio dos grupos (o horista vira mês pelas horas do contrato
 console.log('O simulador (só a 6x1, Simples, sem convenção, 16/12/2026):');
 const s = simular([seis], 'e42', { regime: 'Simples Nacional' });
 igual('contratar: 1 pessoa de R$ 2.000 → R$ 2.580,00 por mês', [s.contratar.pessoas, s.porPessoa, s.contratar.mes], [1, 2580, 2580]);
-// a hora extra: 5 × (44 − 42) = 10 h por semana × 52 ÷ 12 = 43,33 h no mês; a hora = 2.000 ÷ 210; × 1,5; × 1,4 (as 2 folgas);
-// × 1,1944 (13º e férias); × 1,08 (FGTS)
-const esperado = r2(43.33 * (2000 / 210) * 1.5 * 1.4 * (1 + PROVISOES) * 1.08);
+// a hora extra: 5 × (44 − 42) = 10 h por semana × 52 ÷ 12 = 43,33 h no mês; a hora = 2.000 ÷ 210; × 1,5; × 7/6 (o reflexo
+// de 1/6 nos 2 repousos, Portaria MTE 2.041/2026, art. 11, § 7º); × 1,1944 (13º e férias); × 1,08 (FGTS)
+// à mão: 43,33 × 9,5238 = 412,67; × 1,5 = 619,00; × 7/6 = 722,17; × 1,19444 = 862,59; × 1,08 = 931,60 (931,595…)
+const esperado = r2(43.33 * (2000 / 210) * 1.5 * (7 / 6) * (1 + PROVISOES) * 1.08);
+igual('a conta à mão da hora extra com o reflexo de 1/6', esperado, 931.6);
 igual('hora extra: 43,33 h no mês → R$ ' + fmtReais(esperado), [s.horaExtra.horasMes, s.horaExtra.mes], [43.33, esperado]);
 igual('reduzir: 10 h por semana e 5 dias-pessoa a menos', [s.reduzir.horasSemana, s.reduzir.presenca], [10, 5]);
 igual('pelas horas só (sem contar a presença), a mesma 1 pessoa', simular([seis], 'e42', { regime: 'Simples', presenca: false }).contratar.pessoas, 1);

@@ -6,7 +6,7 @@
 // plano nunca entra (a regra da casa: anotação interna não sai em PDF).
 // A fonte padrão do jsPDF não tem o travessão nem alguns símbolos: o texto passa pelo limpar().
 // =====================================================================
-import { EMENDA, DECISAO_STF, DECRETO, DATA_42, DATA_40, ETAPAS, padraoDoGrupo, diagnostico, simular, fmtNum, fmtReais } from './jornada-6x1.js';
+import { EMENDA, DECISAO_STF, DECRETO, PORTARIA, DATA_42, DATA_40, ETAPAS, padraoDoGrupo, diagnostico, simular, fmtNum, fmtReais } from './jornada-6x1.js';
 import { DIAS, escalasDaEmpresa, garantias } from './jornada-escalas.js';
 
 const dataBr = iso => iso ? String(iso).slice(0, 10).split('-').reverse().join('/') : '';
@@ -38,7 +38,10 @@ export function relatorioJornadaPdf(J, { empresa, grupos, opcoes = {}, etapa = '
   item('A partir de ' + dataBr(DATA_40) + ': no máximo 40 horas por semana. O limite de 8 horas por dia continua.', 'EC 141, art. 6º, II; Constituição, art. 7º, XIII');
   item('Sem reduzir o salário, nem de forma proporcional. Quem já trabalha 40 horas ou menos não tem redução, mas ganha as 2 folgas.', 'EC 141, arts. 2º e 4º');
   item('O valor da hora: o salário do mês dividido por 210 nas 42 horas e por 200 nas 40 horas (antes, 220). Se a convenção, o acordo ou o contrato já usam um divisor menor, ele continua: vale o mais favorável ao empregado.', 'Decreto ' + DECRETO.numero + ', art. 5º');
-  item('Na 12x36, se a média do mês passar do limite da semana, a empresa compensa as horas ou paga hora extra, como a convenção ou o acordo coletivo disser. No turno ininterrupto de revezamento, 6 horas por dia, salvo convenção ou acordo.', 'Decreto ' + DECRETO.numero + ', arts. 2º e 3º');
+  item('Na 12x36, se a média do mês passar do limite da semana, a empresa compensa as horas ou paga hora extra, como a convenção ou o acordo coletivo disser. No turno ininterrupto de revezamento, 6 horas por dia, salvo convenção ou acordo.', 'Decreto ' + DECRETO.numero + ', arts. 2º e 3º; Portaria MTE ' + PORTARIA.numero + ', arts. 7º e 8º');
+  item('Quem recebe por hora, dia, tarefa, peça ou comissão: o valor da unidade é ajustado pra manter a remuneração do mês, pela média dos 12 meses antes de ' + dataBr(DATA_42) + '. A hora extra habitual reflete nos 2 dias de repouso em 1/6 do valor dela na semana.', 'Portaria MTE ' + PORTARIA.numero + ', art. 10, §§ 4º e 5º, e art. 11, § 7º');
+  item('Com convenção ou acordo coletivo, o regime compensatório pode dar os 2 repousos na média do mês (9 no mês de 30 ou 31 dias), com pelo menos 1 a cada 6 dias seguidos de trabalho. O domingo de folga, de preferência, pelo menos 1 vez a cada 4 semanas (no comércio, 1 a cada 3).', 'Portaria MTE ' + PORTARIA.numero + ', art. 4º, §§ 3º e 4º, e art. 5º, §§ 4º e 5º');
+  item('O banco de horas juntado até ' + dataBr('2026-12-15') + ' é compensado ou pago como o acordo que o criou disser; as horas a partir de ' + dataBr(DATA_42) + ' seguem os limites novos. A fiscalização faz a dupla visita nos primeiros 90 dias de cada etapa.', 'Portaria MTE ' + PORTARIA.numero + ', art. 13, § 5º, e art. 17');
   if (DECISAO_STF.vale) {
     item('Até ' + dataBr(DATA_40) + ', a convenção ou o acordo coletivo pode passar das 8 horas por dia pra distribuir as 42 horas. Sem convenção ou acordo até ' + dataBr('2026-12-15') + ', o STF admitiu as 42 horas em 5 dias de até 8h24, sem hora extra nos 24 minutos, até ' + dataBr(DECISAO_STF.ate) + '.', 'EC 141, art. 7º; STF, ' + DECISAO_STF.processo + ', ' + dataBr(DECISAO_STF.data) + ', item I');
     item('As folgas: o STF tirou as travas semanal e mensal; a convenção ou o acordo define como os 2 dias de repouso por semana são tirados.', 'Constituição, art. 7º, § 2º; STF, ' + DECISAO_STF.processo + ', item IV');
@@ -89,7 +92,7 @@ export function relatorioJornadaPdf(J, { empresa, grupos, opcoes = {}, etapa = '
   item('Contratar: ' + s.contratar.pessoas + ' ' + (s.contratar.pessoas === 1 ? 'pessoa' : 'pessoas') + (s.contratar.mes != null ? ', R$ ' + fmtReais(s.contratar.mes) + ' por mês (R$ ' + fmtReais(s.porPessoa) + ' cada, com 13º, férias e encargos).' : '.'));
   item('Hora extra: ' + fmtNum(s.horaExtra.horasMes) + ' horas por mês' + (s.horaExtra.mes != null ? ', R$ ' + fmtReais(s.horaExtra.mes) + ' por mês.' : '.') + ' Hora extra todo mês passa a integrar o salário: serve pra transição, não como regra.');
   item('Reduzir: ' + fmtNum(s.reduzir.horasSemana) + ' horas por semana a menos' + (s.reduzir.presenca ? ' e ' + fmtNum(s.reduzir.presenca) + ' dia(s)-pessoa a menos' : '') + ', sem custo a mais, absorvidas no horário de funcionamento ou na distribuição dos turnos.');
-  texto('Como foi calculado: salário de referência R$ ' + (s.salario != null ? fmtReais(s.salario) : '-') + '; ' + s.encargos.rotulo + '; a hora extra com 50%, o divisor ' + ETAPAS[etapa].divisor + ', o reflexo nas 2 folgas, 13º, férias e encargos. Não inclui vale-transporte, alimentação e os benefícios da convenção.', { tam: 8.5, cor: [110, 110, 110], depois: 2 });
+  texto('Como foi calculado: salário de referência R$ ' + (s.salario != null ? fmtReais(s.salario) : '-') + '; ' + s.encargos.rotulo + '; a hora extra com 50%, o divisor ' + ETAPAS[etapa].divisor + ', o reflexo de 1/6 nos 2 repousos, 13º, férias e encargos. Não inclui vale-transporte, alimentação e os benefícios da convenção.', { tam: 8.5, cor: [110, 110, 110], depois: 2 });
 
   // as escalas que cabem na data do simulador: pra cada turma que muda, as opções em grade (quem folga em cada dia e
   // quantos ficam, contra hoje). A grade só usa texto e linha: "folga" no dia de folga, vazio no dia de trabalho.

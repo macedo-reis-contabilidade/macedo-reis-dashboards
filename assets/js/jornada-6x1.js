@@ -26,9 +26,22 @@
 // - art. 4º e 6º: o MTE edita os atos do repouso, dos regimes especiais e os complementares;
 // - art. 5º: o divisor do salário-hora, 210 nas 42 h e 200 nas 40 h; não afasta o divisor menor da lei, da
 //   convenção, do acordo ou do contrato, e vale o mais favorável ao empregado.
-// O que é leitura, não texto (dito assim na tela e no relatório): a hora do horista reajustada pra não perder no
-// mês (o decreto não fala do horista); as 8 h por dia sem convenção ou acordo coletivo; o reflexo da hora extra
-// habitual nas 2 folgas.
+// A Portaria MTE 2.041, de 19/11/2026 (DOU de 23/11/2026, edição 219-A, extra — PORTARIA; lida em 24/11/2026
+// numa cópia da página do DOU), complementa o decreto:
+// - art. 4º, §§ 3º e 4º: o regime compensatório da convenção ou do acordo dá a média de 2 repousos no mês (o
+//   número de repousos do mês ≥ o dobro dos dias do mês ÷ 7, pra cima), com pelo menos 1 a cada 6 dias seguidos;
+// - art. 5º, § 5º: o repouso no domingo, de preferência, pelo menos 1 vez a cada 4 semanas (no comércio, 1 a cada 3);
+// - arts. 7º e 8º: o turno ininterrupto e a 12x36, como no decreto;
+// - art. 9º, § 2º: o salário variável do art. 8º da EC, pela média dos 12 meses;
+// - art. 10, §§ 4º e 5º: quem recebe por hora, dia, tarefa, peça ou comissão tem a unidade ajustada pra manter a
+//   remuneração do mês, pela média dos 12 meses antes de 16/12/2026;
+// - art. 11, § 7º: o reflexo da hora extra habitual no repouso é 1/6 do valor dela na semana (§ 5º: ou o repouso
+//   embutido na hora, + 16,667%, dito no recibo);
+// - art. 13, § 5º: o banco de horas até 15/12/2026 segue o acordo que o criou; dali em diante, os limites novos;
+// - art. 17: a dupla visita da fiscalização, 90 dias desde 16/12/2026 (42 h e 2 repousos) e desde 16/12/2027 (40 h);
+// - art. 18: no eSocial, de 16/12/2026 a 15/12/2027, só as horas por semana, a escala e o tempo parcial.
+// O que é leitura, não texto (dito assim na tela e no relatório): o tamanho do ajuste da hora do horista (a portaria
+// manda manter a média do mês; a conta pelo contrato, 44 ÷ 42, é estimativa); as 8 h por dia sem convenção ou acordo.
 //
 // O STF (ADI 8.041 e 8.042, medida cautelar, ministro Flávio Dino, 12/11/2026; efeito pra todos e imediato, vai a
 // referendo do Plenário e pode ser revista — DECISAO_STF): negou adiar a emenda e, no dispositivo (item 54):
@@ -68,6 +81,15 @@ export const DECRETO = {
   fonte: 'https://www.planalto.gov.br/ccivil_03/_ato2023-2026/2026/decreto/d13173.htm'
 };
 const textoDecreto = 'Decreto ' + DECRETO.numero;
+export const PORTARIA = {
+  numero: '2.041/2026',
+  data: '2026-11-19',
+  publicacao: 'DOU de 23/11/2026, edição 219-A, extra',
+  fonte: 'https://www.in.gov.br/web/dou/-/portaria-mte-n-2.041-de-19-de-novembro-de-2026-745783275'
+};
+const textoPortaria = 'Portaria MTE ' + PORTARIA.numero;
+// o regime compensatório da convenção: os repousos que o mês precisa ter (Portaria, art. 4º, § 4º)
+export function repousosDoMes(diasDoMes) { return Math.ceil(2 * diasDoMes / 7); }
 export const ETAPAS = {
   e42: { id: 'e42', desde: DATA_42, horas: 42, folgas: 2, divisor: 210, rotulo: '16/12/2026: 42 h e 2 folgas' },
   e40: { id: 'e40', desde: DATA_40, horas: 40, folgas: 2, divisor: 200, rotulo: '16/12/2027: 40 h' }
@@ -261,7 +283,7 @@ export function diagnostico(g, etapa, { cct = false, art8 = null } = {}) {
     itens.push({ tipo: 'folgas', texto: (p.dias === 7
         ? 'No Domínio a turma aparece nos 7 dias: a folga de hoje roda e não está lá. A partir de 16/12/2026 são 2 por semana (uma, de preferência, no domingo).'
         : 'Hoje folga ' + fmtNum(p.folgas) + ' dia por semana; a partir de 16/12/2026 são 2 (um, de preferência, no domingo).'),
-      base: 'CF, art. 7º, XV (EC 141, art. 10, I). Com convenção ou acordo coletivo, a média de 2 no mês, com pelo menos 1 por semana (art. 7º, § 2º)'
+      base: 'CF, art. 7º, XV (EC 141, art. 10, I). Com convenção ou acordo coletivo, o regime compensatório: a média de 2 no mês (9 repousos no mês de 30 ou 31 dias, 8 em fevereiro), com pelo menos 1 a cada 6 dias seguidos de trabalho (' + textoPortaria + ', art. 4º, §§ 3º e 4º)'
         + (DECISAO_STF.vale ? '; o STF tirou as travas semanal e mensal: a convenção ou o acordo define como as folgas são tiradas, mantidos os 2 repousos por semana (' + textoStf + ', item IV).' : '.') });
   } else if (p.folgas == null) {
     itens.push({ tipo: 'conferir', texto: 'Sem a semana no Domínio: confirmar com a empresa quantos dias trabalha (a partir de 16/12/2026, 2 folgas por semana).',
@@ -293,30 +315,30 @@ export function diagnostico(g, etapa, { cct = false, art8 = null } = {}) {
   // o salário-hora
   if (num(g.unidade) === 1 || num(g.forma) === 2) {
     const fator = arred(44 / e.horas, 4);
-    itens.push({ tipo: 'salario', texto: 'Recebe por hora: pra não perder no mês, a hora sobe ' + fmtNum(arred((fator - 1) * 100, 2)) + '% (44 ÷ ' + e.horas + ').',
-      base: 'EC 141, art. 2º (sem redução nominal, proporcional ou de outra espécie) — leitura' });
+    itens.push({ tipo: 'salario', texto: 'Recebe por hora: a hora é ajustada pra manter a remuneração do mês, pela média dos 12 meses antes de 16/12/2026; pelas horas do contrato, ela sobe uns ' + fmtNum(arred((fator - 1) * 100, 2)) + '% (44 ÷ ' + e.horas + ').',
+      base: 'EC 141, art. 2º; ' + textoPortaria + ', art. 10, §§ 4º e 5º (a conta pelas horas do contrato é estimativa: vale a média do mês — leitura)' });
   } else if (!escalaLonga && p.horas != null && p.horas > e.horas) {
     itens.push({ tipo: 'salario', texto: 'O salário do mês não muda; o divisor da hora vai de 220 pra ' + e.divisor + ' (a hora extra fica ' + fmtNum(arred((220 / e.divisor - 1) * 100, 2)) + '% mais cara).',
       base: 'EC 141, art. 2º; ' + textoDecreto + ', art. 5º, ' + (etapa === 'e42' ? 'I (divisor 210)' : 'II (divisor 200)')
-        + '; o divisor menor da convenção, do acordo ou do contrato fica, se for mais favorável (parágrafo único)' });
+        + '; o divisor menor da convenção, do acordo ou do contrato fica, se for mais favorável (parágrafo único); ' + textoPortaria + ', art. 10' });
   }
   // as escalas especiais
   if (p.escala === '12x36' || p.escala === '24x72') {
     itens.push({ tipo: 'conferir', texto: etapa === 'e42'
       ? 'A ' + p.escala + ' dá a média de 42 h por semana: cabe no limite de 16/12/2026.'
       : 'A ' + p.escala + ' dá a média de 42 h: acima das 40 h de 16/12/2027. Com a média do mês acima do limite, compensar as horas ou pagar hora extra, nos termos da convenção ou do acordo coletivo; a lei dos regimes diferenciados (art. 7º, § 3º) ainda não existe (o STF deu ao Congresso 180 dias pra fazê-la, em 12/11/2026).',
-      base: 'CLT, art. 59-A; CF, art. 7º, § 3º' + (etapa === 'e42' ? '' : '; ' + textoDecreto + ', art. 3º') });
+      base: 'CLT, art. 59-A; CF, art. 7º, § 3º' + (etapa === 'e42' ? '' : '; ' + textoDecreto + ', art. 3º; ' + textoPortaria + ', art. 8º') });
   }
   if (p.escala === 'turno') {
     itens.push({ tipo: 'conferir', texto: 'Turno variável: se for turno ininterrupto de revezamento, 6 h por dia, salvo convenção ou acordo coletivo, com a média do mês no limite da semana (' + e.horas + ' h) e os 2 repousos.',
-      base: 'CF, art. 7º, XIV; ' + textoDecreto + ', art. 2º' });
+      base: 'CF, art. 7º, XIV; ' + textoDecreto + ', art. 2º; ' + textoPortaria + ', art. 7º' });
   }
   if (categoria === 111 || num(g.forma) === 3) {
     itens.push({ tipo: 'conferir', texto: 'Intermitente: as 2 folgas e o limite valem nos períodos de convocação.', base: 'CLT, art. 452-A — leitura' });
   }
   if (superiorTeto > 0) {
     itens.push({ tipo: 'fora', texto: superiorTeto + ' com diploma de nível superior e salário a partir de R$ ' + fmtReais(art8 || salarioArt8(Number(DATA_42.slice(0, 4)))) + ': fora do controle de jornada, salvo opção do empregador ou norma coletiva (as 2 folgas valem).',
-      base: 'EC 141, art. 8º' });
+      base: 'EC 141, art. 8º; ' + textoPortaria + ', art. 9º (o salário variável pela média dos 12 meses)' });
   }
   const precisa = itens.some(i => (i.tipo === 'folgas' || i.tipo === 'horas' || i.tipo === 'diaria') && !i.ok);
   return { padrao: p, empregados: n, limite, precisa, itens };
@@ -401,10 +423,10 @@ export function simular(grupos, etapa, opcoes = {}) {
   const pessoas = opcoes.presenca === false ? r.contratarPorHoras : Math.max(r.contratarPorHoras, r.contratarPorPresenca);
   const semanasNoMes = 52 / 12;
   const horasExtraMes = arred(r.horasPerdidas * semanasNoMes, 2);
-  // a hora extra: o salário ÷ o divisor da etapa × 1,5; o reflexo da habitual no repouso (Súmula 172 do TST) na
-  // proporção de 2 folgas pra 5 dias de trabalho (leitura: a súmula é de antes da EC); o 13º, as férias e os encargos
+  // a hora extra: o salário ÷ o divisor da etapa × 1,5; o reflexo da habitual nos 2 repousos, 1/6 do valor dela na
+  // semana (Portaria MTE 2.041/2026, art. 11, § 7º); o 13º, as férias e os encargos
   const hora = salario != null ? salario / ETAPAS[etapa].divisor : null;
-  const extra = hora != null ? arred(horasExtraMes * hora * 1.5 * (1 + 2 / 5) * (1 + PROVISOES) * (1 + enc.fgts + enc.inss), 2) : null;
+  const extra = hora != null ? arred(horasExtraMes * hora * 1.5 * (1 + 1 / 6) * (1 + PROVISOES) * (1 + enc.fgts + enc.inss), 2) : null;
   return {
     etapa, resumo: r, encargos: enc, salario, porPessoa,
     contratar: { pessoas, mes: porPessoa != null ? arred(pessoas * porPessoa, 2) : null },
