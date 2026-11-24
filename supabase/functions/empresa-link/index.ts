@@ -30,7 +30,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.0";
 // as perguntas, a conferência, o resumo e o nome dos anexos (os da página) vêm do repositório, no commit fixado: a função
 // roda o que estava nele. Mudou assets/js/empresa-pedido.js (ou o mei-abertura.js e o utils.js, que ele importa)? Publique,
 // troque o commit da linha e reimplante — tests/empresa-pedido.test.mjs falha enquanto o commit fixado estiver atrás.
-import { conferirPedido, resumoDoPedido, textoDasRespostas, alertasDoPedido, nomeDoAnexo, pastaDoPedido } from "https://raw.githubusercontent.com/macedo-reis-contabilidade/macedo-reis-dashboards/__SHA__/assets/js/empresa-pedido.js";
+import { conferirPedido, resumoDoPedido, textoDasRespostas, alertasDoPedido, nomeDoAnexo, pastaDoPedido } from "https://raw.githubusercontent.com/macedo-reis-contabilidade/macedo-reis-dashboards/b12c608ca07c43a402009b15435043aa00cc5a69/assets/js/empresa-pedido.js";
 
 const ENVIOS_HORA = 30;                  // trava contra enxurrada (o link é público)
 const TABELA = "pedidos_empresa";

@@ -147,6 +147,10 @@ def main():
         msg = p.input_value('#spMsg')
         ok('Na 1ª imagem, o passo a passo' in msg and 'Na 2ª, a documentação que vamos precisar.' in msg and 'E, em separado, o orçamento' in msg,
            'a mensagem diz o que vai em cada imagem')
+        linhas = msg.split('\n')
+        ok(base + 'empresa.html?t=transformacao' in linhas and 'Quando quiser seguir, é só preencher este formulário' in msg
+           and linhas.index(base + 'empresa.html?t=transformacao') < linhas.index('Qualquer dúvida, me chama por aqui!'),
+           'a mensagem leva o link do formulário da transformação, antes da despedida')
 
         print('5. O à vista acima do a prazo')
         p.fill('#spAVista', '1.500,00')
@@ -187,6 +191,12 @@ def main():
         p.click('#vitrine .sv-card[data-slug="transformacao-mei"] .sv-nome')
         ok(espera(p, FICHA_ABERTA), 'o nome abre a ficha')
         ok(p.is_visible('#sMaterial') and 'Material pro cliente' in txt('#sMaterial') and txt('#sMaterialBtn') == '📲 Transformação pro WhatsApp', 'a ficha tem o material pro cliente')
+        form = base + 'empresa.html?t=transformacao'
+        ok(p.is_visible('#sMaterialForm') and txt('#sFormLink') == form and p.get_attribute('#sFormAbrir', 'href') == form
+           and p.get_attribute('#sFormAbrir', 'target') == '_blank', 'e o formulário do cliente, com o link e o "Ver o formulário"')
+        p.click('#sFormCopiar')
+        ok(espera(p, "() => document.getElementById('sFormStatus').textContent.includes('Link copiado')") and p.evaluate('navigator.clipboard.readText()') == form,
+           '"Copiar o link" copia o endereço do formulário')
         p.click('#sMaterialBtn')
         ok(espera(p, ABERTA) and espera(p, PRONTAS, 12000), 'o botão da ficha abre a janela')
         ok(p.input_value('#spCliente') == '' and p.input_value('#spData') == hoje, 'a janela abre de novo limpa, com a data de hoje')
@@ -204,6 +214,10 @@ def main():
         p.keyboard.press('Escape')
         ok(espera(p, "() => getComputedStyle(document.getElementById('ovPlanosMei')).display === 'none'"), 'Esc fecha')
         ok(p.evaluate('() => window.__mockDb.servicos_vendas.length') == 0 and p.evaluate('() => window.__mockDb.servicos_digitais.length') == 4, 'nada gravado')
+        p.click('#vitrine .sv-card[data-slug="planos-mei"] .sv-nome')
+        ok(espera(p, FICHA_ABERTA) and p.is_visible('#sMaterial') and not p.is_visible('#sMaterialForm'), 'a ficha dos planos do MEI não tem o formulário')
+        p.keyboard.press('Escape')
+        ok(espera(p, "() => !document.getElementById('ovServico').classList.contains('is-open')"), 'Esc fecha a ficha')
 
         print('9. A leitura dos valores de sempre que falha')
         p.evaluate("() => { window.__mockErroTabela = { precificacao_parametros: 'permission denied for table precificacao_parametros' }; }")
@@ -235,6 +249,7 @@ def main():
         ok(espera(p, PRONTAS), 'e as imagens se refazem')
         msg = p.input_value('#spMsg')
         ok('Segue como funciona, na prática, a abertura da empresa:' in msg and ' MEI' not in msg, 'a mensagem fala da abertura da empresa, sem MEI')
+        ok(base + 'empresa.html?t=constituicao' in msg.split('\n') and 'transformacao' not in msg, 'com o link do formulário da abertura, não o da transformação')
         # o ouvinte do 6 segue ligado e põe em "baixados" (o nome é lido na hora): a lista é zerada aqui
         del baixados[:]
         p.click('#spBaixarTodas')

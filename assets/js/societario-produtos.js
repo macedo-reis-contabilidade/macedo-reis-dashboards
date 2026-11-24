@@ -190,7 +190,15 @@ export function dadosDoOrcamento({ cliente = '', dia, valores = {} } = {}) {
 }
 
 // a mensagem que vai junto das imagens (a tela deixa editar antes de copiar)
-export function mensagemDoProduto(p, { nome, quem, validade } = {}) {
+// o link do formulário do produto (empresa.html?t=<id do produto>, 24/11/2026): o cliente preenche os dados da empresa e
+// de cada sócio e anexa os documentos; o pedido vira tarefa na agenda (a Edge Function empresa-link). base: o endereço da
+// tela que monta o link (location.href)
+export function linkDoFormulario(p, base) {
+  if (!p || !p.id) return '';
+  try { return new URL('empresa.html?t=' + encodeURIComponent(p.id), base).href; } catch (e) { return ''; }
+}
+
+export function mensagemDoProduto(p, { nome, quem, validade, formulario } = {}) {
   const pn = primeiroNome(nome);
   const eu = String(quem || '').trim();
   const linhas = [];
@@ -201,6 +209,12 @@ export function mensagemDoProduto(p, { nome, quem, validade } = {}) {
   linhas.push(`Na 1ª imagem, o passo a passo: os primeiros passos com você e as ${p.etapas.length} etapas que fazemos nos órgãos.`);
   linhas.push('Na 2ª, a documentação que vamos precisar.');
   linhas.push('E, em separado, o orçamento, com os prazos de cada etapa e as formas de pagamento' + (isoValida(validade) ? ` (vale até ${fmtData(validade)}).` : '.'));
+  // o formulário: as informações e os documentos vão por ele, não pela conversa (só o endereço http(s) entra)
+  if (/^https?:\/\/\S+$/.test(String(formulario || ''))) {
+    linhas.push('');
+    linhas.push('Quando quiser seguir, é só preencher este formulário com as informações e os documentos (leva uns 10 minutos):');
+    linhas.push(formulario);
+  }
   linhas.push('');
   linhas.push('Qualquer dúvida, me chama por aqui!');
   return linhas.join('\n');

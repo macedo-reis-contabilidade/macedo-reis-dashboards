@@ -11,7 +11,8 @@
 import { readFileSync } from 'node:fs';
 import { PRODUTOS, produtoDe, SUBTITULO, PRIMEIROS, DOCUMENTOS, COMECO, CHAVES, DIAS_DA_PARCELA, PAGAMENTO, NOTA_PRAZOS, NAO_INCLUSO,
   NOTA_NAO_INCLUSO, totalDeDias, emPalavras, hojeEmBrasilia, validadeDoOrcamento, porExtenso, lerValor, valoresDosParametros,
-  conferirValores, dadosDoOrcamento, mensagemDoProduto, nomeDoArquivo, resumoDosValores } from '../assets/js/societario-produtos.js';
+  conferirValores, dadosDoOrcamento, mensagemDoProduto, nomeDoArquivo, resumoDosValores, linkDoFormulario } from '../assets/js/societario-produtos.js';
+import { tipoDe } from '../assets/js/empresa-pedido.js';
 import { LARGURA, ALTURA_MAX, ESCRITORIO, COR, FONTES } from '../assets/js/imagens-whats.js';
 import { ESCRITORIO as ESCRITORIO_PLANOS } from '../assets/js/mei-planos.js';
 import { LARGURA as LARGURA_PLANOS, ALTURA_MAX as ALTURA_PLANOS } from '../assets/js/mei-planos-imagem.js';
@@ -127,6 +128,19 @@ chk('a da abertura fala da abertura da empresa, sem MEI', msgC.includes('Segue c
 chk('a Thalia fala com "a", e sem nome a saudação fica sem', mensagemDoProduto(C, { quem: 'Thalia' }).startsWith('Oi! Tudo bem? Aqui é a Thalia, da Macedo & Reis Contabilidade.'));
 chk('sem quem fala, o escritório; sem validade, sem o parêntese', mensagemDoProduto(T, { nome: 'ana' }).startsWith('Oi, Ana! Tudo bem? Aqui é da Macedo & Reis Contabilidade.')
   && mensagemDoProduto(T, { nome: 'ana' }).includes('as formas de pagamento.'));
+
+console.log('O formulário do cliente (empresa.html)');
+const BASE = 'https://exemplo.github.io/sistema/comercial-servicos.html?s=x#y';
+chk('o link do formulário de cada produto, pelo id dele', linkDoFormulario(T, BASE) === 'https://exemplo.github.io/sistema/empresa.html?t=transformacao'
+  && linkDoFormulario(C, BASE) === 'https://exemplo.github.io/sistema/empresa.html?t=constituicao' && linkDoFormulario(null, BASE) === '' && linkDoFormulario(C, 'não é endereço') === '');
+chk('todo produto da família tem o formulário (o id é um tipo do formulário)', Object.values(PRODUTOS).every(p => tipoDe(p.id) === p.id), Object.values(PRODUTOS).map(p => p.id));
+const comForm = mensagemDoProduto(C, { nome: 'Fulano', quem: 'Samuel', validade: '2026-12-31', formulario: linkDoFormulario(C, BASE) });
+const linhasForm = comForm.split('\n');
+chk('com o link, a mensagem pede o formulário antes da despedida', linhasForm.includes('https://exemplo.github.io/sistema/empresa.html?t=constituicao')
+  && comForm.includes('Quando quiser seguir, é só preencher este formulário com as informações e os documentos (leva uns 10 minutos):')
+  && linhasForm.indexOf('https://exemplo.github.io/sistema/empresa.html?t=constituicao') < linhasForm.indexOf('Qualquer dúvida, me chama por aqui!') && !/\bMEI\b/.test(comForm), comForm);
+chk('sem link (ou com um que não é http), a mensagem fica como era', mensagemDoProduto(C, { nome: 'Fulano' }) === mensagemDoProduto(C, { nome: 'Fulano', formulario: 'javascript:alert(1)' })
+  && !mensagemDoProduto(C, { nome: 'Fulano' }).includes('formulário'));
 
 console.log('O nome dos arquivos');
 chk('as duas da apresentação, sem o cliente', nomeDoArquivo(T, 'Fulano Beltrano da Silva', 0) === 'Transformação do MEI em ME (1 de 2).png'

@@ -17,7 +17,8 @@
        a venda, cancelada. Quem e quando, o banco grava (o gatilho servicos_quem). A venda paga entra na tarefa das
        NFS-e da Thalia ("Emitir as NFS-e dos serviços digitais"), uma linha por venda. O produto com material pro cliente
        (MATERIAL, no script: os Planos do MEI, a Transformação do MEI em ME e a Constituição de CNPJ) tem o botão no cartão e
-       na ficha, que abre o que se manda direto na conversa. -->
+       na ficha, que abre o que se manda direto na conversa. A transformação e a constituição têm também o formulário do
+       cliente (empresa.html?t=…), com o link na ficha e na mensagem pronta. -->
   <div class="app-shell">
     <header class="topbar">
       <div class="topbar-brand">
@@ -104,7 +105,8 @@
       <div class="fa-modal-head"><h3 id="sTitulo">Novo serviço</h3><button class="fa-modal-close" id="sClose" aria-label="Fechar">&times;</button></div>
       <div class="fa-modal-body">
         <div id="sMudou" class="sv-banner sv-banner-alerta" role="alert" hidden></div>
-        <div id="sMaterial" class="sv-banner sv-banner-info" hidden><div style="display:flex; align-items:center; gap:8px 12px; flex-wrap:wrap;"><span style="flex:1 1 260px;"><b>Material pro cliente:</b> <span id="sMaterialTexto"></span></span><button class="btn btn-primary btn-sm" id="sMaterialBtn" type="button"></button></div></div>
+        <div id="sMaterial" class="sv-banner sv-banner-info" hidden><div style="display:flex; align-items:center; gap:8px 12px; flex-wrap:wrap;"><span style="flex:1 1 260px;"><b>Material pro cliente:</b> <span id="sMaterialTexto"></span></span><button class="btn btn-primary btn-sm" id="sMaterialBtn" type="button"></button></div>
+          <div id="sMaterialForm" hidden><div style="display:flex; align-items:center; gap:8px 12px; flex-wrap:wrap; margin-top:8px; padding-top:8px; border-top:1px solid var(--line);"><span style="flex:1 1 260px; min-width:0;"><b>Formulário do cliente:</b> as informações e os documentos vêm por aqui, e o pedido vira tarefa na agenda. <code id="sFormLink" style="font-size:12.5px; overflow-wrap:anywhere;"></code></span><span style="display:flex; gap:8px; flex-wrap:wrap;"><button class="btn btn-ghost btn-sm" id="sFormCopiar" type="button">Copiar o link</button><a class="btn btn-ghost btn-sm" id="sFormAbrir" target="_blank" rel="noopener">Ver o formulário</a></span></div><div id="sFormStatus" role="status" aria-live="polite" style="font-size:12.5px; margin-top:4px;"></div></div></div>
         <div class="fa-field-row">
           <label class="fa-field"><span>Nome *</span><input type="text" id="sNome" class="input" maxlength="120" placeholder="Como aparece na vitrine"></label>
           <label class="fa-field"><span>Endereço curto *</span><input type="text" id="sSlug" class="input" maxlength="60" placeholder="ex.: cadastro-2027" autocomplete="off" spellcheck="false"></label>
@@ -226,6 +228,7 @@
       juntarNaTarefaNotas, marcarNotaNaTarefa, desmarcarNotaNaTarefa, tirarDaTarefaNotas, prazoDaTarefaNotas } from './assets/js/servicos-digitais.js';
     import { abrirPlanosMei } from './assets/js/mei-planos-janela.js';
     import { abrirProdutoSocietario } from './assets/js/societario-produtos-janela.js';
+    import { produtoDe, linkDoFormulario } from './assets/js/societario-produtos.js';
 
     const $ = id => document.getElementById(id);
     const esc = t => String(t == null ? '' : t).replace(/[&<>"']/g, m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m]));
@@ -250,10 +253,12 @@
       'planos-mei': { rotulo: '📲 Planos pro WhatsApp', texto: 'as imagens dos planos, com o recomendado, e a mensagem pronta, pra mandar direto na conversa.',
         abrir: () => abrirPlanosMei({ supabase, quem }) },
       'transformacao-mei': { rotulo: '📲 Transformação pro WhatsApp', texto: 'o passo a passo e a documentação, sem valores, e o orçamento à parte, com a validade e a mensagem pronta, pra mandar direto na conversa.',
-        abrir: () => abrirProdutoSocietario({ produto: 'transformacao', supabase, quem }) },
+        abrir: () => abrirProdutoSocietario({ produto: 'transformacao', supabase, quem }), produto: 'transformacao' },
       'constituicao-cnpj': { rotulo: '📲 Constituição pro WhatsApp', texto: 'o passo a passo e a documentação, sem valores, e o orçamento à parte, com a validade e a mensagem pronta, pra mandar direto na conversa.',
-        abrir: () => abrirProdutoSocietario({ produto: 'constituicao', supabase, quem }) }
+        abrir: () => abrirProdutoSocietario({ produto: 'constituicao', supabase, quem }), produto: 'constituicao' }
     };
+    // o link do formulário do produto (empresa.html?t=…), por onde o cliente manda as informações e os documentos
+    const formularioDe = mat => (mat && mat.produto ? linkDoFormulario(produtoDe(mat.produto), location.href) : '');
     const abrirMaterial = slug => { const m = MATERIAL[slug]; if (m) m.abrir(); };
     let aba = 'vitrine', busca = '';
     const filtro = { servico: '', pagamento: '', pendencia: false };
@@ -533,6 +538,9 @@
       $('sMaterial').hidden = !mat;
       $('sMaterialTexto').textContent = mat ? mat.texto.charAt(0).toUpperCase() + mat.texto.slice(1) : '';
       $('sMaterialBtn').textContent = mat ? mat.rotulo : '';
+      const form = formularioDe(mat);
+      $('sMaterialForm').hidden = !form;
+      $('sFormLink').textContent = form; $('sFormAbrir').href = form || '#'; $('sFormStatus').textContent = '';
       $('sNome').value = s ? s.nome || '' : ''; $('sSlug').value = s ? s.slug || '' : ''; $('sSlug').disabled = !!s;
       $('sResumo').value = s ? s.resumo || '' : ''; $('sPublico').value = s ? s.publico || '' : '';
       $('sModelo').value = s && s.modelo === 'gratis' ? 'gratis' : 'pago';
@@ -889,6 +897,11 @@
 
     $('sClose').addEventListener('click', fecharFicha); $('sCancelar').addEventListener('click', fecharFicha); $('sSalvar').addEventListener('click', salvarFicha);
     $('sMaterialBtn').addEventListener('click', () => { if (fichaDe) abrirMaterial(fichaDe.slug); });
+    $('sFormCopiar').addEventListener('click', async () => {
+      const link = $('sFormLink').textContent;
+      try { await navigator.clipboard.writeText(link); $('sFormStatus').textContent = 'Link copiado: é só colar na conversa do cliente.'; }
+      catch (e) { $('sFormStatus').textContent = 'Não consegui copiar: selecione o link e copie.'; }
+    });
     $('sNome').addEventListener('input', () => { if (!fichaDe && !slugMexido) $('sSlug').value = slugDe($('sNome').value); });
     $('sSlug').addEventListener('input', () => { slugMexido = true; });
     $('ovServico').addEventListener('change', acompanharFicha);

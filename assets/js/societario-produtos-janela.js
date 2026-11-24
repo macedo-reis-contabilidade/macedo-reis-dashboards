@@ -5,10 +5,11 @@
 // um campo refaz as imagens e a mensagem. O orçamento vale até o último dia útil do mês seguinte.
 // A janela em si (as imagens com o Copiar e o Baixar, o Compartilhar todas, a mensagem) é a de janela-whats.js, a mesma
 // dos planos do MEI. Uma janela só pros produtos da família: o título e o rótulo do cliente são os do produto aberto.
-// Nada é gravado.
+// A mensagem leva o link do formulário do produto (empresa.html?t=…, 24/11/2026), por onde o cliente manda as
+// informações e os documentos. Nada é gravado.
 // ============================================================================
 import { DIAS_DA_PARCELA, produtoDe, valoresDosParametros, dadosDoOrcamento, mensagemDoProduto, nomeDoArquivo, resumoDosValores,
-  hojeEmBrasilia } from './societario-produtos.js';
+  hojeEmBrasilia, linkDoFormulario } from './societario-produtos.js';
 import { imagensDoProduto } from './societario-produtos-imagem.js';
 import { criarJanelaWhats, ROTULO } from './janela-whats.js';
 
@@ -100,7 +101,8 @@ const janela = criarJanelaWhats({
     const canvases = await imagensDoProduto(st.p, d, { logo: s.logo });
     return {
       canvases,
-      mensagem: mensagemDoProduto(st.p, { nome: st.cliente, quem: st.quem, validade: d.validadeIso }),
+      // a mensagem leva o link do formulário do produto (empresa.html), pras informações e os documentos não irem pela conversa
+      mensagem: mensagemDoProduto(st.p, { nome: st.cliente, quem: st.quem, validade: d.validadeIso, formulario: linkDoFormulario(st.p, location.href) }),
       pronto: d.problemas.length ? 'As imagens estão prontas, mas confira os valores do orçamento antes de mandar.' : undefined
     };
   }
