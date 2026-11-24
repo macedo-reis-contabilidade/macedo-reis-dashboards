@@ -16,7 +16,8 @@
        pagamento, a entrega e a NFS-e de cada uma) e os números por mês. Nada se apaga: o serviço vira descartado e
        a venda, cancelada. Quem e quando, o banco grava (o gatilho servicos_quem). A venda paga entra na tarefa das
        NFS-e da Thalia ("Emitir as NFS-e dos serviços digitais"), uma linha por venda. O produto com material pro cliente
-       (MATERIAL, no script: os Planos do MEI) tem o botão no cartão e na ficha, que abre o que se manda direto na conversa. -->
+       (MATERIAL, no script: os Planos do MEI e a Transformação do MEI em ME) tem o botão no cartão e na ficha, que abre o que se
+       manda direto na conversa. -->
   <div class="app-shell">
     <header class="topbar">
       <div class="topbar-brand">
@@ -224,6 +225,7 @@
       secoesDaVitrine, numerosPorMes, testeDeParar, guiaDoComeco, TITULO_TAREFA_NOTAS, linhaDaNota, descricaoDaTarefaNotas, temVendaNaTarefa,
       juntarNaTarefaNotas, marcarNotaNaTarefa, desmarcarNotaNaTarefa, tirarDaTarefaNotas, prazoDaTarefaNotas } from './assets/js/servicos-digitais.js';
     import { abrirPlanosMei } from './assets/js/mei-planos-janela.js';
+    import { abrirTransformacaoMei } from './assets/js/transformacao-mei-janela.js';
 
     const $ = id => document.getElementById(id);
     const esc = t => String(t == null ? '' : t).replace(/[&<>"']/g, m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m]));
@@ -246,7 +248,9 @@
     // uma linha aqui.
     const MATERIAL = {
       'planos-mei': { rotulo: '📲 Planos pro WhatsApp', texto: 'as imagens dos planos, com o recomendado, e a mensagem pronta, pra mandar direto na conversa.',
-        abrir: () => abrirPlanosMei({ supabase, quem }) }
+        abrir: () => abrirPlanosMei({ supabase, quem }) },
+      'transformacao-mei': { rotulo: '📲 Transformação pro WhatsApp', texto: 'o passo a passo e a documentação, sem valores, e o orçamento à parte, com a validade e a mensagem pronta, pra mandar direto na conversa.',
+        abrir: () => abrirTransformacaoMei({ supabase, quem }) }
     };
     const abrirMaterial = slug => { const m = MATERIAL[slug]; if (m) m.abrir(); };
     let aba = 'vitrine', busca = '';

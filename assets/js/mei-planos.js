@@ -14,7 +14,8 @@
 export const NFS_PADRAO = 2;
 // as linhas da lista, na ordem em que o cliente lê
 export const GRUPOS = [['mensal', 'Todo mês'], ['semestral', 'A cada 6 meses'], ['anual', 'Todo ano'], ['demanda', 'Quando precisar']];
-export const ESCRITORIO = 'Macedo & Reis Contabilidade · CRC/RS 006418/O · Três Coroas – RS';
+// o rodapé das imagens (o registro no CRC): mora na base comum das imagens
+export { ESCRITORIO } from './imagens-whats.js';
 // o que todos os planos têm, dito curto, na ordem do que mais importa pro MEI (o que não está em todos fica de fora)
 const COMUNS_CURTOS = [['das', 'a guia do DAS todo mês'], ['dasn', 'a declaração anual'], ['sitfiscal', 'o acompanhamento na Receita Federal']];
 // o que o orçamento do MEI sempre diz que é cobrado à parte (o "Cobrado separadamente" do PDF)
@@ -184,10 +185,11 @@ export function mensagemWhats({ nome, quem, vitrine, recomendados: rec, imagens 
   linhas.push('Se quiser, eu te explico cada um ou já te mando a proposta do plano que você escolher.');
   return linhas.join('\n');
 }
-// o Samuel, a Thalia: o artigo pelo nome (o da equipe; nome que não está na lista vai sem artigo)
+// o Samuel, a Thalia: o artigo pelo nome (o da equipe; nome que não está na lista vai sem artigo). A mensagem da
+// transformação do MEI em ME (transformacao-mei.js) usa também.
 const FEMININOS = new Set(['Thalia', 'Vitória', 'Adaini', 'Edna']);
 const MASCULINOS = new Set(['Samuel', 'Diego']);
-function artigo(nome) {
+export function artigo(nome) {
   return FEMININOS.has(nome) ? 'a' : MASCULINOS.has(nome) ? 'o' : '';
 }
 const minuscula = t => t ? t.charAt(0).toLowerCase() + t.slice(1).replace(/\.$/, '') : '';

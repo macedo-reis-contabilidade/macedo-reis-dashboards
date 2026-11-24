@@ -11,114 +11,18 @@
 // mostra menos do que cada plano tem a mais quando não cabe (3, 2, 1...). Cada desenho roda duas vezes: a primeira mede
 // (a altura, o fim da tabela), a segunda pinta no canvas do tamanho certo.
 // ============================================================================
-import { reaisCurto, precoAParte, primeiroNome, ESCRITORIO } from './mei-planos.js';
+import { reaisCurto, precoAParte, primeiroNome } from './mei-planos.js';
+import { LARGURA, ALTURA_MAX, M, COR, FONTES, carregarFontes, fonte, quebrar, escrever, caixa, marca, cabecalho, rodape, desenhar as desenharBase,
+  paraBlob } from './imagens-whats.js';
 
-export const LARGURA = 1080;
-export const ALTURA_MAX = 1600;
-const M = 64;                    // a margem dos lados
-const COR = {
-  fundo: '#FFFFFF', cartao: '#F2F6FA', linha: '#D5DEE8', tinta: '#1A2330', cinza: '#55606E', apagado: '#B4BFCB',
-  azul: '#3A70B4', azulEscuro: '#2C5A96', champ: '#E3A75F', champClaro: '#FFF5EA', champTinta: '#2A1A06'
-};
-export const FONTES = {
-  titulo: "'Fraunces', Georgia, 'Times New Roman', serif",
-  texto: "'Manrope', 'Helvetica Neue', Arial, sans-serif"
-};
+// a base comum (o tamanho, as cores, as letras, o cabeçalho, o rodapé) mora em imagens-whats.js; o que é da lista dos
+// planos fica aqui. LARGURA, ALTURA_MAX, FONTES, carregarFontes e paraBlob seguem exportados daqui, pra quem já os lia.
+export { LARGURA, ALTURA_MAX, FONTES, carregarFontes, paraBlob };
 
-// a letra do sistema vem do Google Fonts (o style.css): o canvas só usa a que já carregou, então pede antes, com prazo
-export async function carregarFontes(doc = (typeof document !== 'undefined' ? document : null), ms = 2500) {
-  if (!doc || !doc.fonts || !doc.fonts.load) return;
-  const pedidos = ['600 64px Fraunces', '700 38px Manrope', '600 24px Manrope', '500 24px Manrope', '400 24px Manrope']
-    .map(f => doc.fonts.load(f).catch(() => null));
-  await Promise.race([Promise.all(pedidos), new Promise(r => setTimeout(r, ms))]);
-}
-
-const fonte = (ctx, peso, tam, fam) => { ctx.font = `${peso} ${tam}px ${fam}`; };
-
-// as palavras e, dentro de cada uma, os pedaços depois de cada barra: "notas/faturamento/produtos" quebra na barra, sem
-// espaço, em vez de passar por cima da coluna do lado
-function pedacos(t) {
-  const out = [];
-  String(t || '').split(/\s+/).filter(Boolean).forEach(w => w.split(/(?<=\/)/).forEach((p, i) => out.push({ p, cola: i > 0 })));
-  return out;
-}
-// as linhas de um texto que cabem na largura (o pedaço maior que a largura fica sozinho na linha)
-function quebrar(ctx, t, larg) {
-  const linhas = [];
-  let atual = '';
-  for (const { p, cola } of pedacos(t)) {
-    const tenta = atual ? atual + (cola ? '' : ' ') + p : p;
-    if (!atual || ctx.measureText(tenta).width <= larg) atual = tenta;
-    else { linhas.push(atual); atual = p; }
-  }
-  if (atual) linhas.push(atual);
-  return linhas;
-}
-// escreve as linhas a partir do topo (y) e devolve onde terminou
-function escrever(ctx, linhas, x, y, tam, alt) {
-  linhas.forEach((l, i) => ctx.fillText(l, x, y + Math.round(tam * 0.8) + i * alt));
-  return y + linhas.length * alt;
-}
-function caixa(ctx, x, y, w, h, r) {
-  ctx.beginPath();
-  ctx.moveTo(x + r, y);
-  ctx.arcTo(x + w, y, x + w, y + h, r);
-  ctx.arcTo(x + w, y + h, x, y + h, r);
-  ctx.arcTo(x, y + h, x, y, r);
-  ctx.arcTo(x, y, x + w, y, r);
-  ctx.closePath();
-}
-// o ✓ do serviço que está no plano: o círculo azul com o traço branco
-function marca(ctx, cx, cy, r) {
-  ctx.fillStyle = COR.azul;
-  ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2); ctx.fill();
-  ctx.strokeStyle = '#FFFFFF'; ctx.lineWidth = Math.max(2, r * 0.22); ctx.lineCap = 'round'; ctx.lineJoin = 'round';
-  ctx.beginPath(); ctx.moveTo(cx - r * 0.45, cy + r * 0.02); ctx.lineTo(cx - r * 0.12, cy + r * 0.34); ctx.lineTo(cx + r * 0.48, cy - r * 0.3); ctx.stroke();
-}
 // o traço do que não está no plano
 function nada(ctx, cx, cy) {
   ctx.strokeStyle = COR.apagado; ctx.lineWidth = 3; ctx.lineCap = 'round';
   ctx.beginPath(); ctx.moveTo(cx - 10, cy); ctx.lineTo(cx + 10, cy); ctx.stroke();
-}
-// "CONTABILIDADE" espaçado, como no folder
-function espacado(ctx, t, x, y, esp) {
-  if ('letterSpacing' in ctx) {
-    const antes = ctx.letterSpacing;
-    ctx.letterSpacing = esp + 'px'; ctx.fillText(t, x, y); ctx.letterSpacing = antes;
-    return;
-  }
-  let xx = x;
-  for (const ch of t) { ctx.fillText(ch, xx, y); xx += ctx.measureText(ch).width + esp; }
-}
-// a logo e o nome do escritório e, no canto, qual imagem é ("2/4"); devolve onde terminou
-function cabecalho(ctx, y, logo, f, pagina) {
-  let x = M;
-  if (logo && logo.naturalWidth) { ctx.drawImage(logo, M, y, 76, 76); x = M + 76 + 22; }
-  ctx.textAlign = 'left';
-  ctx.fillStyle = COR.tinta; fonte(ctx, 600, 34, f.titulo);
-  ctx.fillText('Macedo & Reis', x, y + 36);
-  ctx.fillStyle = COR.cinza; fonte(ctx, 600, 19, f.texto);
-  espacado(ctx, 'CONTABILIDADE', x, y + 66, 4.5);
-  if (pagina && pagina.total > 1) {
-    fonte(ctx, 700, 22, f.texto);
-    const t = pagina.n + '/' + pagina.total, w = ctx.measureText(t).width + 32;
-    caixa(ctx, LARGURA - M - w, y + 17, w, 42, 21);
-    ctx.fillStyle = COR.cartao; ctx.fill();
-    ctx.lineWidth = 2; ctx.strokeStyle = COR.linha; ctx.stroke();
-    ctx.fillStyle = COR.cinza; ctx.textAlign = 'center';
-    ctx.fillText(t, LARGURA - M - w / 2, y + 46);
-    ctx.textAlign = 'left';
-  }
-  return y + 76;
-}
-// a linha do escritório embaixo (o registro no CRC, que toda peça leva); devolve onde terminou
-function rodape(ctx, y, f) {
-  ctx.strokeStyle = COR.linha; ctx.lineWidth = 2;
-  ctx.beginPath(); ctx.moveTo(M, y); ctx.lineTo(LARGURA - M, y); ctx.stroke();
-  ctx.fillStyle = COR.cinza; fonte(ctx, 500, 22, f.texto); ctx.textAlign = 'center';
-  ctx.fillText(ESCRITORIO, LARGURA / 2, y + 42);
-  ctx.textAlign = 'left';
-  return y + 42 + 40;
 }
 
 // ---------- a primeira imagem: os planos, do mais simples pro mais completo, com o recomendado em destaque ----------
@@ -340,16 +244,8 @@ export function paginar(blocos, cap, hGrupo) {
   return parecidas.length <= base.length ? parecidas : base;
 }
 
-// mede e pinta: um canvas do tamanho certo
-function desenhar(pintar, v, o, doc) {
-  const rasc = doc.createElement('canvas');
-  rasc.width = LARGURA; rasc.height = 10;
-  const m = pintar(rasc.getContext('2d'), v, o);
-  const c = doc.createElement('canvas');
-  c.width = LARGURA; c.height = Math.ceil(m.altura);
-  pintar(c.getContext('2d'), v, { ...o, medidas: m, altura: c.height });
-  return c;
-}
+// mede e pinta: um canvas do tamanho certo (o da base, com a vitrine)
+const desenhar = (pintar, v, o, doc) => desenharBase((ctx, oo) => pintar(ctx, v, oo), o, doc);
 
 // as páginas da lista: os blocos (o nome de cada grupo, cada linha e o que é cobrado à parte) medidos num rascunho e
 // distribuídos de modo que nenhuma página passe da ALTURA_MAX
@@ -391,6 +287,3 @@ export async function imagensDosPlanos(vitrine, opc = {}, doc = document) {
   return [capa, ...lista];
 }
 
-export function paraBlob(canvas, tipo = 'image/png') {
-  return new Promise((res, rej) => canvas.toBlob(b => (b ? res(b) : rej(new Error('O navegador não gerou a imagem.'))), tipo));
-}
