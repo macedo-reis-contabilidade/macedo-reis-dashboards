@@ -1,0 +1,439 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<meta name="referrer" content="no-referrer">
+<title>Abertura de empresa — Macedo & Reis Contabilidade</title>
+<link rel="icon" href="assets/favicon.ico">
+<!-- O formulário da constituição de CNPJ e da transformação do MEI em ME (24/11/2026, pedido do Samuel: "cria um forms com
+     link pra eu enviar pro cliente poder preencher as informações e anexar os documentos ... tanto pra transformação quanto
+     para constituição"). Um link só, com o produto no endereço: empresa.html?t=constituicao ou ?t=transformacao (sem ele,
+     a abertura de empresa). As perguntas são a documentação dos dois produtos (a lista do Samuel): os dados da empresa e de
+     cada sócio, com o documento de cada sócio anexado. A conferência é a de assets/js/empresa-pedido.js, a mesma da Edge
+     Function empresa-link, a única com que esta página fala. A senha do gov.br não é pedida. Nunca importar o
+     auth-guard.js aqui. -->
+<style>
+  * { box-sizing:border-box; margin:0; padding:0; }
+  body { font-family:-apple-system, 'Segoe UI', Roboto, Arial, sans-serif; background:#EEF2F6; color:#1a2330; padding:0 0 60px; }
+  .topo { background:linear-gradient(135deg, #3A5878, #5B82A6); color:#fff; padding:22px 20px 24px; text-align:center; }
+  .topo img { width:46px; height:46px; object-fit:contain; background:#fff; border-radius:12px; padding:5px; display:block; margin:0 auto 8px; }
+  .topo h1 { font-size:18px; font-weight:700; letter-spacing:.02em; }
+  .topo p { font-size:12px; opacity:.85; margin-top:3px; }
+  .wrap { max-width:640px; margin:-14px auto 0; padding:0 14px; }
+  .card { background:#fff; border-radius:14px; box-shadow:0 4px 18px rgba(26,35,48,.08); padding:20px 18px; margin-bottom:14px; }
+  .cab h2 { font-size:17px; color:#3A5878; line-height:1.35; }
+  .cab .intro { font-size:13.5px; color:#4a5565; line-height:1.55; margin-top:10px; }
+  .gov { margin-top:14px; background:#FFF7E0; border:1.5px solid #E8C25A; border-radius:12px; padding:12px 14px; font-size:13.5px; color:#5C4300; line-height:1.5; }
+  .gov b { display:block; margin-bottom:2px; }
+  h3.bloco { font-size:12.5px; color:#3A5878; text-transform:uppercase; letter-spacing:.06em; margin:0 0 12px; padding-bottom:8px; border-bottom:2px solid #E3EAF1; display:flex; justify-content:space-between; align-items:center; gap:8px; }
+  h4.sub { font-size:13px; color:#3A5878; margin:4px 0 10px; }
+  .campo { margin-bottom:16px; }
+  .campo:last-child { margin-bottom:0; }
+  .campo > label, .campo > .lbl { display:block; font-size:13.5px; color:#33404f; font-weight:600; margin-bottom:6px; }
+  .campo small.ajuda { display:block; font-weight:400; color:#8a94a3; font-size:12px; margin-top:2px; }
+  .campo input[type=text], .campo input[type=email], .campo input[type=tel], .campo textarea, .campo select { width:100%; font:inherit; font-size:15px; padding:11px 12px; border:1.5px solid #D5DEE7; border-radius:10px; background:#FBFCFE; color:#1a2330; }
+  .campo textarea { min-height:90px; resize:vertical; }
+  .campo input:focus, .campo textarea:focus, .campo select:focus { outline:none; border-color:#5B82A6; background:#fff; }
+  .linha { display:grid; grid-template-columns:1fr 1fr; gap:0 12px; margin-bottom:16px; }
+  .linha.l3 { grid-template-columns:2fr 1fr; }
+  .linha > .campo { margin-bottom:0; }
+  .card > .linha:last-child { margin-bottom:0; }
+  [data-varios] { margin-bottom:16px; }
+  .ops { display:flex; flex-direction:column; gap:6px; }
+  .ops.lado { flex-direction:row; flex-wrap:wrap; }
+  .ops.lado .op { flex:1 1 140px; }
+  .op { display:flex; gap:10px; align-items:flex-start; padding:10px 12px; border:1.5px solid #D5DEE7; border-radius:10px; background:#FBFCFE; cursor:pointer; font-size:14.5px; }
+  .op input { margin-top:3px; width:18px; height:18px; accent-color:#3A5878; flex:none; }
+  .op:has(input:checked) { border-color:#5B82A6; background:#EEF4FA; }
+  .marca { display:flex; gap:8px; align-items:center; font-size:13px; color:#4a5565; margin:-6px 0 12px; cursor:pointer; }
+  .marca input { width:16px; height:16px; accent-color:#3A5878; }
+  .obr::after { content:' *'; color:#C0564F; }
+  .falta input[type=text], .falta input[type=email], .falta input[type=tel], .falta textarea, .falta select, .falta .op, .falta .anexo { border-color:#C0564F; }
+  .falta-msg { display:none; color:#C0564F; font-size:12px; margin-top:5px; }
+  .falta .falta-msg { display:block; }
+  .ramo { border-left:3px solid #CFDDEA; padding-left:12px; margin:4px 0 16px; }
+  .socio { border:1.5px solid #E3EAF1; border-radius:12px; padding:14px; margin-bottom:12px; background:#FCFDFE; }
+  .socio-cab { display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; }
+  .socio-cab b { font-size:14px; color:#3A5878; }
+  .tirar { background:none; border:none; color:#C0564F; font:inherit; font-size:13px; cursor:pointer; text-decoration:underline; }
+  .botao { width:100%; font:inherit; font-size:16px; font-weight:700; padding:14px; border:none; border-radius:12px; background:#3A5878; color:#fff; cursor:pointer; }
+  .botao.sec { background:#fff; color:#3A5878; border:1.5px solid #3A5878; font-size:14.5px; padding:11px; }
+  .botao:active { transform:scale(.99); }
+  .botao[disabled] { opacity:.6; }
+  .botao:focus-visible, .op:focus-within, .tirar:focus-visible { outline:2px solid #5B82A6; outline-offset:2px; }
+  .erro { color:#C0564F; font-size:13px; margin-top:10px; min-height:18px; text-align:center; }
+  .aviso { text-align:center; padding:30px 20px; }
+  .aviso .ic { font-size:42px; }
+  .aviso h2 { font-size:18px; color:#3A5878; margin:10px 0 8px; }
+  .aviso.ok h2 { color:#2E7D5B; }
+  .aviso p { font-size:14px; color:#4a5565; line-height:1.6; white-space:pre-line; }
+  .rodape { text-align:center; font-size:11.5px; color:#8a94a3; margin-top:18px; line-height:1.6; white-space:pre-line; }
+  .anexo { padding:12px; border:1.5px dashed #C9D5E2; border-radius:10px; background:#F7FAFC; }
+  .anexo-btn { position:relative; display:inline-flex; align-items:center; gap:8px; padding:10px 14px; border-radius:10px; background:#fff; border:1.5px solid #5B82A6; color:#3A5878; font-weight:700; font-size:14.5px; cursor:pointer; }
+  .anexo-btn input { position:absolute; width:1px; height:1px; opacity:0; overflow:hidden; pointer-events:none; }
+  .anexo-btn:focus-within { outline:2px solid #5B82A6; outline-offset:2px; }
+  .anexo-lista { margin-top:8px; display:flex; flex-direction:column; gap:6px; }
+  .anexo-lista:empty { display:none; }
+  .anexo-item { display:flex; gap:8px; align-items:center; font-size:13px; color:#33404f; background:#fff; border:1px solid #E3EAF1; border-radius:8px; padding:6px 8px; }
+  .anexo-item span { flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .anexo-item small { color:#8a94a3; white-space:nowrap; }
+  .anexo-item button { background:none; border:none; color:#C0564F; font-size:16px; cursor:pointer; padding:0 4px; }
+  .anexo-erro { color:#C0564F; font-size:12px; margin-top:6px; }
+  .anexo-erro:empty { display:none; }
+  .soma { font-size:12.5px; color:#4a5565; margin:-4px 0 12px; }
+  .soma.ruim { color:#C0564F; }
+  .progresso { font-size:13px; color:#3A5878; margin-top:12px; text-align:center; }
+  .progresso:empty { display:none; }
+  .barra { height:6px; background:#E3EAF1; border-radius:99px; overflow:hidden; margin-top:6px; }
+  .barra div { height:100%; background:#3A5878; width:0; transition:width .2s; }
+  @media (prefers-reduced-motion: reduce) { .barra div { transition:none; } }
+  @media (max-width:480px) { .linha, .linha.l3 { grid-template-columns:1fr; row-gap:16px; } .linha > div:empty { display:none; } }
+</style>
+</head>
+<body>
+  <div class="topo">
+    <img src="assets/logo-mr.png" alt="">
+    <h1>Macedo &amp; Reis Contabilidade</h1>
+    <p id="topoSub">Abertura de empresa · Três Coroas – RS</p>
+  </div>
+  <div class="wrap">
+    <div id="app"><div class="card"><p style="color:#8a94a3;font-size:13.5px;">Carregando o formulário…</p></div></div>
+    <div class="rodape" id="rodape"></div>
+  </div>
+
+<script type="module">
+  import { supabase } from './assets/js/supabase.js';
+  import { buscarCEP } from './assets/js/utils.js';
+  import { TIPOS, tipoDe, AVISO_GOV, AVISO_GOV_AJUDA, ESTADOS_CIVIS, REGIMES, GOVBR, SIM_NAO, MAX_SOCIOS, MAX_ARQ, MAX_QTD, MAX_TOTAL, OUTROS,
+    grupoDoSocio, PERGUNTAS, UFS, CAMPOS_ENDERECO, conferirPedido } from './assets/js/empresa-pedido.js';
+
+  const TIPO = tipoDe(new URLSearchParams(location.search).get('t')) || 'constituicao';
+  const T = TIPOS[TIPO];
+  const RODAPE = 'Macedo e Reis Contabilidade Ltda · Rua Luiz Volkart, 35, 1º andar – Centro – Três Coroas/RS · CEP 95660-000 · (51) 3546-1385'
+    + '\nAs informações e os documentos vão direto para o escritório Macedo & Reis e são usados só para este processo.';
+  const FUNCAO = 'empresa-link';
+  const PARTE = 2 * 1024 * 1024;   // os documentos sobem em partes de 2 MB (múltiplo de 256 KB, exigência do Drive)
+  const app = document.getElementById('app');
+  const $ = id => document.getElementById(id);
+  const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  const tam = n => n >= 1048576 ? (n / 1048576).toLocaleString('pt-BR', { maximumFractionDigits: 1 }) + ' MB' : Math.max(1, Math.round(n / 1024)) + ' KB';
+  // os anexos de cada grupo ("socio-0", "socio-1"…, "outros"); os sócios pelo número da vaga, que não muda ao tirar um
+  const anexos = new Map();
+  let socios = [], proximo = 0, subindo = false;
+  const chamar = (body, headers) => supabase.functions.invoke(FUNCAO, headers ? { body, headers } : { body });
+  window.addEventListener('beforeunload', e => { if (subindo) { e.preventDefault(); e.returnValue = ''; } });
+  document.title = `${T.titulo} — Macedo & Reis Contabilidade`;
+  $('topoSub').textContent = `${T.titulo} · Três Coroas – RS`;
+  $('rodape').textContent = RODAPE;
+
+  function aviso(ic, titulo, texto, classe) {
+    app.innerHTML = `<div class="card aviso ${classe || ''}"><div class="ic">${ic}</div><h2>${esc(titulo)}</h2><p>${esc(texto)}</p></div>`;
+  }
+
+  // ---------- os campos (o data-id é o mesmo que a conferência devolve em "faltam") ----------
+  const ajuda = t => (t ? `<small class="ajuda">${esc(t)}</small>` : '');
+  const idCampo = id => 'id_' + id.replace(/\./g, '_');
+  const caixa = (id, rotulo, { tipo = 'text', obrig = true, dica = '', modo = '', auto = '', max = 160 } = {}) =>
+    `<div class="campo" data-id="${id}"><label for="${idCampo(id)}"><span class="${obrig ? 'obr' : ''}">${esc(rotulo)}</span>${ajuda(dica)}</label>`
+    + `<input type="${tipo}" id="${idCampo(id)}" maxlength="${max}"${modo ? ` inputmode="${modo}"` : ''}${auto ? ` autocomplete="${auto}"` : ''}><div class="falta-msg">Preencha este campo.</div></div>`;
+  const area = (id, rotulo, { dica = '', max = 3000, msg = 'Preencha este campo.', obrig = true } = {}) =>
+    `<div class="campo" data-id="${id}"><label for="${idCampo(id)}"><span class="${obrig ? 'obr' : ''}">${esc(rotulo)}</span>${ajuda(dica)}</label>`
+    + `<textarea id="${idCampo(id)}" maxlength="${max}"></textarea><div class="falta-msg">${esc(msg)}</div></div>`;
+  const escolha = (id, rotulo, ops, { lado = false, dica = '' } = {}) =>
+    `<div class="campo" data-id="${id}"><div class="lbl"><span class="obr">${esc(rotulo)}</span>${ajuda(dica)}</div><div class="ops${lado ? ' lado' : ''}">`
+    + ops.map(([v, t]) => `<label class="op"><input type="radio" name="${idCampo(id)}" value="${esc(v)}"><span>${esc(t)}</span></label>`).join('')
+    + '</div><div class="falta-msg">Escolha uma opção.</div></div>';
+  const lista = (id, rotulo, ops) =>
+    `<div class="campo" data-id="${id}"><label for="${idCampo(id)}"><span class="obr">${esc(rotulo)}</span></label><select id="${idCampo(id)}">`
+    + '<option value="">—</option>' + ops.map(([v, t]) => `<option value="${esc(v)}">${esc(t)}</option>`).join('')
+    + '</select><div class="falta-msg">Escolha uma opção.</div></div>';
+  const MSG = { 'contato.nome': 'Escreva o nome completo.', 'contato.telefone': 'Informe o telefone com o DDD.', 'contato.email': 'Confira o e-mail.',
+    cnpjMei: 'Confira o CNPJ do MEI.', razao2: 'Escreva uma 2ª opção diferente da 1ª.', atividades: 'Conte um pouco mais do que a empresa vai fazer.',
+    capital: 'Informe o valor em reais.', areaTotal: 'Informe a área em m².', areaUtilizada: 'Informe a área em m² (até a área total).',
+    empresaTelefone: 'Informe o telefone com o DDD.', empresaEmail: 'Confira o e-mail.' };
+  const msgSocio = { nome: 'Escreva o nome completo.', cpf: 'Confira o CPF (e se não é o de outro sócio).', profissao: 'Informe a profissão.',
+    participacao: 'Informe a participação em %.', documento: 'Anexe a CNH ou a identidade deste sócio.' };
+
+  function endereco(prefixo, titulo) {
+    const ufs = '<option value="">—</option>' + UFS.map(u => `<option${u === 'RS' ? ' selected' : ''}>${u}</option>`).join('');
+    const c = (k, extra = {}) => caixa(prefixo + '.' + k, (CAMPOS_ENDERECO.find(([x]) => x === k) || [k, k])[1], extra);
+    return (titulo ? `<h4 class="sub">${esc(titulo)}</h4>` : '')
+      + `<div class="linha">${c('cep', { modo: 'numeric', auto: 'postal-code', dica: 'A rua e a cidade vêm sozinhas.', max: 9 })}<div></div></div>`
+      + c('logradouro', { auto: 'address-line1' })
+      + `<div class="linha">${c('numero', { dica: 'Sem número: S/N', max: 20 })}${c('complemento', { obrig: false, max: 80 })}</div>`
+      + c('bairro', { max: 100 })
+      + `<div class="linha l3">${c('cidade', { auto: 'address-level2', max: 100 })}<div class="campo" data-id="${prefixo}.uf"><label for="${idCampo(prefixo + '.uf')}"><span class="obr">Estado (UF)</span></label><select id="${idCampo(prefixo + '.uf')}">${ufs}</select><div class="falta-msg">Escolha o estado.</div></div></div>`;
+  }
+  const slot = (grupo, rotulo, dica, obrig) =>
+    `<div class="campo" data-id="${grupo === OUTROS ? 'outros' : grupo.replace('socio-', 'socios.') + '.documento'}"><div class="lbl"><span class="${obrig ? 'obr' : ''}">${esc(rotulo)}</span>${ajuda(dica)}</div>`
+    + `<div class="anexo"><label class="anexo-btn">📎 Anexar<input type="file" multiple data-grupo="${grupo}" accept="image/*,application/pdf"></label>`
+    + `<div class="anexo-lista" data-lista="${grupo}"></div><div class="anexo-erro" data-erro="${grupo}" role="alert"></div></div><div class="falta-msg"></div></div>`;
+
+  function blocoSocio(vaga, n) {
+    const pre = `socios.${vaga}`;
+    return `<div class="socio" data-vaga="${vaga}"><div class="socio-cab"><b>Sócio ${n}</b>`
+      + `<button type="button" class="tirar" data-tirar="${vaga}">Tirar este sócio</button></div>`
+      + caixa(pre + '.nome', PERGUNTAS['socio.nome'], { auto: 'off' })
+      + `<div class="linha">${caixa(pre + '.cpf', PERGUNTAS['socio.cpf'], { modo: 'numeric', max: 14 })}${caixa(pre + '.profissao', PERGUNTAS['socio.profissao'], { max: 120 })}</div>`
+      + lista(pre + '.estadoCivil', PERGUNTAS['socio.estadoCivil'], ESTADOS_CIVIS)
+      + `<div class="ramo" data-regime="${vaga}" hidden>${lista(pre + '.regime', PERGUNTAS['socio.regime'], REGIMES)}</div>`
+      + `<div data-varios hidden><div class="linha">${caixa(pre + '.participacao', PERGUNTAS['socio.participacao'], { modo: 'decimal', max: 6 })}<div></div></div>`
+      + escolha(pre + '.administra', PERGUNTAS['socio.administra'], SIM_NAO, { lado: true }) + '</div>'
+      + `<label class="marca"><input type="checkbox" data-mesmo="${vaga}"> Mora no endereço da empresa</label>`
+      + `<div data-end="${vaga}">${endereco(pre + '.endereco', 'Endereço residencial')}</div>`
+      + escolha(pre + '.govbr', PERGUNTAS['socio.govbr'], GOVBR, { dica: AVISO_GOV_AJUDA })
+      + slot(grupoDoSocio(vaga), PERGUNTAS['socio.documento'], 'Pode ser foto do celular, com a frente e o verso.', true)
+      + '</div>';
+  }
+
+  function desenhar() {
+    let html = `<div class="card cab"><h2>${esc(T.titulo)}</h2><div class="intro">${esc(T.intro)}</div>`
+      + `<div class="gov" role="note"><b>⚠ ${esc(AVISO_GOV)}</b>${esc(AVISO_GOV_AJUDA)}</div></div>`;
+    html += '<div class="card"><h3 class="bloco">Seus dados</h3>'
+      + caixa('contato.nome', PERGUNTAS['contato.nome'], { auto: 'name' })
+      + `<div class="linha">${caixa('contato.telefone', PERGUNTAS['contato.telefone'], { tipo: 'tel', dica: 'Com o DDD.', auto: 'tel', max: 20 })}${caixa('contato.email', PERGUNTAS['contato.email'], { tipo: 'email', auto: 'email' })}</div></div>`;
+    if (TIPO === 'transformacao') {
+      html += '<div class="card"><h3 class="bloco">O MEI</h3>' + caixa('cnpjMei', PERGUNTAS.cnpjMei, { modo: 'numeric', max: 18, dica: 'O CNPJ do MEI que vai virar ME.' }) + '</div>';
+    }
+    html += '<div class="card"><h3 class="bloco">A empresa</h3>'
+      + caixa('razao1', PERGUNTAS.razao1, { dica: 'O nome que vai no Contrato Social. Mandamos duas opções à Junta Comercial, caso a 1ª já exista.' })
+      + caixa('razao2', PERGUNTAS.razao2)
+      + caixa('fantasia', PERGUNTAS.fantasia, { obrig: false, max: 120, dica: 'O nome do negócio, se for outro.' })
+      + area('atividades', PERGUNTAS.atividades, { dica: 'Com as suas palavras: o que vai vender, fabricar ou que serviço vai prestar. Ex.: "loja de roupas femininas e acessórios".', msg: MSG.atividades })
+      + `<div class="linha">${caixa('capital', PERGUNTAS.capital, { modo: 'decimal', max: 20, dica: 'Quanto os sócios põem na empresa.' })}<div></div></div>`
+      + area('funcionamento', PERGUNTAS.funcionamento, { max: 500, dica: 'Ex.: segunda a sexta, das 9h às 18h; sábado, das 9h às 13h.' })
+      + `<div class="linha">${caixa('areaTotal', PERGUNTAS.areaTotal, { modo: 'decimal', max: 12 })}${caixa('areaUtilizada', PERGUNTAS.areaUtilizada, { modo: 'decimal', max: 12 })}</div>`
+      + `<div class="linha">${caixa('empresaTelefone', PERGUNTAS.empresaTelefone, { tipo: 'tel', max: 20 })}${caixa('empresaEmail', PERGUNTAS.empresaEmail, { tipo: 'email' })}</div>`
+      + '<label class="marca"><input type="checkbox" id="mesmoContato"> O telefone e o e-mail da empresa são os meus</label></div>';
+    html += '<div class="card"><h3 class="bloco">Endereço da empresa</h3>' + endereco('endereco', '') + '</div>';
+    html += '<div class="card"><h3 class="bloco">Sócios</h3><div id="socios"></div><div class="soma" id="soma" aria-live="polite"></div>'
+      + `<button type="button" class="botao sec" id="maisSocio">+ Adicionar sócio</button></div>`;
+    html += `<div class="card"><h3 class="bloco">${esc(PERGUNTAS.outros)}</h3>` + slot(OUTROS, 'Se quiser, anexe outros documentos', 'Ex.: o contrato de aluguel ou a escritura do imóvel.', false) + '</div>';
+    html += `<div class="card"><h3 class="bloco">${esc(PERGUNTAS.obs)}</h3>${area('obs', '', { max: 2000, obrig: false })}</div>`;
+    html += '<div class="card"><button class="botao" id="btnEnviar">Enviar</button><div class="erro" id="msgErro" role="alert"></div>'
+      + '<div class="progresso" id="progresso" aria-live="polite"></div><div class="barra" id="barra" hidden><div></div></div></div>';
+    app.innerHTML = html;
+    maisSocio();
+    $('maisSocio').addEventListener('click', () => { maisSocio(); const ult = app.querySelector('.socio:last-child input'); if (ult) ult.focus(); });
+    $('btnEnviar').addEventListener('click', enviar);
+  }
+
+  // ---------- os sócios ----------
+  function renumerar() {
+    const blocos = [...app.querySelectorAll('.socio')];
+    blocos.forEach((b, i) => { b.querySelector('.socio-cab b').textContent = `Sócio ${i + 1}`; b.querySelector('[data-tirar]').hidden = blocos.length === 1; });
+    app.querySelectorAll('[data-varios]').forEach(el => { el.hidden = blocos.length < 2; });
+    $('maisSocio').hidden = blocos.length >= MAX_SOCIOS;
+    pintarSoma();
+  }
+  function maisSocio() {
+    if (socios.length >= MAX_SOCIOS) return;
+    const vaga = proximo++;
+    socios.push(vaga);
+    $('socios').insertAdjacentHTML('beforeend', blocoSocio(vaga, socios.length));
+    anexos.set(grupoDoSocio(vaga), []);
+    renumerar();
+  }
+  function tirarSocio(vaga) {
+    socios = socios.filter(v => v !== vaga);
+    anexos.delete(grupoDoSocio(vaga));
+    const el = app.querySelector(`.socio[data-vaga="${vaga}"]`);
+    if (el) el.remove();
+    renumerar();
+  }
+  function pintarSoma() {
+    const el = $('soma');
+    if (!el) return;
+    if (socios.length < 2) { el.textContent = ''; return; }
+    const soma = socios.reduce((t, v) => t + (Number(String(valor(`socios.${v}.participacao`)).replace(/\./g, '').replace(',', '.')) || 0), 0);
+    el.textContent = `Soma das participações: ${soma.toLocaleString('pt-BR', { maximumFractionDigits: 2 })}% (tem de dar 100%).`;
+    el.classList.toggle('ruim', Math.abs(soma - 100) > 0.01);
+  }
+
+  // ---------- os anexos: sobem pro Drive depois que o pedido é gravado ----------
+  const todosAnexos = () => [...anexos.values()].flat();
+  function pintarAnexos(grupo) {
+    const el = app.querySelector(`[data-lista="${grupo}"]`);
+    if (!el) return;
+    el.innerHTML = (anexos.get(grupo) || []).map((f, n) => `<div class="anexo-item"><span>📄 ${esc(f.name)}</span><small>${tam(f.size)}</small>`
+      + `<button type="button" data-tira-arq="${grupo}:${n}" title="Tirar" aria-label="Tirar ${esc(f.name)}">✕</button></div>`).join('');
+  }
+  function adicionarAnexos(grupo, files) {
+    const lista = anexos.get(grupo) || [];
+    const recusados = [];
+    for (const f of files) {
+      if (lista.some(a => a.name === f.name && a.size === f.size && a.lastModified === f.lastModified)) { recusados.push(`${f.name} já está na lista`); continue; }
+      if (!f.size) { recusados.push(`${f.name} está vazio`); continue; }
+      if (f.size > MAX_ARQ) { recusados.push(`${f.name} passa de 25 MB`); continue; }
+      if (todosAnexos().length >= MAX_QTD) { recusados.push(`limite de ${MAX_QTD} arquivos`); break; }
+      if (todosAnexos().reduce((s, a) => s + a.size, 0) + f.size > MAX_TOTAL) { recusados.push(`${f.name} passa do total de 100 MB`); continue; }
+      lista.push(f);
+      anexos.set(grupo, lista);
+    }
+    anexos.set(grupo, lista);
+    const err = app.querySelector(`[data-erro="${grupo}"]`);
+    if (err) err.textContent = recusados.length ? 'Não anexado: ' + recusados.join('; ') + '.' : '';
+    pintarAnexos(grupo);
+  }
+
+  // ---------- os eventos de toda a página ----------
+  // corrigido tudo o que estava marcado, a frase de baixo sai
+  const semFaltas = () => { if (!app.querySelector('.campo.falta') && $('msgErro') && /^Falta/.test($('msgErro').textContent)) $('msgErro').textContent = ''; };
+  app.addEventListener('change', e => {
+    const t = e.target;
+    const campo = t.closest('.campo');
+    if (campo) { campo.classList.remove('falta'); semFaltas(); }
+    if (t.matches('input[type=file][data-grupo]')) { adicionarAnexos(t.dataset.grupo, [...t.files]); t.value = ''; const c = t.closest('.campo'); if (c) c.classList.remove('falta'); return; }
+    if (t.id && /^id_socios_\d+_estadoCivil$/.test(t.id)) { const v = t.id.split('_')[2]; const r = app.querySelector(`[data-regime="${v}"]`); if (r) r.hidden = t.value !== 'casado'; }
+    if (t.matches('[data-mesmo]')) { const box = app.querySelector(`[data-end="${t.dataset.mesmo}"]`); if (box) box.hidden = t.checked; }
+    if (t.id === 'mesmoContato') copiarContato();
+  });
+  app.addEventListener('input', e => {
+    const campo = e.target.closest('.campo');
+    if (campo) { campo.classList.remove('falta'); semFaltas(); }
+    if (/_participacao$/.test(e.target.id || '')) pintarSoma();
+    if (/_cep$/.test(e.target.id || '') && e.target.value.replace(/\D/g, '').length === 8) preencherCep(e.target);
+    if ($('mesmoContato') && $('mesmoContato').checked && /^id_contato_(telefone|email)$/.test(e.target.id || '')) copiarContato();
+  });
+  app.addEventListener('click', e => {
+    const tira = e.target.closest('[data-tirar]');
+    if (tira) { tirarSocio(Number(tira.dataset.tirar)); return; }
+    const arq = e.target.closest('[data-tira-arq]');
+    if (arq) {
+      const [grupo, n] = arq.dataset.tiraArq.split(':');
+      (anexos.get(grupo) || []).splice(Number(n), 1);
+      const err = app.querySelector(`[data-erro="${grupo}"]`); if (err) err.textContent = '';
+      pintarAnexos(grupo);
+    }
+  });
+  function copiarContato() {
+    if (!$('mesmoContato').checked) return;
+    $('id_empresaTelefone').value = $('id_contato_telefone').value;
+    $('id_empresaEmail').value = $('id_contato_email').value;
+    ['empresaTelefone', 'empresaEmail'].forEach(id => { const c = app.querySelector(`.campo[data-id="${id}"]`); if (c) c.classList.remove('falta'); });
+  }
+  // o CEP preenche a rua, o bairro, a cidade e o estado (o ViaCEP); o que a pessoa já escreveu fica
+  async function preencherCep(input) {
+    const pre = input.id.replace(/^id_/, '').replace(/_cep$/, '');
+    const r = await buscarCEP(input.value);
+    if (!r) return;
+    const por = { logradouro: r.logradouro, bairro: r.bairro, cidade: r.cidade };
+    for (const [k, v] of Object.entries(por)) { const el = $(`id_${pre}_${k}`); if (el && !el.value && v) el.value = v; }
+    const uf = $(`id_${pre}_uf`); if (uf && r.uf && UFS.includes(r.uf)) uf.value = r.uf;
+  }
+
+  const valor = id => { const el = $(idCampo(id)); return el ? String(el.value || '').trim() : ''; };
+  const marcado = id => (app.querySelector(`input[name="${idCampo(id)}"]:checked`) || {}).value || '';
+  const endereco_ = p => Object.fromEntries(CAMPOS_ENDERECO.map(([k]) => [k, valor(p + '.' + k)]));
+  function coletar() {
+    const empresa = endereco_('endereco');
+    const lista = socios.map(v => {
+      const pre = `socios.${v}`;
+      const mesmo = app.querySelector(`[data-mesmo="${v}"]`);
+      return { nome: valor(pre + '.nome'), cpf: valor(pre + '.cpf'), estadoCivil: valor(pre + '.estadoCivil'), regime: valor(pre + '.regime'),
+        profissao: valor(pre + '.profissao'), endereco: mesmo && mesmo.checked ? empresa : endereco_(pre + '.endereco'), govbr: marcado(pre + '.govbr'),
+        participacao: valor(pre + '.participacao'), administra: marcado(pre + '.administra') };
+    });
+    // os anexos vão na ordem dos sócios da tela (o grupo pela posição, como a conferência conta)
+    const arquivos = [];
+    const files = [];
+    socios.forEach((v, i) => (anexos.get(grupoDoSocio(v)) || []).forEach(f => { arquivos.push({ nome: f.name, tamanho: f.size, tipo: f.type || 'application/octet-stream', grupo: grupoDoSocio(i) }); files.push(f); }));
+    (anexos.get(OUTROS) || []).forEach(f => { arquivos.push({ nome: f.name, tamanho: f.size, tipo: f.type || 'application/octet-stream', grupo: OUTROS }); files.push(f); });
+    return { corpo: { tipo: TIPO, contato: { nome: valor('contato.nome'), telefone: valor('contato.telefone'), email: valor('contato.email') },
+      cnpjMei: valor('cnpjMei'), razao1: valor('razao1'), razao2: valor('razao2'), fantasia: valor('fantasia'), atividades: valor('atividades'),
+      capital: valor('capital'), funcionamento: valor('funcionamento'), areaTotal: valor('areaTotal'), areaUtilizada: valor('areaUtilizada'),
+      empresaTelefone: valor('empresaTelefone'), empresaEmail: valor('empresaEmail'), endereco: empresa, socios: lista, obs: valor('obs'), arquivos }, files };
+  }
+  // o id que a conferência devolve ("socios.1.cpf": o 2º sócio da tela) → o campo da tela ("socios.<vaga>.cpf")
+  function campoDe(id) {
+    const m = /^socios\.(\d+)\.(.+)$/.exec(id);
+    const alvo = m ? `socios.${socios[Number(m[1])]}.${m[2]}` : id;
+    return app.querySelector(`.campo[data-id="${alvo}"]`) || (id === 'socios.participacao' ? $('soma') : id === 'socios.administra' ? app.querySelector('[data-varios] .campo[data-id$=".administra"]') : null);
+  }
+
+  function progresso(texto, fracao) {
+    $('progresso').textContent = texto || '';
+    const barra = $('barra');
+    barra.hidden = fracao == null;
+    if (fracao != null) barra.firstElementChild.style.width = Math.round(Math.min(1, fracao) * 100) + '%';
+  }
+  // um documento: abre o envio no Drive e manda as partes em sequência (tenta de novo a parte que falhar na rede)
+  async function subir(id, chave, i, f, feito, total, qtd) {
+    const r1 = await chamar({ acao: 'arquivo', id, chave, i });
+    if (r1.error || !r1.data || !r1.data.ok) return false;
+    for (let ini = 0; ini < f.size; ini += PARTE) {
+      const pedaco = f.slice(ini, Math.min(f.size, ini + PARTE));
+      let r = null;
+      for (let tentativa = 0; tentativa < 3; tentativa++) {
+        r = await chamar(pedaco, { 'x-acao': 'parte', 'x-id': id, 'x-chave': chave, 'x-i': String(i), 'x-inicio': String(ini), 'x-total': String(f.size) });
+        if (!r.error) break;
+      }
+      if (r.error || !r.data || !r.data.ok) return false;
+      progresso(`Enviando os documentos: ${i + 1} de ${qtd} (${f.name})`, (feito + Math.min(f.size, ini + PARTE)) / total);
+    }
+    return true;
+  }
+
+  async function enviar() {
+    const erro = $('msgErro'), btn = $('btnEnviar');
+    app.querySelectorAll('.campo.falta').forEach(c => c.classList.remove('falta'));
+    $('soma').classList.remove('ruim');
+    const { corpo, files } = coletar();
+    const c = conferirPedido(corpo);
+    if (!c.pedido) {
+      if (c.faltam.includes('arquivos')) { erro.textContent = c.erro; return; }
+      const els = c.faltam.map(campoDe).filter(Boolean);
+      c.faltam.forEach(id => {
+        const el = campoDe(id);
+        if (!el) return;
+        if (el.id === 'soma') { el.classList.add('ruim'); el.textContent = 'A soma das participações tem de dar 100%.'; return; }
+        el.classList.add('falta');
+        const m = el.querySelector('.falta-msg');
+        const k = id.split('.').pop();
+        if (m && MSG[id]) m.textContent = MSG[id];
+        else if (m && /^socios\./.test(id) && msgSocio[k]) m.textContent = msgSocio[k];
+        if (id === 'socios.administra' && m) m.textContent = 'Pelo menos um sócio administra a empresa.';
+      });
+      erro.textContent = c.faltam.length === 1 ? 'Falta 1 resposta (marcada em vermelho).' : `Faltam ${c.faltam.length} respostas (marcadas em vermelho).`;
+      if (els[0]) els[0].scrollIntoView({ behavior: 'smooth', block: 'center' });
+      return;
+    }
+    erro.textContent = '';
+    btn.disabled = true; btn.textContent = 'Enviando…';
+    progresso('Enviando as respostas…', null);
+    const { data: r, error } = await chamar({ acao: 'enviar', ...corpo });
+    if (error || !r || r.error) {
+      btn.disabled = false; btn.textContent = 'Enviar'; progresso('', null);
+      erro.textContent = (r && r.error) ? r.error : 'Não foi possível enviar agora (' + ((error && error.message) || 'erro de conexão') + '). Tente de novo em instantes.';
+      return;
+    }
+    const falhas = [];
+    if (!r.chave) falhas.push(...files.map(f => f.name));
+    else {
+      subindo = true;
+      try {
+        const total = files.reduce((s, f) => s + f.size, 0);
+        let feito = 0;
+        for (const [i, f] of files.entries()) {
+          progresso(`Enviando os documentos: ${i + 1} de ${files.length} (${f.name})`, feito / total);
+          const foi = await subir(r.id, r.chave, i, f, feito, total, files.length).catch(() => false);
+          if (!foi) falhas.push(f.name);
+          feito += f.size;
+        }
+        await chamar({ acao: 'concluir', id: r.id, chave: r.chave }).catch(() => null);
+      } finally { subindo = false; }
+    }
+    let msg = 'Obrigado! O escritório vai conferir as informações e falar com você pelo WhatsApp.\n\nLembre: ' + AVISO_GOV.charAt(0).toLowerCase() + AVISO_GOV.slice(1);
+    const foram = files.length - falhas.length;
+    if (foram) msg += `\n\n${foram === 1 ? '1 documento enviado' : foram + ' documentos enviados'} para o escritório.`;
+    if (falhas.length) msg += `\n\nNão conseguimos enviar: ${falhas.join(', ')}. A gente pede ${falhas.length === 1 ? 'esse arquivo' : 'esses arquivos'} pelo WhatsApp.`;
+    aviso(falhas.length ? '⚠️' : '✅', 'Recebido!', msg, falhas.length ? '' : 'ok');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
+
+  desenhar();
+</script>
+</body>
+</html>
