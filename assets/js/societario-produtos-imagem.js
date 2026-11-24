@@ -11,7 +11,8 @@
 // da base comum (imagens-whats.js). Nenhuma passa de 1600 px de altura: com a letra do sistema, cabem com folga; com a de reserva
 // (sem o Google Fonts), a que passar é reduzida até caber (caber, da base).
 // ============================================================================
-import { LARGURA, M, W, COR, FONTES, carregarFontes, fonte, quebrar, escrever, caixa, marca, cabecalho, rodape, desenhar, caber } from './imagens-whats.js';
+import { LARGURA, M, W, COR, FONTES, carregarFontes, fonte, quebrar, escrever, caixa, marca, cabecalho, rodape, desenhar, caber,
+  numero, bolinha, titulo } from './imagens-whats.js';
 import { PAGAMENTO, NOTA_PRAZOS, NAO_INCLUSO, NOTA_NAO_INCLUSO, totalDeDias, emPalavras } from './societario-produtos.js';
 import { reais } from './mei-planos.js';
 
@@ -34,32 +35,13 @@ function icone(ctx, tipo, cx, cy, f) {
   ctx.fillText('R$', cx, cy + 9);
   ctx.textAlign = 'left';
 }
-// o número da etapa no círculo azul
-function numero(ctx, n, cx, cy, r, f) {
-  ctx.fillStyle = COR.azul;
-  ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2); ctx.fill();
-  ctx.fillStyle = '#FFFFFF'; fonte(ctx, 700, Math.round(r * 0.95), f.texto); ctx.textAlign = 'center';
-  ctx.fillText(String(n), cx, cy + Math.round(r * 0.34));
-  ctx.textAlign = 'left';
-}
 // a caixinha de marcar da documentação
 function quadrado(ctx, x, y, s) {
   caixa(ctx, x, y, s, s, 7);
   ctx.fillStyle = COR.fundo; ctx.fill();
   ctx.lineWidth = 3; ctx.strokeStyle = COR.azul; ctx.stroke();
 }
-// a bolinha da lista
-function bolinha(ctx, x, y) {
-  ctx.fillStyle = COR.azul; ctx.beginPath(); ctx.arc(x, y, 5, 0, Math.PI * 2); ctx.fill();
-}
-// o título e a frase de baixo; devolve onde terminou
-function titulo(ctx, t, sub, y, f) {
-  ctx.fillStyle = COR.tinta; fonte(ctx, 600, 62, f.titulo);
-  y = escrever(ctx, quebrar(ctx, t, W), M, y, 62, 70) + 10;
-  if (!sub) return y;
-  ctx.fillStyle = COR.cinza; fonte(ctx, 400, 28, f.texto);
-  return escrever(ctx, quebrar(ctx, sub, W), M, y, 28, 38);
-}
+// (o número da etapa no círculo azul, a bolinha da lista e o título com a frase de baixo vêm da base, imagens-whats.js)
 
 // ---------- 1. o passo a passo ----------
 function pintarPassoAPasso(ctx, o) {

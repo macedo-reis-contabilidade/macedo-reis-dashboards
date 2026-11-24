@@ -1,7 +1,7 @@
 // ============================================================================
 // MACEDO & REIS — A base das imagens pro WhatsApp (24/11/2026): o que as imagens dos produtos da Vitrine têm em comum.
-// Usam esta base os planos do MEI (mei-planos-imagem.js) e os produtos do societário, a transformação do MEI em ME e a
-// abertura de empresa (societario-produtos-imagem.js).
+// Usam esta base os planos do MEI (mei-planos-imagem.js), os produtos do societário, a transformação do MEI em ME e a
+// abertura de empresa (societario-produtos-imagem.js), e os honorários contábeis (honorarios-contabeis-imagem.js).
 // - O tamanho: 1080 px de largura e no máximo 1600 de altura (ALTURA_MAX). Na qualidade padrão, o WhatsApp reduz a foto
 //   até o lado maior ficar com uns 1600 px; até aí, a imagem chega como saiu e cabe na tela do celular.
 // - As cores: o azul e o champanhe da logo.
@@ -77,6 +77,26 @@ export function marca(ctx, cx, cy, r, fundo = COR.azul, traco = '#FFFFFF') {
   ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2); ctx.fill();
   ctx.strokeStyle = traco; ctx.lineWidth = Math.max(2, r * 0.22); ctx.lineCap = 'round'; ctx.lineJoin = 'round';
   ctx.beginPath(); ctx.moveTo(cx - r * 0.45, cy + r * 0.02); ctx.lineTo(cx - r * 0.12, cy + r * 0.34); ctx.lineTo(cx + r * 0.48, cy - r * 0.3); ctx.stroke();
+}
+// o número do passo no círculo azul (a linha do tempo dos produtos do societário e o "como funciona" dos honorários)
+export function numero(ctx, n, cx, cy, r, f) {
+  ctx.fillStyle = COR.azul;
+  ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = '#FFFFFF'; fonte(ctx, 700, Math.round(r * 0.95), f.texto); ctx.textAlign = 'center';
+  ctx.fillText(String(n), cx, cy + Math.round(r * 0.34));
+  ctx.textAlign = 'left';
+}
+// a bolinha da lista
+export function bolinha(ctx, x, y) {
+  ctx.fillStyle = COR.azul; ctx.beginPath(); ctx.arc(x, y, 5, 0, Math.PI * 2); ctx.fill();
+}
+// o título grande e a frase de baixo; devolve onde terminou
+export function titulo(ctx, t, sub, y, f) {
+  ctx.fillStyle = COR.tinta; fonte(ctx, 600, 62, f.titulo);
+  y = escrever(ctx, quebrar(ctx, t, W), M, y, 62, 70) + 10;
+  if (!sub) return y;
+  ctx.fillStyle = COR.cinza; fonte(ctx, 400, 28, f.texto);
+  return escrever(ctx, quebrar(ctx, sub, W), M, y, 28, 38);
 }
 // "CONTABILIDADE" espaçado, como no folder
 export function espacado(ctx, t, x, y, esp) {
