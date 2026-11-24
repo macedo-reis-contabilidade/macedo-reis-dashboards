@@ -185,8 +185,8 @@ export function mensagemWhats({ nome, quem, vitrine, recomendados: rec, imagens 
   linhas.push('Se quiser, eu te explico cada um ou já te mando a proposta do plano que você escolher.');
   return linhas.join('\n');
 }
-// o Samuel, a Thalia: o artigo pelo nome (o da equipe; nome que não está na lista vai sem artigo). A mensagem da
-// transformação do MEI em ME (transformacao-mei.js) usa também.
+// o Samuel, a Thalia: o artigo pelo nome (o da equipe; nome que não está na lista vai sem artigo). As mensagens dos
+// produtos do societário (societario-produtos.js) usam também.
 const FEMININOS = new Set(['Thalia', 'Vitória', 'Adaini', 'Edna']);
 const MASCULINOS = new Set(['Samuel', 'Diego']);
 export function artigo(nome) {

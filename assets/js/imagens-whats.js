@@ -1,6 +1,7 @@
 // ============================================================================
 // MACEDO & REIS — A base das imagens pro WhatsApp (24/11/2026): o que as imagens dos produtos da Vitrine têm em comum.
-// Usam esta base os planos do MEI (mei-planos-imagem.js) e a transformação do MEI em ME (transformacao-mei-imagem.js).
+// Usam esta base os planos do MEI (mei-planos-imagem.js) e os produtos do societário, a transformação do MEI em ME e a
+// abertura de empresa (societario-produtos-imagem.js).
 // - O tamanho: 1080 px de largura e no máximo 1600 de altura (ALTURA_MAX). Na qualidade padrão, o WhatsApp reduz a foto
 //   até o lado maior ficar com uns 1600 px; até aí, a imagem chega como saiu e cabe na tela do celular.
 // - As cores: o azul e o champanhe da logo.

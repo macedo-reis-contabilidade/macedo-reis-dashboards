@@ -1,8 +1,8 @@
 // ============================================================================
 // MACEDO & REIS — A janela do material pro WhatsApp (24/11/2026). É uma só pros produtos da Vitrine que mandam imagens
-// direto na conversa: os planos do MEI (mei-planos-janela.js) e a transformação do MEI em ME
-// (transformacao-mei-janela.js). O Samuel: "enviar a imagem direto sem necessidade de clique em link ou em arquivo é a
-// forma ideal, dificultar o menos possível pra pessoa abrir e ver".
+// direto na conversa: os planos do MEI (mei-planos-janela.js) e os produtos do societário, a transformação do MEI em ME
+// e a abertura de empresa (societario-produtos-janela.js). O Samuel: "enviar a imagem direto sem necessidade de clique
+// em link ou em arquivo é a forma ideal, dificultar o menos possível pra pessoa abrir e ver".
 //
 // O que fica aqui, igual pra todos:
 // - a janela por cima da tela;

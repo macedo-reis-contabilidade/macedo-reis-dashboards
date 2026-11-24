@@ -1,14 +1,15 @@
-"""A transformação do MEI em ME pro WhatsApp (24/11/2026, o caso real 2 dos produtos): o produto "Transformação do MEI
-em ME" da Vitrine de serviços (comercial-servicos.html) abre a janela (assets/js/transformacao-mei-janela.js) com as três
-imagens (o passo a passo e a documentação, sem valores, e o orçamento à parte) e a mensagem pronta. A janela é a mesma
-base da dos planos do MEI (assets/js/janela-whats.js). Os valores de sempre do orçamento vêm do banco (a aba Parâmetros
-da Precificação, precificacao_parametros, o grupo transformacao_mei), nunca do código. Sem login e sem banco: o mock do
-conferir.py, com a vitrine e os valores inventados semeados em window.__mockDb.
+"""Os produtos do societário pro WhatsApp (24/11/2026): a "Transformação do MEI em ME" e a "Constituição de CNPJ" (a
+abertura de empresa) da Vitrine de serviços (comercial-servicos.html) abrem a mesma janela
+(assets/js/societario-produtos-janela.js), com o título e o rótulo do produto, as três imagens (o passo a passo e a
+documentação, sem valores, e o orçamento à parte) e a mensagem pronta. A janela é a mesma base da dos planos do MEI
+(assets/js/janela-whats.js). Os valores de sempre do orçamento vêm do banco (a aba Parâmetros da Precificação,
+precificacao_parametros, cada produto no grupo dele), nunca do código. Sem login e sem banco: o mock do conferir.py, com a
+vitrine e os valores inventados semeados em window.__mockDb.
 
-    python tests/harness/servicos-transformacao.py
+    python tests/harness/servicos-societario.py
 
 Confere:
-  1. o botão no cartão do produto abre a janela, não a ficha;
+  1. o botão no cartão do produto abre a janela, não a ficha, com o título do produto;
   2. as três imagens com 1080 px de largura e no máximo 1600 de altura, os valores de sempre (do banco) e a data de hoje
      nos campos;
   3. a data do orçamento: 24/11/2026 vale até 31/12/2026, no resumo e na mensagem;
@@ -19,6 +20,8 @@ Confere:
   8. os planos do MEI seguem com a janela deles, e nada é gravado;
   9. a leitura dos valores de sempre que falha: os campos vazios, o porquê no resumo, as imagens saem e digitar os valores
      libera o orçamento;
+ 10. a constituição de CNPJ: o botão dela, o título "Abertura de empresa", os valores do grupo dela, a mensagem sem MEI e
+     o nome dos arquivos;
 e nenhum erro de JavaScript. Termina com código 1 se alguma checagem falhar.
 Pré-requisito: pip install playwright e python -m playwright install chromium
 """
@@ -41,11 +44,15 @@ def V(id, slug, nome, **o):
             'criado_em': '2026-11-24T12:00:00+00:00', 'atualizado_por': 'Claude', 'atualizado_em': '2026-11-24T12:00:00+00:00'}
     base.update(o); return base
 VITRINE = [V('sMei', 'planos-mei', 'Planos do MEI'), V('sTransf', 'transformacao-mei', 'Transformação do MEI em ME', preco=1000, ordem=1),
+           V('sConst', 'constituicao-cnpj', 'Constituição de CNPJ', preco=1100, ordem=2),
            V('sOutro', 'outro-servico', 'Outro serviço inventado', situacao='ideia')]
 # os valores de sempre do orçamento (inventados), como a aba Parâmetros da Precificação grava; a linha de outro grupo fica fora
 PARAMETROS = [{'id': 901, 'grupo': 'transformacao_mei', 'chave': 'Valor à vista', 'valor': 1000, 'limite_inferior': None, 'ordem': 1},
               {'id': 902, 'grupo': 'transformacao_mei', 'chave': 'Entrada do a prazo', 'valor': 700, 'limite_inferior': None, 'ordem': 2},
               {'id': 903, 'grupo': 'transformacao_mei', 'chave': 'Parcela do a prazo, em 30 dias', 'valor': 500, 'limite_inferior': None, 'ordem': 3},
+              {'id': 905, 'grupo': 'constituicao_cnpj', 'chave': 'Valor à vista', 'valor': 1100, 'limite_inferior': None, 'ordem': 1},
+              {'id': 906, 'grupo': 'constituicao_cnpj', 'chave': 'Entrada do a prazo', 'valor': 800, 'limite_inferior': None, 'ordem': 2},
+              {'id': 907, 'grupo': 'constituicao_cnpj', 'chave': 'Parcela do a prazo, em 30 dias', 'valor': 400, 'limite_inferior': None, 'ordem': 3},
               {'id': 904, 'grupo': 'p01', 'chave': 'Valor à vista', 'valor': 9, 'limite_inferior': None, 'ordem': 1}]
 SEMEAR = """
 (() => {
@@ -79,10 +86,10 @@ def espera(p, js, ms=8000):
     except Exception:
         return False
 
-ABERTA = "() => { const o = document.getElementById('ovTransformacaoMei'); return !!o && getComputedStyle(o).display === 'flex'; }"
-FECHADA = "() => { const o = document.getElementById('ovTransformacaoMei'); return !o || getComputedStyle(o).display === 'none'; }"
-PRONTAS = "() => { const i = [...document.querySelectorAll('#tmImagens img')]; return i.length === 3 && i.every(x => x.complete && x.naturalWidth > 0) && /^(Pronto|As imagens)/.test(document.getElementById('tmStatus').textContent); }"
-TAMANHOS = "() => [...document.querySelectorAll('#tmImagens img')].map(i => [i.naturalWidth, i.naturalHeight])"
+ABERTA = "() => { const o = document.getElementById('ovProdutoSocietario'); return !!o && getComputedStyle(o).display === 'flex'; }"
+FECHADA = "() => { const o = document.getElementById('ovProdutoSocietario'); return !o || getComputedStyle(o).display === 'none'; }"
+PRONTAS = "() => { const i = [...document.querySelectorAll('#spImagens img')]; return i.length === 3 && i.every(x => x.complete && x.naturalWidth > 0) && /^(Pronto|As imagens)/.test(document.getElementById('spStatus').textContent); }"
+TAMANHOS = "() => [...document.querySelectorAll('#spImagens img')].map(i => [i.naturalWidth, i.naturalHeight])"
 FICHA_ABERTA = "() => document.getElementById('ovServico').classList.contains('is-open')"
 
 def main():
@@ -103,13 +110,14 @@ def main():
 
         print('1. O botão no cartão do produto')
         p.goto(base + 'comercial-servicos.html')
-        ok(espera(p, "() => document.querySelectorAll('#vitrine .sv-card').length === 3"), 'a vitrine com os três serviços')
-        ok(p.evaluate("() => [...document.querySelectorAll('[data-material]')].map(b => b.closest('.sv-card').dataset.slug).sort().join(',')") == 'planos-mei,transformacao-mei',
-           'o botão do material nos dois produtos que têm, e só neles')
+        ok(espera(p, "() => document.querySelectorAll('#vitrine .sv-card').length === 4"), 'a vitrine com os quatro serviços')
+        ok(p.evaluate("() => [...document.querySelectorAll('[data-material]')].map(b => b.closest('.sv-card').dataset.slug).sort().join(',')") == 'constituicao-cnpj,planos-mei,transformacao-mei',
+           'o botão do material nos três produtos que têm, e só neles')
         ok(txt('[data-material="transformacao-mei"]') == '📲 Transformação pro WhatsApp', 'o botão: "Transformação pro WhatsApp"')
         p.click('[data-material="transformacao-mei"]')
         ok(espera(p, ABERTA), 'o botão abre a janela')
         ok(not p.evaluate(FICHA_ABERTA), 'e não a ficha')
+        ok(txt('#spTitulo') == 'Transformação do MEI em ME pro WhatsApp' and txt('#spClienteRotulo') == 'Cliente (o titular do MEI)', 'o título e o rótulo do produto')
 
         print('2. As três imagens e os campos')
         ok(espera(p, PRONTAS, 12000), 'as três imagens ficam prontas')
@@ -117,62 +125,62 @@ def main():
         # com a letra do sistema (Google Fonts) as três cabem em 1080 x 1600; sem ela, a de reserva quebra mais linhas e a que
         # passa de 1600 é reduzida por inteiro até caber (um pouco mais estreita, nunca cortada)
         ok(len(tam) == 3 and all(1000 <= w <= 1080 and 900 < h <= 1600 for w, h in tam), 'todas com até 1080 px de largura e no máximo 1600 de altura → ' + str(tam))
-        ok(p.evaluate("() => [...document.querySelectorAll('#tmImagens figcaption span')].map(s => s.textContent).join(' | ')")
+        ok(p.evaluate("() => [...document.querySelectorAll('#spImagens figcaption span')].map(s => s.textContent).join(' | ')")
            == '1 · o passo a passo | 2 · a documentação | 3 · o orçamento (vai à parte)', 'a legenda de cada imagem')
-        ok(val('#tmAVista') == '1.000,00' and val('#tmEntrada') == '700,00' and val('#tmParcela') == '500,00', 'os valores de sempre, do banco, nos campos')
-        ok(p.input_value('#tmData') == hoje, 'a data de hoje (Brasília) → ' + p.input_value('#tmData'))
-        ok(txt('#tmResumo').startswith('A prazo: R$ 1.200,00 (entrada de R$ 700,00 + R$ 500,00 em 30 dias). À vista: R$ 1.000,00, R$ 200,00 a menos.'),
-           'o resumo: o a prazo somado e o desconto → ' + txt('#tmResumo'))
-        ok(p.evaluate("() => document.activeElement && document.activeElement.id") == 'tmCliente', 'o foco no cliente')
+        ok(val('#spAVista') == '1.000,00' and val('#spEntrada') == '700,00' and val('#spParcela') == '500,00', 'os valores de sempre, do banco, nos campos')
+        ok(p.input_value('#spData') == hoje, 'a data de hoje (Brasília) → ' + p.input_value('#spData'))
+        ok(txt('#spResumo').startswith('A prazo: R$ 1.200,00 (entrada de R$ 700,00 + R$ 500,00 em 30 dias). À vista: R$ 1.000,00, R$ 200,00 a menos.'),
+           'o resumo: o a prazo somado e o desconto → ' + txt('#spResumo'))
+        ok(p.evaluate("() => document.activeElement && document.activeElement.id") == 'spCliente', 'o foco no cliente')
 
         print('3. A data do orçamento e a validade')
-        p.fill('#tmData', '2026-11-24')
-        ok(espera(p, "() => document.getElementById('tmMsg').value.includes('(vale até 31/12/2026).')"), 'de 24/11/2026, a mensagem diz que vale até 31/12/2026')
-        ok(txt('#tmResumo').endswith('Vale até 31/12/2026, o último dia útil do mês seguinte.'), 'o resumo também → ' + txt('#tmResumo'))
+        p.fill('#spData', '2026-11-24')
+        ok(espera(p, "() => document.getElementById('spMsg').value.includes('(vale até 31/12/2026).')"), 'de 24/11/2026, a mensagem diz que vale até 31/12/2026')
+        ok(txt('#spResumo').endswith('Vale até 31/12/2026, o último dia útil do mês seguinte.'), 'o resumo também → ' + txt('#spResumo'))
         ok(espera(p, PRONTAS), 'e as imagens se refazem')
 
         print('4. O cliente')
-        p.fill('#tmCliente', 'Fulano Beltrano da Silva')
-        ok(espera(p, "() => document.getElementById('tmMsg').value.startsWith('Oi, Fulano! Tudo bem? Aqui é o Samuel, da Macedo & Reis Contabilidade.')"),
+        p.fill('#spCliente', 'Fulano Beltrano da Silva')
+        ok(espera(p, "() => document.getElementById('spMsg').value.startsWith('Oi, Fulano! Tudo bem? Aqui é o Samuel, da Macedo & Reis Contabilidade.')"),
            'o primeiro nome na mensagem, com quem manda')
         ok(espera(p, PRONTAS), 'e as imagens se refazem')
-        msg = p.input_value('#tmMsg')
+        msg = p.input_value('#spMsg')
         ok('Na 1ª imagem, o passo a passo' in msg and 'Na 2ª, a documentação que vamos precisar.' in msg and 'E, em separado, o orçamento' in msg,
            'a mensagem diz o que vai em cada imagem')
 
         print('5. O à vista acima do a prazo')
-        p.fill('#tmAVista', '1.500,00')
-        ok(espera(p, "() => document.getElementById('tmResumo').textContent === 'O à vista está maior que o a prazo.'"), 'o resumo avisa')
-        ok(p.evaluate("() => document.getElementById('tmResumo').style.color") == 'var(--err)', 'em vermelho')
-        ok(espera(p, "() => document.getElementById('tmStatus').textContent.includes('confira os valores do orçamento')"), 'e o aviso de baixo pede pra conferir')
-        p.fill('#tmAVista', '1.000,00')
-        ok(espera(p, "() => document.getElementById('tmResumo').textContent.startsWith('A prazo: R$')") and espera(p, PRONTAS), 'o valor certo volta o resumo e as imagens')
+        p.fill('#spAVista', '1.500,00')
+        ok(espera(p, "() => document.getElementById('spResumo').textContent === 'O à vista está maior que o a prazo.'"), 'o resumo avisa')
+        ok(p.evaluate("() => document.getElementById('spResumo').style.color") == 'var(--err)', 'em vermelho')
+        ok(espera(p, "() => document.getElementById('spStatus').textContent.includes('confira os valores do orçamento')"), 'e o aviso de baixo pede pra conferir')
+        p.fill('#spAVista', '1.000,00')
+        ok(espera(p, "() => document.getElementById('spResumo').textContent.startsWith('A prazo: R$')") and espera(p, PRONTAS), 'o valor certo volta o resumo e as imagens')
 
         print('6. Copiar, baixar e compartilhar')
-        p.click('#tmCopiarMsg')
-        ok(espera(p, "() => document.getElementById('tmStatus').textContent.includes('Mensagem copiada')"), 'copiar a mensagem avisa')
+        p.click('#spCopiarMsg')
+        ok(espera(p, "() => document.getElementById('spStatus').textContent.includes('Mensagem copiada')"), 'copiar a mensagem avisa')
         ok(p.evaluate('navigator.clipboard.readText()').startswith('Oi, Fulano!'), 'copia a mensagem')
-        p.click('[data-tm-copiar="0"]')
-        ok(espera(p, "() => /Imagem 1 copiada|não deixou copiar/.test(document.getElementById('tmStatus').textContent)"), 'copiar a imagem responde → ' + txt('#tmStatus'))
-        if 'Imagem 1 copiada' in txt('#tmStatus'):
-            ok(txt('[data-tm-copiar="0"]') == '✓ Copiada' and 'Depois, a 2.' in txt('#tmStatus'), 'a imagem copiada fica marcada, e o aviso diz a próxima')
+        p.click('[data-sp-copiar="0"]')
+        ok(espera(p, "() => /Imagem 1 copiada|não deixou copiar/.test(document.getElementById('spStatus').textContent)"), 'copiar a imagem responde → ' + txt('#spStatus'))
+        if 'Imagem 1 copiada' in txt('#spStatus'):
+            ok(txt('[data-sp-copiar="0"]') == '✓ Copiada' and 'Depois, a 2.' in txt('#spStatus'), 'a imagem copiada fica marcada, e o aviso diz a próxima')
         with p.expect_download() as d:
-            p.click('[data-tm-baixar="2"]')
+            p.click('[data-sp-baixar="2"]')
         ok(d.value.suggested_filename == 'Orçamento - Transformação do MEI em ME - Fulano.png', 'baixar o orçamento: o nome com o cliente → ' + d.value.suggested_filename)
         baixados = []
         p.on('download', lambda x: baixados.append(x.suggested_filename))
-        p.click('#tmBaixarTodas')
-        espera(p, "() => document.getElementById('tmStatus').textContent.includes('baixadas')", 5000)
+        p.click('#spBaixarTodas')
+        espera(p, "() => document.getElementById('spStatus').textContent.includes('baixadas')", 5000)
         p.wait_for_timeout(800)
         ok(baixados == ['Transformação do MEI em ME (1 de 2).png', 'Transformação do MEI em ME (2 de 2).png', 'Orçamento - Transformação do MEI em ME - Fulano.png'],
            'baixar todas: as três, na ordem → ' + str(baixados))
-        ok(p.evaluate("() => getComputedStyle(document.getElementById('tmCompartilhar')).display") != 'none', 'com o compartilhar do sistema, o botão aparece')
-        p.click('#tmCompartilhar')
+        ok(p.evaluate("() => getComputedStyle(document.getElementById('spCompartilhar')).display") != 'none', 'com o compartilhar do sistema, o botão aparece')
+        p.click('#spCompartilhar')
         ok(espera(p, '() => !!window.__compartilhado'), 'compartilhar manda')
         c = p.evaluate('() => window.__compartilhado')
         ok(c['n'] == 3 and c['nomes'][2] == 'Orçamento - Transformação do MEI em ME - Fulano.png' and set(c['tipos']) == {'image/png'} and c['texto'].startswith('Oi, Fulano!'),
            'as três imagens, na ordem, com a mensagem → ' + str(c['nomes']))
-        p.click('#tmFechar')
+        p.click('#spFechar')
         ok(espera(p, FECHADA), 'fechar pelo ×')
 
         print('7. Na ficha do produto')
@@ -181,8 +189,8 @@ def main():
         ok(p.is_visible('#sMaterial') and 'Material pro cliente' in txt('#sMaterial') and txt('#sMaterialBtn') == '📲 Transformação pro WhatsApp', 'a ficha tem o material pro cliente')
         p.click('#sMaterialBtn')
         ok(espera(p, ABERTA) and espera(p, PRONTAS, 12000), 'o botão da ficha abre a janela')
-        ok(p.input_value('#tmCliente') == '' and p.input_value('#tmData') == hoje, 'a janela abre de novo limpa, com a data de hoje')
-        ok(p.evaluate("() => +getComputedStyle(document.getElementById('ovTransformacaoMei')).zIndex > +getComputedStyle(document.getElementById('ovServico')).zIndex"), 'por cima da ficha')
+        ok(p.input_value('#spCliente') == '' and p.input_value('#spData') == hoje, 'a janela abre de novo limpa, com a data de hoje')
+        ok(p.evaluate("() => +getComputedStyle(document.getElementById('ovProdutoSocietario')).zIndex > +getComputedStyle(document.getElementById('ovServico')).zIndex"), 'por cima da ficha')
         p.keyboard.press('Escape')
         ok(espera(p, FECHADA) and p.evaluate(FICHA_ABERTA), 'Esc fecha a janela e a ficha fica')
         p.keyboard.press('Escape')
@@ -195,21 +203,50 @@ def main():
         ok(p.evaluate(FECHADA), 'a da transformação segue fechada')
         p.keyboard.press('Escape')
         ok(espera(p, "() => getComputedStyle(document.getElementById('ovPlanosMei')).display === 'none'"), 'Esc fecha')
-        ok(p.evaluate('() => window.__mockDb.servicos_vendas.length') == 0 and p.evaluate('() => window.__mockDb.servicos_digitais.length') == 3, 'nada gravado')
+        ok(p.evaluate('() => window.__mockDb.servicos_vendas.length') == 0 and p.evaluate('() => window.__mockDb.servicos_digitais.length') == 4, 'nada gravado')
 
         print('9. A leitura dos valores de sempre que falha')
         p.evaluate("() => { window.__mockErroTabela = { precificacao_parametros: 'permission denied for table precificacao_parametros' }; }")
         p.click('[data-material="transformacao-mei"]')
         ok(espera(p, ABERTA) and espera(p, PRONTAS, 12000), 'a janela abre e as três imagens saem do mesmo jeito')
-        ok(val('#tmAVista') == '' and val('#tmEntrada') == '' and val('#tmParcela') == '', 'os campos dos valores vazios')
-        ok(txt('#tmResumo').startswith('Não deu pra ler os valores de sempre agora: digite os do orçamento. Falta o valor à vista.')
-           and p.evaluate("() => document.getElementById('tmResumo').style.color") == 'var(--err)', 'o resumo diz o porquê, em vermelho → ' + txt('#tmResumo'))
-        ok('confira os valores do orçamento' in txt('#tmStatus'), 'e o aviso de baixo pede pra conferir')
-        ok('permission denied' not in p.inner_text('#ovTransformacaoMei'), 'sem o erro do banco na tela')
-        p.fill('#tmAVista', '1.000,00'); p.fill('#tmEntrada', '700'); p.fill('#tmParcela', '500,00')
-        ok(espera(p, "() => document.getElementById('tmResumo').textContent.replace(/\\u00a0/g, ' ').startsWith('A prazo: R$ 1.200,00')")
-           and espera(p, "() => /^Pronto/.test(document.getElementById('tmStatus').textContent)", 12000), 'digitar os valores libera o orçamento → ' + txt('#tmStatus'))
+        ok(val('#spAVista') == '' and val('#spEntrada') == '' and val('#spParcela') == '', 'os campos dos valores vazios')
+        ok(txt('#spResumo').startswith('Não deu pra ler os valores de sempre agora: digite os do orçamento. Falta o valor à vista.')
+           and p.evaluate("() => document.getElementById('spResumo').style.color") == 'var(--err)', 'o resumo diz o porquê, em vermelho → ' + txt('#spResumo'))
+        ok('confira os valores do orçamento' in txt('#spStatus'), 'e o aviso de baixo pede pra conferir')
+        ok('permission denied' not in p.inner_text('#ovProdutoSocietario'), 'sem o erro do banco na tela')
+        p.fill('#spAVista', '1.000,00'); p.fill('#spEntrada', '700'); p.fill('#spParcela', '500,00')
+        ok(espera(p, "() => document.getElementById('spResumo').textContent.replace(/\\u00a0/g, ' ').startsWith('A prazo: R$ 1.200,00')")
+           and espera(p, "() => /^Pronto/.test(document.getElementById('spStatus').textContent)", 12000), 'digitar os valores libera o orçamento → ' + txt('#spStatus'))
         p.evaluate("() => { window.__mockErroTabela = null; }")
+        p.keyboard.press('Escape')
+        ok(espera(p, FECHADA), 'Esc fecha')
+
+        print('10. A constituição de CNPJ')
+        ok(txt('[data-material="constituicao-cnpj"]') == '📲 Constituição pro WhatsApp', 'o botão: "Constituição pro WhatsApp"')
+        p.click('[data-material="constituicao-cnpj"]')
+        ok(espera(p, ABERTA) and espera(p, PRONTAS, 12000), 'abre a mesma janela, com as três imagens')
+        ok(txt('#spTitulo') == 'Abertura de empresa pro WhatsApp' and txt('#spClienteRotulo') == 'Cliente', 'o título e o rótulo da abertura')
+        ok(val('#spAVista') == '1.100,00' and val('#spEntrada') == '800,00' and val('#spParcela') == '400,00', 'os valores de sempre do grupo dela, não os da transformação')
+        ok(txt('#spResumo').startswith('A prazo: R$ 1.200,00 (entrada de R$ 800,00 + R$ 400,00 em 30 dias). À vista: R$ 1.100,00, R$ 100,00 a menos.'), 'o resumo → ' + txt('#spResumo'))
+        tam = p.evaluate(TAMANHOS)
+        ok(len(tam) == 3 and all(1000 <= w <= 1080 and 900 < h <= 1600 for w, h in tam), 'as três com até 1080 px de largura e no máximo 1600 de altura → ' + str(tam))
+        p.fill('#spCliente', 'Beltrana Fulana')
+        ok(espera(p, "() => document.getElementById('spMsg').value.startsWith('Oi, Beltrana!')"), 'o cliente muda a mensagem')
+        ok(espera(p, PRONTAS), 'e as imagens se refazem')
+        msg = p.input_value('#spMsg')
+        ok('Segue como funciona, na prática, a abertura da empresa:' in msg and ' MEI' not in msg, 'a mensagem fala da abertura da empresa, sem MEI')
+        # o ouvinte do 6 segue ligado e põe em "baixados" (o nome é lido na hora): a lista é zerada aqui
+        del baixados[:]
+        p.click('#spBaixarTodas')
+        espera(p, "() => document.getElementById('spStatus').textContent.includes('baixadas')", 5000)
+        p.wait_for_timeout(800)
+        ok(baixados == ['Abertura de empresa (1 de 2).png', 'Abertura de empresa (2 de 2).png', 'Orçamento - Abertura de empresa - Beltrana.png'],
+           'os nomes dos arquivos da abertura → ' + str(baixados))
+        p.keyboard.press('Escape')
+        ok(espera(p, FECHADA), 'Esc fecha')
+        p.click('[data-material="transformacao-mei"]')
+        ok(espera(p, ABERTA) and espera(p, PRONTAS, 12000) and txt('#spTitulo') == 'Transformação do MEI em ME pro WhatsApp' and val('#spAVista') == '1.000,00'
+           and p.input_value('#spCliente') == '', 'a transformação de novo: o título, os valores e o cliente dela, sem sobra da abertura')
         p.keyboard.press('Escape')
         ok(espera(p, FECHADA), 'Esc fecha')
 

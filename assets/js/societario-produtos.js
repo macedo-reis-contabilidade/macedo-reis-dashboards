@@ -1,42 +1,31 @@
 // ============================================================================
-// MACEDO & REIS — A transformação do MEI em ME (24/11/2026, o caso real 2 dos produtos: o gerente de uma empresa, pela
-// transformação do MEI do titular). O pedido do Samuel: "passo a passos com prazos em cada etapa e valores, algo objetivo, visual e de
-// simples entendimento", com "a apresentação do que é o serviço de transformação" e, "em documento separado, o
-// orçamento, prazos e forma de pagamento". Às 13h54: "sim vira produto, é la na vitrine que vou buscar esse mesmo
-// material para outros clientes que demandarem e posteriormente anunciaremos esse serviço, claro que sem mostrar
-// valores, por isso orçamento é separado"; e "validade do orçamento sempre até o último dia útil do mês subsequente".
+// MACEDO & REIS — Os produtos do societário pro WhatsApp (24/11/2026). São dois, com o mesmo material:
+// - a transformação do MEI em ME (o caso real 2 dos produtos: o gerente de uma empresa, pela transformação do MEI do
+//   titular). O pedido do Samuel: "passo a passos com prazos em cada etapa e valores, algo objetivo, visual e de simples
+//   entendimento", com "a apresentação do que é o serviço de transformação" e, "em documento separado, o orçamento,
+//   prazos e forma de pagamento". Às 13h54: "sim vira produto, é la na vitrine que vou buscar esse mesmo material para
+//   outros clientes que demandarem e posteriormente anunciaremos esse serviço, claro que sem mostrar valores, por isso
+//   orçamento é separado"; e "validade do orçamento sempre até o último dia útil do mês subsequente";
+// - a abertura de empresa, a constituição de CNPJ (o caso real 3, no mesmo dia, 14h52: "a gente já precisa criar nos
+//   mesmos moldes da transformação, o produto constituição de CNPJ ... documentação, informações e valores são os
+//   mesmos da transformação, com poucas exceções no texto como não mencionar sobre desenquadramento").
 //
-// Aqui ficam o texto (o do Samuel, revisado de leve), os valores de sempre, a validade e a mensagem. Puro, sem DOM e
-// sem banco: as imagens saem de transformacao-mei-imagem.js, e a janela, de transformacao-mei-janela.js, aberta pelo
-// produto "Transformação do MEI em ME" da Vitrine de serviços (comercial-servicos.html).
+// Aqui ficam o texto de cada produto (PRODUTOS), os valores de sempre (lidos do banco), a validade e a mensagem. Puro,
+// sem DOM e sem banco: as imagens saem de societario-produtos-imagem.js, e a janela, de societario-produtos-janela.js,
+// aberta pelos produtos da Vitrine de serviços (comercial-servicos.html).
+// Produto novo da família = uma entrada em PRODUTOS, o grupo dele na aba Parâmetros da Precificação (com o nome em
+// TITULOS, pelas 3 primeiras letras, que não podem bater com as de outro grupo) e a linha no MATERIAL da Vitrine.
 // ============================================================================
 import { diaUtil, somaDias, isoValida, fmtData } from './rescisao-datas.js';
 import { primeiroNome, reais, artigo } from './mei-planos.js';
 
-// ---------- a apresentação (as duas primeiras imagens: servem pra qualquer cliente e não têm valor nenhum) ----------
-export const TITULO = 'Transformação do MEI em ME';
+// ---------- o que os produtos têm em comum ----------
+// a apresentação (as duas primeiras imagens: servem pra qualquer cliente e não têm valor nenhum)
+export const SUBTITULO = 'Como funciona, na prática, do primeiro passo até a inscrição na prefeitura.';
 export const PRIMEIROS = [
   { icone: 'doc', titulo: 'Envio das informações', texto: 'A documentação necessária está na próxima imagem.' },
   { icone: 'reais', titulo: 'Acerto financeiro', texto: 'O investimento e o pagamento estão no orçamento, que vai à parte.' }
 ];
-export const OBRIGATORIO = 'Daqui em diante, tudo o que fazemos é obrigatório para a empresa se tornar ME de forma regular, conforme as disposições legais vigentes.';
-// as etapas, na ordem, com a média de dias úteis dos últimos processos (o orçamento mostra os prazos)
-export const ETAPAS = [
-  { n: 1, titulo: 'Receita Federal e Junta Comercial', dias: 15, itens: [
-    'Comunicação do desenquadramento do MEI à Receita Federal',
-    'Envio da viabilidade à Junta Comercial',
-    'Assinatura do Contrato Social'] },
-  { n: 2, titulo: 'Junta Comercial e Simples Nacional', dias: 5, itens: [
-    'Conclusão na Junta Comercial, após a assinatura do Contrato Social',
-    'Enquadramento da empresa no Simples Nacional'] },
-  { n: 3, titulo: 'Receita Estadual (SEFAZ RS)', dias: 2, itens: [
-    'Atualização ou solicitação da Inscrição Estadual'] },
-  { n: 4, titulo: 'Prefeitura Municipal', dias: 2, itens: [
-    'Solicitação da inscrição municipal (Alvará de Localização)'] }
-];
-// o fim da linha do tempo: "passa a ser ME", e não "regularizada", porque os alvarás dos Bombeiros e Sanitário não estão
-// no serviço
-export const PRONTO = 'Pronto: a empresa passa a ser ME.';
 // a lista do Samuel (24/11/2026, 13h48)
 export const DOCUMENTOS = [
   { grupo: 'Da empresa', itens: [
@@ -56,22 +45,75 @@ export const DOCUMENTOS = [
     { t: 'Conta gov.br nível prata ou ouro', nota: 'O nível aparece no app gov.br, em "Nível da conta". Não pedimos a sua senha.' }] }
 ];
 export const COMECO = 'Com tudo em mãos e o acerto feito, começamos em até 24 horas.';
-
-// ---------- o orçamento (a terceira imagem, à parte) ----------
-// os valores de sempre ficam no banco, nunca aqui: o repositório é público, e o anúncio não mostra valores ("claro que sem
-// mostrar valores, por isso orçamento é separado"). Ficam na Precificação, aba Parâmetros, no grupo "Transformação do MEI
-// em ME" (precificacao_parametros, grupo transformacao_mei, uma linha por chave de CHAVES); a janela lê de lá
-export const GRUPO_PARAMETROS = 'transformacao_mei';
-export const CHAVES = { aVista: 'Valor à vista', entrada: 'Entrada do a prazo', parcela: 'Parcela do a prazo, em 30 dias' };
+// o orçamento (a terceira imagem, à parte)
 export const DIAS_DA_PARCELA = 30;
 export const PAGAMENTO = 'Aceitamos Pix ou dinheiro. Para o cartão de crédito, consultamos as taxas.';
-export const INICIO = 'Em até 24 horas depois das informações e do acerto, fazemos o desenquadramento do MEI e enviamos a viabilidade à Junta Comercial.';
 export const NOTA_PRAZOS = 'O prazo depende do retorno dos órgãos públicos. Por isso, trazemos a média dos últimos processos que fizemos: o seu pode demorar um pouco mais ou um pouco menos.';
 export const NAO_INCLUSO = ['Alvará dos Bombeiros (se for necessário)', 'Alvará Sanitário (se for necessário)'];
 export const NOTA_NAO_INCLUSO = 'Mesmo assim, podemos ajudar a obter esses alvarás. O sanitário, que pode ser preciso para a inscrição municipal, encaminhamos sem cobrança adicional.';
+// os valores de sempre ficam no banco, nunca aqui: o repositório é público, e o anúncio não mostra valores ("claro que sem
+// mostrar valores, por isso orçamento é separado"). Ficam na Precificação, aba Parâmetros, cada produto no grupo dele
+// (precificacao_parametros, o grupo do produto, uma linha por chave de CHAVES); a janela lê de lá
+export const CHAVES = { aVista: 'Valor à vista', entrada: 'Entrada do a prazo', parcela: 'Parcela do a prazo, em 30 dias' };
+const COMUM = { subtitulo: SUBTITULO, primeiros: PRIMEIROS, documentos: DOCUMENTOS, comeco: COMECO };
+
+// ---------- cada produto ----------
+// etapas: na ordem, com a média de dias úteis dos últimos processos (o orçamento mostra os prazos); pronto: o fim da
+// linha do tempo, que não diz "regularizada", porque os alvarás dos Bombeiros e Sanitário não estão no serviço
+export const PRODUTOS = {
+  transformacao: {
+    ...COMUM, id: 'transformacao', slug: 'transformacao-mei', grupo: 'transformacao_mei',
+    titulo: 'Transformação do MEI em ME',
+    cliente: 'Cliente (o titular do MEI)',
+    obrigatorio: 'Daqui em diante, tudo o que fazemos é obrigatório para a empresa se tornar ME de forma regular, conforme as disposições legais vigentes.',
+    etapas: [
+      { n: 1, titulo: 'Receita Federal e Junta Comercial', dias: 15, itens: [
+        'Comunicação do desenquadramento do MEI à Receita Federal',
+        'Envio da viabilidade à Junta Comercial',
+        'Assinatura do Contrato Social'] },
+      { n: 2, titulo: 'Junta Comercial e Simples Nacional', dias: 5, itens: [
+        'Conclusão na Junta Comercial, após a assinatura do Contrato Social',
+        'Enquadramento da empresa no Simples Nacional'] },
+      { n: 3, titulo: 'Receita Estadual (SEFAZ RS)', dias: 2, itens: [
+        'Atualização ou solicitação da Inscrição Estadual'] },
+      { n: 4, titulo: 'Prefeitura Municipal', dias: 2, itens: [
+        'Solicitação da inscrição municipal (Alvará de Localização)'] }
+    ],
+    pronto: 'Pronto: a empresa passa a ser ME.',
+    inicio: 'Em até 24 horas depois das informações e do acerto, fazemos o desenquadramento do MEI e enviamos a viabilidade à Junta Comercial.',
+    naMensagem: 'a transformação do seu MEI em ME'
+  },
+  // a mesma documentação, os mesmos prazos e os mesmos valores (com o grupo dele nos Parâmetros, pra poder mudar à parte);
+  // sem o desenquadramento, com o cadastro da empresa na Receita (o DBE), o registro que dá o CNPJ e a opção pelo Simples
+  // quando é o regime escolhido (a empresa nova escolhe; o MEI que vira ME já estava no Simples)
+  constituicao: {
+    ...COMUM, id: 'constituicao', slug: 'constituicao-cnpj', grupo: 'constituicao_cnpj',
+    titulo: 'Abertura de empresa',
+    cliente: 'Cliente',
+    obrigatorio: 'Daqui em diante, tudo o que fazemos é obrigatório para a empresa ser aberta de forma regular, conforme as disposições legais vigentes.',
+    etapas: [
+      { n: 1, titulo: 'Receita Federal e Junta Comercial', dias: 15, itens: [
+        'Envio da viabilidade à Junta Comercial',
+        'Cadastro da empresa na Receita Federal (o DBE)',
+        'Assinatura do Contrato Social'] },
+      { n: 2, titulo: 'Junta Comercial e Simples Nacional', dias: 5, itens: [
+        'Registro na Junta Comercial e emissão do CNPJ, após a assinatura do Contrato Social',
+        'Opção pelo Simples Nacional, quando for o regime escolhido'] },
+      { n: 3, titulo: 'Receita Estadual (SEFAZ RS)', dias: 2, itens: [
+        'Solicitação da Inscrição Estadual (comércio e indústria)'] },
+      { n: 4, titulo: 'Prefeitura Municipal', dias: 2, itens: [
+        'Solicitação da inscrição municipal (Alvará de Localização)'] }
+    ],
+    pronto: 'Pronto: a empresa está aberta.',
+    inicio: 'Em até 24 horas depois das informações e do acerto, enviamos a viabilidade à Junta Comercial.',
+    naMensagem: 'a abertura da empresa'
+  }
+};
+// o produto pelo id ('transformacao', 'constituicao'); o que não existe, null
+export const produtoDe = id => (Object.prototype.hasOwnProperty.call(PRODUTOS, id) ? PRODUTOS[id] : null);
 
 // a soma das médias de todas as etapas (24 dias úteis)
-export const totalDeDias = () => ETAPAS.reduce((s, e) => s + e.dias, 0);
+export const totalDeDias = p => p.etapas.reduce((s, e) => s + e.dias, 0);
 // "um pouco mais de um mês": os dias úteis em semanas de 5, contados como gente conta
 export function emPalavras(dias) {
   const semanas = dias / 5;
@@ -110,12 +152,12 @@ export function lerValor(v) {
   const n = Number(/,\d{1,2}$/.test(s) ? s.replace(/\./g, '').replace(',', '.') : s.replace(/[.,](?=\d{3}(\D|$))/g, ''));
   return Number.isFinite(n) && n >= 0 && n <= 1e7 ? Math.round(n * 100) / 100 : null;
 }
-// os valores de sempre, das linhas do banco ({ grupo, chave, valor }): { aVista, entrada, parcela }, com null no que falta
-// (o zero também: preço zero não é preço)
-export function valoresDosParametros(linhas) {
+// os valores de sempre do produto, das linhas do banco ({ grupo, chave, valor }): { aVista, entrada, parcela }, com null
+// no que falta (o zero também: preço zero não é preço)
+export function valoresDosParametros(linhas, p) {
   const v = {};
   for (const [campo, chave] of Object.entries(CHAVES)) {
-    const l = (linhas || []).find(x => x && x.grupo === GRUPO_PARAMETROS && x.chave === chave);
+    const l = (linhas || []).find(x => x && p && x.grupo === p.grupo && x.chave === chave);
     const n = l && l.valor != null && l.valor !== '' ? lerValor(Number(l.valor)) : null;
     v[campo] = n > 0 ? n : null;
   }
@@ -148,15 +190,15 @@ export function dadosDoOrcamento({ cliente = '', dia, valores = {} } = {}) {
 }
 
 // a mensagem que vai junto das imagens (a tela deixa editar antes de copiar)
-export function mensagemDaTransformacao({ nome, quem, validade } = {}) {
+export function mensagemDoProduto(p, { nome, quem, validade } = {}) {
   const pn = primeiroNome(nome);
   const eu = String(quem || '').trim();
   const linhas = [];
   linhas.push(`Oi${pn ? ', ' + pn : ''}! Tudo bem? ${eu ? `Aqui é ${[artigo(eu), eu].filter(Boolean).join(' ')}, da Macedo & Reis Contabilidade.` : 'Aqui é da Macedo & Reis Contabilidade.'}`);
   linhas.push('');
-  linhas.push('Segue como funciona, na prática, a transformação do seu MEI em ME:');
+  linhas.push(`Segue como funciona, na prática, ${p.naMensagem}:`);
   linhas.push('');
-  linhas.push('Na 1ª imagem, o passo a passo: os primeiros passos com você e as 4 etapas que fazemos nos órgãos.');
+  linhas.push(`Na 1ª imagem, o passo a passo: os primeiros passos com você e as ${p.etapas.length} etapas que fazemos nos órgãos.`);
   linhas.push('Na 2ª, a documentação que vamos precisar.');
   linhas.push('E, em separado, o orçamento, com os prazos de cada etapa e as formas de pagamento' + (isoValida(validade) ? ` (vale até ${fmtData(validade)}).` : '.'));
   linhas.push('');
@@ -165,10 +207,10 @@ export function mensagemDaTransformacao({ nome, quem, validade } = {}) {
 }
 
 // o nome dos arquivos: as duas da apresentação e o orçamento, com o primeiro nome do cliente
-export function nomeDoArquivo(cliente, i) {
-  if (i < 2) return `${TITULO} (${i + 1} de 2).png`;
+export function nomeDoArquivo(p, cliente, i) {
+  if (i < 2) return `${p.titulo} (${i + 1} de 2).png`;
   const pn = primeiroNome(cliente);
-  return `Orçamento - ${TITULO}${pn ? ' - ' + pn : ''}.png`;
+  return `Orçamento - ${p.titulo}${pn ? ' - ' + pn : ''}.png`;
 }
 
 // o texto do resumo da janela: o a prazo somado e a validade
