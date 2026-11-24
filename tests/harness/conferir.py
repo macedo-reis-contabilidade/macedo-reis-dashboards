@@ -80,7 +80,7 @@ def main(telas, sem_sessao=False):
                 p.add_init_script(f"localStorage.setItem('mr_tema', '{tema}')")
             else:
                 p.goto(base + 'index.html')
-                p.evaluate(f"() => {{ localStorage.setItem('mr_tema', '{tema}'); for (const k of ['agenda_v1','reforma_v1','clientes_v1']) localStorage.setItem('mr_tour_' + k + '::financeiro@macedoereis.com.br', 'ok'); }}")
+                p.evaluate(f"() => {{ localStorage.setItem('mr_tema', '{tema}'); for (const k of ['agenda_v2','reforma_v1','clientes_v1']) localStorage.setItem('mr_tour_' + k + '::financeiro@macedoereis.com.br', 'ok'); }}")
             for t in telas:
                 p.goto(base + t); p.wait_for_timeout(1500)
                 nome = re.sub(r'[^A-Za-z0-9_-]+', '_', t.replace('.html', ''))   # aceita tela?id=... (o Windows não deixa ? no nome)

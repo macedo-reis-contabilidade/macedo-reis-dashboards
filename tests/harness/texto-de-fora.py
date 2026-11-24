@@ -151,10 +151,10 @@ def main():
 
         print('6. Agenda')
         p = abrir(b, base, 'agenda.html', erros, largura=1700)
-        p.wait_for_selector('#sdDia .sd-atras', timeout=6000)
+        p.wait_for_selector('#sdAtras .sd-atras', timeout=6000)
         minhas = p.evaluate("""() => { const h = new Date().toLocaleDateString('sv-SE');
           return window.__mockDb.tarefas.filter(t => t.status !== 'concluida' && t.prazo && t.prazo < h && ['samuel', 'ambos'].includes(String(t.responsavel).toLowerCase())).map(t => t.id); }""")
-        txt = ' '.join(p.text_content('#sdDia .sd-atras').split())
+        txt = ' '.join(p.text_content('#sdAtras .sd-atras').split())
         ok('tx9' in minhas and txt.startswith('%d atrasadas suas' % len(minhas)), f'6. "Seu dia": as atrasadas do Samuel contam a "aguardando" da proposta ({len(minhas)}: "{txt}")')
         p.click('.fa-focus-card[data-foco="atrasadas"]')
         p.wait_for_selector('[data-bstask="tx9"]', timeout=4000)

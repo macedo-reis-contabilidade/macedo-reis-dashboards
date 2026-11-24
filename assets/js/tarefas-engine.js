@@ -20,28 +20,42 @@ import { EQUIPE as EQUIPE_ATUAL, saiuDaEquipe } from './equipe.js';
 import { corDaPessoa, inicialDaPessoa } from './cores-pessoas.js';   // cada pessoa com a sua cor (13/11/2026)
 
 const CSS = `
-  .fa-focus { display:grid; grid-template-columns:repeat(5,1fr); gap:12px; margin-bottom:22px; }
-  .fa-focus-card { background:var(--fill-1); border:1px solid var(--line); border-radius:14px; padding:14px 16px; cursor:pointer; text-align:left; transition:border-color .15s, background .15s; display:flex; flex-direction:column; gap:4px; }
-  .fa-focus-card:hover { border-color:rgba(138,174,200,.4); }
-  .fa-focus-card.is-active { border-color:var(--brand-primary); background:rgba(91,130,166,.10); }
-  .fc-num { font-size:24px; font-weight:700; color:var(--text); line-height:1; }
-  .fc-lbl { font-size:12px; color:var(--text-muted); }
-  .fa-focus-card.fc-danger .fc-num { color:var(--err); }
+  /* o visual da Agenda nova (24/11/2026): as listas em pílulas, os grupos em cartão, o progresso em champanhe e as
+     etiquetas suaves. A lógica da tela é a mesma */
+  :root { --te-tinta:12%; --te-hover:color-mix(in srgb, var(--surface-2) 70%, var(--surface)); }
+  :root[data-theme="light"] { --te-tinta:8%; }
+  .fa-focus { display:flex; flex-wrap:wrap; gap:6px; margin-bottom:22px; }
+  .fa-focus-card { display:inline-flex; align-items:center; gap:6px; height:34px; padding:0 14px; border-radius:999px; border:1px solid var(--line); background:var(--fill-1); color:var(--text-muted); font:inherit; font-size:13px; font-weight:600; cursor:pointer; white-space:nowrap; text-align:left; transition:background .15s, border-color .15s, color .15s; }
+  .fa-focus-card:hover { border-color:var(--line-strong); color:var(--text); }
+  .fa-focus-card.is-active { background:color-mix(in srgb, var(--brand-primary) 18%, var(--surface)); border-color:var(--brand-primary); color:var(--text); }
+  .fa-focus-card:focus-visible { outline:2px solid var(--brand-light); outline-offset:2px; }
+  .fc-num { font-size:14px; font-weight:800; color:var(--text); line-height:1; font-variant-numeric:tabular-nums; }
+  .fc-lbl { font-size:13px; }
+  .fa-focus-card.fc-danger.tem .fc-num { color:var(--err); }
 
   .fa-sel { max-width:200px; }
   .fa-toolbar-actions { display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
 
-  .fa-grupo { background:var(--fill-1); border:1px solid var(--line); border-radius:14px; margin-bottom:10px; overflow:hidden; }
-  .fa-grupo-head { display:flex; align-items:center; gap:12px; padding:14px 18px; cursor:pointer; list-style:none; user-select:none; }
+  .fa-grupo { background:var(--surface); border:1px solid var(--line); border-radius:16px; margin-bottom:10px; overflow:hidden; }
+  .fa-grupo-head { display:flex; align-items:center; gap:12px; min-height:58px; padding:10px 18px; cursor:pointer; list-style:none; user-select:none; transition:background .15s; }
+  .fa-grupo-head:hover { background:var(--te-hover); }
   .fa-grupo-head::-webkit-details-marker { display:none; }
-  .fa-grupo-chev { color:var(--text-muted); transition:transform .15s; flex:none; }
+  .fa-grupo-head:focus-visible { outline:2px solid var(--brand-light); outline-offset:-2px; border-radius:16px; }
+  .fa-grupo-chev { color:var(--text-muted); transition:transform .2s; flex:none; }
   .fa-grupo[open] .fa-grupo-chev { transform:rotate(90deg); }
-  .fa-grupo-nome { font-weight:600; color:var(--text); font-size:15px; }
+  .fa-grupo-nome { font-weight:600; color:var(--text); font-size:15px; line-height:1.35; }
   .fa-grupo-meta { color:var(--text-muted); font-size:13px; flex:1; }
-  .fa-grupo-prog { color:var(--brand-light); font-size:13px; font-variant-numeric:tabular-nums; background:rgba(91,130,166,.12); border:1px solid rgba(91,130,166,.25); border-radius:999px; padding:2px 10px; }
-  .fa-grupo-body { border-top:1px solid var(--line); padding:4px 6px 8px; }
+  .fa-grupo-prog { display:inline-flex; align-items:center; gap:10px; flex:none; font-size:12.5px; font-weight:700; color:var(--text-2); font-variant-numeric:tabular-nums; white-space:nowrap; }
+  .fa-grupo-prog.ok { color:var(--ok); }
+  .te-segs { display:inline-flex; gap:3px; }
+  .te-segs i { display:block; width:14px; height:6px; border-radius:3px; background:var(--fill-3); }
+  .te-segs i.on { background:var(--sol-forte); }
+  .te-minibar { display:inline-block; width:72px; height:6px; border-radius:6px; background:var(--fill-3); overflow:hidden; }
+  .te-minibar i { display:block; height:100%; border-radius:6px; background:var(--sol-forte); }
+  .fa-grupo-body { border-top:1px solid var(--line); padding:0; }
   .fa-grupo-body .table { margin:0; }
-  .fa-grupo-body .table td { padding:9px 12px; }
+  .fa-grupo-body .table td { padding:12px 16px; border-bottom-color:var(--line); vertical-align:middle; }
+  @media (max-width:640px) { .fa-grupo-head { flex-wrap:wrap; row-gap:4px; padding:10px 14px; } .fa-grupo-meta { order:3; flex-basis:100%; padding-left:26px; } }
 
   .fa-atrasada { color:var(--err); font-weight:600; }
   .fa-row-done { opacity:.5; }
@@ -49,24 +63,40 @@ const CSS = `
   .fa-chk-td { width:34px; padding-right:0 !important; }
   .fa-chk { width:16px; height:16px; accent-color:var(--brand-primary); cursor:pointer; vertical-align:middle; margin:0; }
   .fa-chk-head { margin-right:2px; }
-  .fa-lote { display:flex; align-items:center; gap:12px; flex-wrap:wrap; padding:10px 14px; margin:6px 6px 2px; background:rgba(91,130,166,.10); border:1px solid rgba(91,130,166,.3); border-radius:10px; font-size:13px; color:var(--brand-pale); }
+  .fa-lote { display:flex; align-items:center; gap:12px; flex-wrap:wrap; padding:10px 14px; margin:10px 12px 4px; background:rgba(91,130,166,.10); border:1px solid rgba(91,130,166,.3); border-radius:10px; font-size:13px; color:var(--brand-pale); }
   .fa-lote[hidden] { display:none; } /* [hidden] perde do display:flex — mesmo pitfall do .btn[hidden] na ficha */
   .fa-lote.is-rodando ~ table tr.fa-row-proc { pointer-events:none; }
-  @media (max-width:768px){ .fa-chk-td { display:none !important; } .fa-chk-td:has(input) { display:flex !important; } .fa-chk-td::before { content:"Selecionar" !important; } }
+  /* no celular (24/11/2026): cada tarefa em duas linhas — a caixa, a empresa e a situação em cima; quem e o prazo embaixo —
+     no lugar do cartão de rótulos da tabela; e a busca e os filtros com a largura toda */
+  @media (max-width:768px){
+    .fa-grupo-body .table tbody tr.fa-row-proc { display:grid; grid-template-columns:auto minmax(0,1fr) auto; grid-template-areas:"chk cli st" "chk resp prazo"; align-items:center; column-gap:12px; row-gap:6px; padding:12px 14px; border-bottom:1px solid var(--line); }
+    .fa-grupo-body .table tbody tr.fa-row-proc:last-child { border-bottom:none; }
+    .fa-grupo-body .table tbody tr.fa-row-proc > td { display:block; min-width:0; padding:0; border:none; }
+    .fa-grupo-body .table tbody tr.fa-row-proc > td::before { content:none; display:none; }
+    .fa-grupo-body .table tbody tr.fa-row-proc > td.fa-chk-td { grid-area:chk; display:flex; width:auto; }
+    .fa-grupo-body .table tbody tr.fa-row-proc > td.fa-chk-td:not(:has(input)) { display:none; }
+    .fa-grupo-body .table tbody tr.fa-row-proc > td.te-c-cli { grid-area:cli; font-weight:600; color:var(--text); overflow-wrap:anywhere; }
+    .fa-grupo-body .table tbody tr.fa-row-proc > td.te-c-st { grid-area:st; justify-self:end; }
+    .fa-grupo-body .table tbody tr.fa-row-proc > td.te-c-resp { grid-area:resp; font-size:13px; color:var(--text-muted); }
+    .fa-grupo-body .table tbody tr.fa-row-proc > td.te-c-prazo { grid-area:prazo; justify-self:end; font-size:13px; color:var(--text-muted); white-space:nowrap; }
+    .te-toolbar .toolbar-filters { flex:1 1 100%; }
+    .te-toolbar .fa-sel { flex:1 1 140px; max-width:none; min-width:0; }
+    .te-toolbar .fa-toolbar-actions { width:100%; }
+  }
   .fa-lote b { color:var(--text); }
   .fa-lote .btn-ghost { border-color:var(--line-strong); }   /* "Registrar andamento": no claro a borda padrão some no fundo da barra */
   .fa-lote-aviso { flex-basis:100%; font-size:12px; color:var(--text-muted); }
-  .fa-lote-resumo { margin:6px 6px 2px; padding:10px 14px; border-radius:10px; font-size:13px; line-height:1.5; }
+  .fa-lote-resumo { margin:10px 12px 4px; padding:10px 14px; border-radius:10px; font-size:13px; line-height:1.5; }
   .fa-lote-resumo.ok { background:rgba(63,176,122,.12); border:1px solid rgba(63,176,122,.35); color:var(--ok); }
   .fa-lote-resumo.erro { background:rgba(224,108,108,.10); border:1px solid rgba(224,108,108,.35); color:var(--text); }
   .fa-lote-resumo.erro b { color:var(--err); }
   .fa-lote-msg { font-size:12.5px; color:var(--err); }   /* aviso dentro da janela do lote (andamento sem texto) */
   .fa-row-proc { cursor:pointer; transition:background .12s; }
-  .fa-row-proc:hover { background:var(--fill-1); }
-  .pill { display:inline-block; font-size:11px; font-weight:600; border-radius:999px; padding:3px 10px; }
-  .pill-pend { color:var(--warn); background:rgba(227,179,65,.14); border:1px solid rgba(227,179,65,.3); }
-  .pill-and { color:var(--brand-light); background:rgba(91,130,166,.14); border:1px solid rgba(91,130,166,.3); }
-  .pill-ok { color:var(--ok); background:rgba(63,176,122,.14); border:1px solid rgba(63,176,122,.3); }
+  .fa-grupo-body .table tbody tr.fa-row-proc:hover { background:var(--te-hover); }
+  .pill { display:inline-flex; align-items:center; height:22px; padding:0 9px; border-radius:999px; font-size:12px; font-weight:700; line-height:1; white-space:nowrap; }
+  .pill-pend { color:var(--warn); background:color-mix(in srgb, var(--warn) var(--te-tinta), transparent); }
+  .pill-and { color:var(--brand-light); background:color-mix(in srgb, var(--brand-light) var(--te-tinta), transparent); }
+  .pill-ok { color:var(--ok); background:color-mix(in srgb, var(--ok) var(--te-tinta), transparent); }
   .det-empresa { display:flex; flex-direction:column; gap:2px; }
   .det-empresa span { font-size:13px; color:var(--brand-light); }
   .det-empresa strong { color:var(--text); font-size:15px; }
@@ -104,17 +134,18 @@ const CSS = `
   .te-tipo.is-on { background:rgba(91,130,166,.22); color:var(--text); border-color:rgba(91,130,166,.6); }
 
   /* faixa Rotinas de hoje */
-  .te-rot-faixa { background:rgba(91,130,166,.08); border:1px solid rgba(91,130,166,.22); border-radius:14px; padding:12px 16px; margin-bottom:18px; }
-  .te-rot-top { display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:8px; }
-  .te-rot-tit { color:var(--text); font-size:14px; font-weight:600; }
-  .te-rot-item { display:flex; align-items:center; gap:12px; padding:7px 2px; }
-  .te-rot-item + .te-rot-item { border-top:1px solid var(--line); }
+  .te-rot-faixa { background:var(--surface); border:1px solid var(--line); border-radius:18px; padding:14px 14px 10px; margin-bottom:22px; }
+  .te-rot-top { display:flex; align-items:center; gap:10px; margin:0 6px 6px; }
+  .te-rot-tit { font-family:var(--font-display); font-size:17px; font-weight:600; letter-spacing:-.005em; color:var(--text); }
+  .te-rot-cont { display:inline-flex; align-items:center; height:22px; padding:0 9px; border-radius:999px; background:var(--fill-3); color:var(--text-2); font-size:12px; font-weight:700; font-variant-numeric:tabular-nums; }
+  .te-rot-item { display:flex; align-items:center; gap:12px; min-height:44px; padding:2px 6px 2px 8px; border-radius:12px; }
+  .te-rot-item:hover { background:var(--fill-2); }
   .rt-check { flex:0 0 auto; width:26px; height:26px; border-radius:50%; border:2px solid var(--line-strong); background:none; color:transparent; display:flex; align-items:center; justify-content:center; cursor:pointer; transition:all .15s ease; }
   .rt-check:hover { border-color:var(--ok); }
   .rt-check.is-done { background:var(--ok); border-color:var(--ok); color:var(--bg); }
-  .te-rot-nome { color:var(--text); font-size:14px; flex:1; min-width:0; }
-  .te-rot-nome small { color:var(--text-muted); font-size:12px; margin-left:8px; }
-  .rt-pill { display:inline-block; font-size:11px; font-weight:600; color:var(--brand-light); background:rgba(91,130,166,.16); border:1px solid rgba(91,130,166,.3); border-radius:999px; padding:2px 8px; }
+  .te-rot-nome { color:var(--text); font-size:14px; font-weight:600; flex:1; min-width:0; overflow-wrap:anywhere; }
+  .te-rot-nome small { color:var(--text-muted); font-size:12px; font-weight:500; margin-left:8px; }
+  .rt-pill { display:inline-flex; align-items:center; height:22px; padding:0 9px; border-radius:999px; font-size:12px; font-weight:700; white-space:nowrap; color:var(--text-2); background:var(--fill-3); }
   .rt-link { background:none; border:none; color:var(--brand-light); cursor:pointer; font-size:13px; padding:3px 6px; font-family:inherit; }
   .rt-link:hover { color:var(--brand-pale); text-decoration:underline; }
   .rt-del:hover { color:var(--err); }
@@ -131,7 +162,7 @@ const CSS = `
   .rt-acoes { display:flex; align-items:center; gap:4px; flex:0 0 auto; }
   .rt-inativa { opacity:.5; }
   .rt-sec-title { color:var(--text-muted); font-size:12.5px; text-transform:uppercase; letter-spacing:.04em; margin:18px 0 8px; }
-  .rt-item.is-done .rt-pill { color:var(--ok); border-color:rgba(63,176,122,.3); background:rgba(63,176,122,.12); }
+  .rt-item.is-done .rt-pill { color:var(--ok); background:color-mix(in srgb, var(--ok) var(--te-tinta), transparent); }
   .rt-agendada { opacity:.7; }
   .rt-check-off { color:var(--text-muted); cursor:default; }
   .rt-check-off:hover { border-color:var(--line-strong); }
@@ -146,7 +177,6 @@ const CSS = `
   .te-cob-box.is-open { display:flex; }
   .te-cob-box .fa-field > span { font-size:12.5px; }
 
-  @media (max-width:720px){ .fa-focus { grid-template-columns:repeat(2,1fr); } }
   @media (max-width:560px){ .rt-item { flex-wrap:wrap; } .rt-acoes { width:100%; justify-content:flex-end; margin-top:4px; } }
 `;
 
@@ -227,14 +257,14 @@ export function initTarefas(userCfg) {
     ${listaResp}
 
     ${MODO_ROTINAS ? '' : `<div class="fa-focus">
-      <button class="fa-focus-card fc-danger" data-periodo="atrasadas"><span class="fc-num" id="cAtras">0</span><span class="fc-lbl">Atrasadas</span></button>
-      <button class="fa-focus-card" data-periodo="hoje"><span class="fc-num" id="cHoje">0</span><span class="fc-lbl">Vencem hoje</span></button>
-      <button class="fa-focus-card" data-periodo="7dias"><span class="fc-num" id="c7">0</span><span class="fc-lbl">Próximos 7 dias</span></button>
-      <button class="fa-focus-card is-active" data-periodo="mes"><span class="fc-num" id="cMes">0</span><span class="fc-lbl">Este mês</span></button>
-      <button class="fa-focus-card" data-periodo="todas"><span class="fc-num" id="cTodas">0</span><span class="fc-lbl">Todas</span></button>
+      <button class="fa-focus-card fc-danger" data-periodo="atrasadas" aria-pressed="false"><span class="fc-num" id="cAtras">0</span><span class="fc-lbl">Atrasadas</span></button>
+      <button class="fa-focus-card" data-periodo="hoje" aria-pressed="false"><span class="fc-num" id="cHoje">0</span><span class="fc-lbl">Vencem hoje</span></button>
+      <button class="fa-focus-card" data-periodo="7dias" aria-pressed="false"><span class="fc-num" id="c7">0</span><span class="fc-lbl">Próximos 7 dias</span></button>
+      <button class="fa-focus-card is-active" data-periodo="mes" aria-pressed="true"><span class="fc-num" id="cMes">0</span><span class="fc-lbl">Este mês</span></button>
+      <button class="fa-focus-card" data-periodo="todas" aria-pressed="false"><span class="fc-num" id="cTodas">0</span><span class="fc-lbl">Todas</span></button>
     </div>`}
 
-    <div class="toolbar"${MODO_ROTINAS ? ' style="justify-content:flex-end;"' : ''}>
+    <div class="toolbar te-toolbar"${MODO_ROTINAS ? ' style="justify-content:flex-end;"' : ''}>
       <div class="toolbar-filters"${MODO_ROTINAS ? ' style="display:none;"' : ''}>
         <input type="text" id="searchInput" class="input input-search" placeholder="${escA(C.buscaPlaceholder)}">
         <select id="filterStatus" class="select fa-sel">
@@ -488,7 +518,7 @@ export function initTarefas(userCfg) {
 
   document.querySelectorAll('.fa-focus-card').forEach(c => c.addEventListener('click', () => {
     periodo = c.dataset.periodo;
-    document.querySelectorAll('.fa-focus-card').forEach(x => x.classList.toggle('is-active', x === c));
+    document.querySelectorAll('.fa-focus-card').forEach(x => { x.classList.toggle('is-active', x === c); x.setAttribute('aria-pressed', String(x === c)); });
     render();
   }));
 
@@ -708,7 +738,9 @@ export function initTarefas(userCfg) {
 
   function atualizarFoco(){
     const af = tarefas.filter(t => t.status !== 'concluida');
-    $('cAtras').textContent = af.filter(t => t.prazo && t.prazo < hojeStr).length;
+    const nAtras = af.filter(t => t.prazo && t.prazo < hojeStr).length;
+    $('cAtras').textContent = nAtras;
+    $('cAtras').parentElement.classList.toggle('tem', nAtras > 0);   // o número vermelho só quando há atrasada
     $('cHoje').textContent = af.filter(t => t.prazo === hojeStr).length;
     $('c7').textContent = af.filter(t => t.prazo && t.prazo >= hojeStr && t.prazo <= em7Str).length;
     $('cMes').textContent = af.filter(t => !t.prazo || t.prazo.slice(0,7) === anoMes).length;
@@ -752,10 +784,10 @@ export function initTarefas(userCfg) {
         const caixa = t.status === 'concluida' ? '' : '<input type="checkbox" class="fa-chk" data-sel="'+t.id+'" aria-label="Selecionar">';
         return '<tr class="fa-row-proc '+(t.status==='concluida'?'fa-row-done':'')+'" data-id="'+t.id+'">'+
           '<td class="fa-chk-td" data-label="">'+caixa+'</td>'+
-          '<td data-label="'+escA(C.clienteLabel)+'">'+(t.faturavel ? '<span title="Faturável: ao concluir, gera a tarefa Faturar: pro Samuel">💰</span> ' : '')+cli+(rotuloDoProgresso(t.descricao) ? ' <small style="color:var(--text-muted);white-space:nowrap" title="Itens da lista feitos">'+rotuloDoProgresso(t.descricao)+'</small>' : '')+'</td>'+
-          '<td data-label="Responsável">'+(t.responsavel?chipPessoa(t.responsavel):'—')+'</td>'+
-          '<td data-label="Prazo">'+(t.prazo?'<span class="'+(atrasada?'fa-atrasada':'')+'">'+formatDate(t.prazo)+'</span>':'—')+'</td>'+
-          '<td data-label="Status">'+statusPill(t.status)+'</td></tr>';
+          '<td class="te-c-cli" data-label="'+escA(C.clienteLabel)+'">'+(t.faturavel ? '<span title="Faturável: ao concluir, gera a tarefa Faturar: pro Samuel">💰</span> ' : '')+cli+(rotuloDoProgresso(t.descricao) ? ' <small style="color:var(--text-muted);white-space:nowrap" title="Itens da lista feitos">'+rotuloDoProgresso(t.descricao)+'</small>' : '')+'</td>'+
+          '<td class="te-c-resp" data-label="Responsável">'+(t.responsavel?chipPessoa(t.responsavel):'—')+'</td>'+
+          '<td class="te-c-prazo" data-label="Prazo">'+(t.prazo?'<span class="'+(atrasada?'fa-atrasada':'')+'">'+formatDate(t.prazo)+'</span>':'—')+'</td>'+
+          '<td class="te-c-st" data-label="Status">'+statusPill(t.status)+'</td></tr>';
       }).join('');
       return '<details class="fa-grupo" '+aberto+' data-titulo="'+escA(titulo)+'">'+
         '<summary class="fa-grupo-head">'+
@@ -763,7 +795,7 @@ export function initTarefas(userCfg) {
           (abertas ? '<input type="checkbox" class="fa-chk fa-chk-head" data-sel-todas aria-label="Selecionar tod'+(C.itemPluralFem?'as':'os')+' do grupo" title="Marcar/desmarcar tod'+(C.itemPluralFem?'as as':'os os')+' '+escA(C.item)+'s abert'+(C.itemPluralFem?'as':'os')+' do grupo">' : '')+
           '<span class="fa-grupo-nome">'+esc(titulo)+'</span>'+
           '<span class="fa-grupo-meta">'+total+(total>1?' '+esc(C.grupoUnidade[1])+' ':' '+esc(C.grupoUnidade[0])+' ')+prazoLbl+'</span>'+
-          '<span class="fa-grupo-prog">'+concl+'/'+total+'</span>'+
+          '<span class="fa-grupo-prog'+(concl === total ? ' ok' : '')+'" title="'+concl+' de '+total+' '+(C.itemPluralFem ? 'concluídas' : 'concluídos')+'">'+progresso(concl, total)+concl+' de '+total+'</span>'+
         '</summary>'+
         '<div class="fa-grupo-body"><div class="fa-lote" data-lote hidden></div><table class="table"><tbody>'+linhas+'</tbody></table></div>'+
       '</details>';
@@ -963,6 +995,11 @@ export function initTarefas(userCfg) {
     else andamentoLote(det, ids, barra, obs);
   });
 
+  // o progresso do grupo, como na Agenda: um pedaço por tarefa (até 12) ou a barrinha
+  function progresso(feitos, total){
+    if (total > 12) return '<span class="te-minibar" aria-hidden="true"><i style="width:' + Math.round(feitos / total * 100) + '%"></i></span>';
+    return '<span class="te-segs" aria-hidden="true">' + Array.from({ length: total }, (_, i) => '<i' + (i < feitos ? ' class="on"' : '') + '></i>').join('') + '</span>';
+  }
   function menorPrazo(itens){ const ps = itens.map(t=>t.prazo).filter(Boolean).sort(); return ps[0] || ''; }
   const STATUS_LBL = { pendente:'Pendente', em_andamento:'Em andamento', concluida:'Concluído' };
   function statusPill(s){
@@ -1280,7 +1317,7 @@ export function initTarefas(userCfg) {
     const pendentes = rotinasDevidasHoje().filter(r => !feitaNoPeriodo(r));
     if (!pendentes.length) { box.innerHTML = ''; return; }
     box.innerHTML = '<div class="te-rot-faixa">'
-      + '<div class="te-rot-top"><span class="te-rot-tit">Rotinas de hoje</span><span style="font-size:12.5px;color:var(--brand-light);">' + pendentes.length + ' pendente(s)</span></div>'
+      + '<div class="te-rot-top"><span class="te-rot-tit">Rotinas de hoje</span><span class="te-rot-cont">' + (pendentes.length === 1 ? '1 pendente' : pendentes.length + ' pendentes') + '</span></div>'
       + pendentes.map(r =>
         '<div class="te-rot-item">'
         + '<button class="rt-check" data-marca="' + r.id + '" title="Marcar feita"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></button>'

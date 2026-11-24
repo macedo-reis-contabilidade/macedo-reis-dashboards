@@ -9,7 +9,8 @@ Atalhos da esquerda); a Agenda fica centrada, até 1700 px, com a coluna "Seu di
   1. em nenhuma largura existem o Radar nem os Atalhos;
   2. a Agenda centrada, sem passar de 1620 px de conteúdo (1700 menos as margens);
   3. a coluna "Seu dia" à direita da lista, encostada na margem da Agenda, entre 300 e 384 px;
-  4. quando a coluna acompanha a rolagem, ela termina antes do balão do assistente (ou o balão fica fora dela);
+  4. quando a coluna acompanha a rolagem, ela fica abaixo da barra do alto e termina antes do balão do assistente (ou o
+     balão fica fora dela);
   5. sem erro de JavaScript.
 Termina com código 1 se alguma checagem falhar. Pré-requisito: pip install playwright e python -m playwright install chromium
 """
@@ -32,7 +33,7 @@ MEDIR = """() => { const m = document.querySelector('main.content'); const cs = 
   const col = document.querySelector('.ag-dia-col').getBoundingClientRect(), sd = document.getElementById('agSeuDia');
   const rs = sd.getBoundingClientRect(), bal = document.querySelector('.as-lancador'), rb = bal ? bal.getBoundingClientRect() : null;
   return { esq, dir, larg: dir - esq, colDir: col.right, sdEsq: rs.left, sdDir: rs.right, sdLarg: rs.width, sdAlt: sd.offsetHeight,
-           fixa: sd.classList.contains('sd-fixa'), balEsq: rb ? rb.left : null, balTopo: rb ? rb.top : null,
+           fixa: sd.classList.contains('sd-fixa'), topo: parseFloat(getComputedStyle(sd).top) || 0, barra: (document.querySelector('.topbar') || { offsetHeight: 0 }).offsetHeight, balEsq: rb ? rb.left : null, balTopo: rb ? rb.top : null,
            antigos: document.querySelectorAll('.ag-lateral, #agRadarBox, #agAtalhosBox, .ag-atalho, #agResumo').length,
            vw: document.documentElement.clientWidth }; }"""
 
@@ -48,7 +49,7 @@ def main():
             p.on('pageerror', lambda e: erros.append(f'{w}: {e}'))
             p.add_init_script("(() => { const g = Storage.prototype.getItem; Storage.prototype.getItem = function (k) { return String(k).startsWith('mr_tour_') ? 'ok' : g.call(this, k); }; })()")
             p.goto(base + 'agenda.html')
-            p.wait_for_selector('#agSeuDia #sdProximos .sd-dia', timeout=8000)
+            p.wait_for_selector('#agSeuDia #sdDia .sd-anel', timeout=8000)
             p.wait_for_selector('.as-lancador', timeout=6000)
             p.wait_for_timeout(2800)   # a coluna confere de novo a altura depois que o balão chega
             m = p.evaluate(MEDIR)
@@ -60,7 +61,8 @@ def main():
                f'3. "Seu dia" à direita da lista (vão de {m["sdEsq"] - m["colDir"]:.0f} px, largura {m["sdLarg"]:.0f})')
             if m['fixa']:
                 fora = m['balEsq'] is None or m['balEsq'] >= m['sdDir']
-                ok(fora or 16 + m['sdAlt'] <= m['balTopo'] - 12, f'4. presa na tela, ela termina antes do balão (altura {m["sdAlt"]}, balão em {m["balTopo"]})')
+                ok(fora or m['topo'] + m['sdAlt'] <= m['balTopo'] - 12, f'4. presa na tela, ela termina antes do balão (do {m["topo"]:.0f} ao {m["topo"] + m["sdAlt"]:.0f}, balão em {m["balTopo"]})')
+                ok(m['topo'] >= m['barra'], f'4. e fica abaixo da barra do alto (começa em {m["topo"]:.0f}, a barra tem {m["barra"]})')
             else:
                 ok(True, f'4. a coluna rola com a página (altura {m["sdAlt"]} px)')
             p.close()

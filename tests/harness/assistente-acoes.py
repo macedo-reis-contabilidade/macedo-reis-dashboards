@@ -175,7 +175,7 @@ def main():
         ok(not p.query_selector('.ag-card.feita[data-taskid="xa-h1"]'), 'na Agenda, a tarefa de hoje está pendente')
         perguntar('Conclui o extrato de hoje'); p.wait_for_selector(ultimo + ' .as-botao-pri', timeout=5000)
         p.click(ultimo + ' .as-botao-pri')
-        p.wait_for_selector('.ag-card.feita[data-taskid="xa-h1"]', timeout=6000)
+        p.wait_for_selector('.ag-card.feita[data-taskid="xa-h1"]', state='attached', timeout=6000)   # no "Feito hoje", que abre recolhido
         ok(True, 'concluída pelo cartão, a Agenda se atualiza sozinha (vai pra "Concluídas")')
 
         # 3) marcar pago na tela Boletos

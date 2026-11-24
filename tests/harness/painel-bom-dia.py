@@ -177,7 +177,7 @@ def main():
         ok(p.url.endswith('/agenda.html'), '2. "pra hoje" leva à Agenda')
         p.wait_for_function("() => document.getElementById('agPeriodo').textContent.trim().length > 3", timeout=8000)
         ok(p.text_content('#agPeriodo') == 'Sexta-feira, 13 de Novembro', f'8. a data da Agenda por extenso, do jeito da casa ("{p.text_content("#agPeriodo")}")')
-        p.wait_for_selector('.ag-card-meta .pessoa-chip', timeout=8000)
+        p.wait_for_selector('.ag-card-meta .pessoa-chip', state='attached', timeout=8000)   # a primeira pode estar no "Sem prazo definido", recolhido
         chip = p.evaluate("() => { const c = [...document.querySelectorAll('.pessoa-chip')].find(x => x.textContent === 'Samuel'); return c ? { p: c.style.getPropertyValue('--p'), i: c.dataset.i, antes: getComputedStyle(c, '::before').content } : null; }")
         ok(chip == {'p': '#6CA6EA', 'i': 'S', 'antes': '"S"'}, f'8. na Agenda, o responsável com a cor e a inicial dele; o texto segue só o nome ({chip})')
         p.close()
