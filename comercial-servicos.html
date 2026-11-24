@@ -15,7 +15,8 @@
        régua do que precisa ter antes de ir pro ar (as regras em assets/js/servicos-digitais.js), as vendas (o
        pagamento, a entrega e a NFS-e de cada uma) e os números por mês. Nada se apaga: o serviço vira descartado e
        a venda, cancelada. Quem e quando, o banco grava (o gatilho servicos_quem). A venda paga entra na tarefa das
-       NFS-e da Thalia ("Emitir as NFS-e dos serviços digitais"), uma linha por venda. -->
+       NFS-e da Thalia ("Emitir as NFS-e dos serviços digitais"), uma linha por venda. O produto com material pro cliente
+       (MATERIAL, no script: os Planos do MEI) tem o botão no cartão e na ficha, que abre o que se manda direto na conversa. -->
   <div class="app-shell">
     <header class="topbar">
       <div class="topbar-brand">
@@ -102,6 +103,7 @@
       <div class="fa-modal-head"><h3 id="sTitulo">Novo serviço</h3><button class="fa-modal-close" id="sClose" aria-label="Fechar">&times;</button></div>
       <div class="fa-modal-body">
         <div id="sMudou" class="sv-banner sv-banner-alerta" role="alert" hidden></div>
+        <div id="sMaterial" class="sv-banner sv-banner-info" hidden><div style="display:flex; align-items:center; gap:8px 12px; flex-wrap:wrap;"><span style="flex:1 1 260px;"><b>Material pro cliente:</b> <span id="sMaterialTexto"></span></span><button class="btn btn-primary btn-sm" id="sMaterialBtn" type="button"></button></div></div>
         <div class="fa-field-row">
           <label class="fa-field"><span>Nome *</span><input type="text" id="sNome" class="input" maxlength="120" placeholder="Como aparece na vitrine"></label>
           <label class="fa-field"><span>Endereço curto *</span><input type="text" id="sSlug" class="input" maxlength="60" placeholder="ex.: cadastro-2027" autocomplete="off" spellcheck="false"></label>
@@ -221,6 +223,7 @@
       janelaDoServico, conferirServico, aceitaVenda, conferirVenda, pendenciasDaVenda, textoDoArrependimento, dentroDoArrependimento, contasPorServico,
       secoesDaVitrine, numerosPorMes, testeDeParar, guiaDoComeco, TITULO_TAREFA_NOTAS, linhaDaNota, descricaoDaTarefaNotas, temVendaNaTarefa,
       juntarNaTarefaNotas, marcarNotaNaTarefa, desmarcarNotaNaTarefa, tirarDaTarefaNotas, prazoDaTarefaNotas } from './assets/js/servicos-digitais.js';
+    import { abrirPlanosMei } from './assets/js/mei-planos-janela.js';
 
     const $ = id => document.getElementById(id);
     const esc = t => String(t == null ? '' : t).replace(/[&<>"']/g, m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m]));
@@ -237,6 +240,15 @@
     const DESFAZER_MS = 10 * 60 * 1000;
 
     let servicos = [], vendas = [], clientes = null, quem = null, erroLeitura = false;
+    // o material pro cliente de cada produto, pelo endereço curto (24/11/2026, pedido do Samuel: "dentro do produto, poder
+    // emitir o folder ... enviar a imagem direto sem necessidade de clique em link ou em arquivo é a forma ideal"): o
+    // botão no cartão e na ficha abre o que a equipe manda direto na conversa com o cliente. Produto novo com material =
+    // uma linha aqui.
+    const MATERIAL = {
+      'planos-mei': { rotulo: '📲 Planos pro WhatsApp', texto: 'as imagens dos planos, com o recomendado, e a mensagem pronta, pra mandar direto na conversa.',
+        abrir: () => abrirPlanosMei({ supabase, quem }) }
+    };
+    const abrirMaterial = slug => { const m = MATERIAL[slug]; if (m) m.abrir(); };
     let aba = 'vitrine', busca = '';
     const filtro = { servico: '', pagamento: '', pendencia: false };
     let fichaDe = null, slugMexido = false;   // o serviço aberto na ficha (null = novo)
@@ -323,7 +335,7 @@
     // ---------- a vitrine ----------
     function cartaoHtml(s, contas, hoje) {
       const p = progressoDaRegua(s), passo = proximoPasso(s, { hoje, vendas }), c = contas.get(s.id);
-      const pag = linkSeguro(s.link_pagina), prot = linkSeguro(s.link_prototipo), jan = janelaDoServico(s, hoje);
+      const pag = linkSeguro(s.link_pagina), prot = linkSeguro(s.link_prototipo), jan = janelaDoServico(s, hoje), mat = MATERIAL[s.slug];
       const pct = p.total ? Math.round(p.feitos / p.total * 100) : 0;
       const numeros = s.modelo === 'pago' && c ? [c.pagas ? plural(c.pagas, 'venda', 'vendas') + ' · R$ ' + fmtDinheiro(c.receita) : '', c.aguardando ? plural(c.aguardando, 'aguardando o pagamento', 'aguardando o pagamento') : '',
         c.pendentes ? plural(c.pendentes, 'com pendência', 'com pendência') : ''].filter(Boolean) : [];
@@ -343,7 +355,8 @@
         + '<div class="sv-regua-linha"><span class="sv-regua-n">Régua ' + p.feitos + ' de ' + p.total + '</span>'
         + '<span class="sv-barra" role="img" aria-label="' + pct + '% da régua"><span style="width:' + pct + '%"></span></span></div>'
         + '<div class="sv-passo' + (passo.alerta ? ' sv-alerta' : '') + '">' + esc(passo.texto) + '</div>'
-        + (pag || prot || numeros.length ? '<div class="sv-card-pe">'
+        + (pag || prot || mat || numeros.length ? '<div class="sv-card-pe">'
+          + (mat ? '<button class="btn btn-primary btn-sm" type="button" data-material="' + esc(s.slug) + '" title="' + esc(mat.texto) + '">' + esc(mat.rotulo) + '</button>' : '')
           + (pag ? '<a class="sv-link" href="' + esc(pag) + '" target="_blank" rel="noopener noreferrer">Abrir a página ↗</a>' : '')
           + (prot ? '<a class="sv-link" href="' + esc(prot) + '" target="_blank" rel="noopener noreferrer">Abrir o protótipo ↗</a>' : '')
           + (numeros.length ? '<span class="sv-vendas-n">' + esc(numeros.join(' · ')) + '</span>' : '')
@@ -510,6 +523,10 @@
       $('sTitulo').textContent = s ? s.nome : 'Novo serviço';
       $('sSalvar').textContent = s ? 'Salvar' : 'Cadastrar serviço';
       $('sErro').textContent = ''; $('sMudou').hidden = true;
+      const mat = s ? MATERIAL[s.slug] : null;
+      $('sMaterial').hidden = !mat;
+      $('sMaterialTexto').textContent = mat ? mat.texto.charAt(0).toUpperCase() + mat.texto.slice(1) : '';
+      $('sMaterialBtn').textContent = mat ? mat.rotulo : '';
       $('sNome').value = s ? s.nome || '' : ''; $('sSlug').value = s ? s.slug || '' : ''; $('sSlug').disabled = !!s;
       $('sResumo').value = s ? s.resumo || '' : ''; $('sPublico').value = s ? s.publico || '' : '';
       $('sModelo').value = s && s.modelo === 'gratis' ? 'gratis' : 'pago';
@@ -843,6 +860,8 @@
       else if (b.dataset.aba === 'vendas') { filtro.pendencia = true; filtro.pagamento = ''; filtro.servico = ''; desenharVendas(); mostrarAba('vendas'); }
     });
     $('vitrine').addEventListener('click', e => {
+      const m = e.target.closest('[data-material]');
+      if (m) { abrirMaterial(m.dataset.material); return; }   // o material abre a janela dele, não a ficha
       if (e.target.closest('a')) return;                       // o link da página abre a página, não a ficha
       const alvo = e.target.closest('[data-abrir]') || e.target.closest('.sv-card');
       if (alvo && !window.getSelection().toString()) abrirPeloSlug(alvo.dataset.abrir || alvo.dataset.slug);
@@ -863,6 +882,7 @@
     $('btnNovaVenda').addEventListener('click', () => abrirVenda(null));
 
     $('sClose').addEventListener('click', fecharFicha); $('sCancelar').addEventListener('click', fecharFicha); $('sSalvar').addEventListener('click', salvarFicha);
+    $('sMaterialBtn').addEventListener('click', () => { if (fichaDe) abrirMaterial(fichaDe.slug); });
     $('sNome').addEventListener('input', () => { if (!fichaDe && !slugMexido) $('sSlug').value = slugDe($('sNome').value); });
     $('sSlug').addEventListener('input', () => { slugMexido = true; });
     $('ovServico').addEventListener('change', acompanharFicha);

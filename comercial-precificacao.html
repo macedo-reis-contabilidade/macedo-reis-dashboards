@@ -260,7 +260,7 @@
                 <button class="btn" id="meiSalvar" style="flex:1 1 100%;">Salvar proposta MEI</button>
                 <button class="btn btn-ghost" id="meiNova" style="flex:0 0 auto;">Nova</button>
                 <button class="btn btn-ghost" id="meiOrc" style="flex:1 1 auto;">📄 Orçamento MEI (PDF)</button>
-                <button class="btn btn-ghost" id="meiWhats" type="button" style="flex:1 1 100%;" title="Duas imagens pro cliente: os planos, com o recomendado em destaque, e tudo o que cada um inclui; e a mensagem pronta">📲 Planos pro WhatsApp</button>
+                <button class="btn btn-ghost" id="meiWhats" type="button" style="flex:1 1 100%;" title="As imagens pro cliente (os planos, com o recomendado em destaque, e tudo o que cada um inclui) e a mensagem pronta, pra mandar direto na conversa">📲 Planos pro WhatsApp</button>
               </div>
               <div id="meiSalvoMsg" style="margin-top:8px;font-size:12.5px;min-height:16px;"></div>
             </div></div>
@@ -316,33 +316,6 @@
   </div>
   <script src="assets/js/tour.js"></script>
 
-  <!-- os planos do MEI pro WhatsApp (24/11/2026, pedido do Samuel): as duas imagens e a mensagem. O recomendado é o plano
-       marcado na aba MEI; sem nenhum marcado, o mais simples. -->
-  <div id="ovPlanosMei" style="display:none; position:fixed; inset:0; background:var(--overlay); z-index:90; align-items:flex-start; justify-content:center; overflow:auto; padding:32px 16px;">
-    <div role="dialog" aria-modal="true" aria-labelledby="pmTitulo" style="background:var(--surface); border:1px solid var(--fill-3); border-radius:16px; padding:18px 22px; max-width:980px; width:100%;">
-      <div style="display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:4px;">
-        <h3 id="pmTitulo" style="margin:0; font-size:15px;">Os planos pro WhatsApp</h3>
-        <button id="pmFechar" type="button" data-janela-fechar aria-label="Fechar" style="background:none; border:0; color:var(--text-muted); font-size:22px; cursor:pointer; line-height:1;">&times;</button>
-      </div>
-      <p id="pmRecomenda" style="margin:0 0 12px; font-size:13px; color:var(--text-muted);"></p>
-      <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(260px, 1fr)); gap:16px;">
-        <figure style="margin:0; min-width:0;">
-          <div style="max-height:56vh; overflow:auto; border:1px solid var(--line); border-radius:10px; background:#fff;"><img id="pmImg1" alt="A primeira imagem: os planos, com o recomendado em destaque" style="display:block; width:100%;"></div>
-          <figcaption style="display:flex; gap:8px; align-items:center; margin-top:8px; font-size:12.5px; color:var(--text-muted);"><span style="margin-right:auto;">1 · os planos</span><button class="btn btn-ghost btn-sm" type="button" data-pm-copiar="0">Copiar</button><button class="btn btn-ghost btn-sm" type="button" data-pm-baixar="0">Baixar</button></figcaption>
-        </figure>
-        <figure style="margin:0; min-width:0;">
-          <div style="max-height:56vh; overflow:auto; border:1px solid var(--line); border-radius:10px; background:#fff;"><img id="pmImg2" alt="A segunda imagem: tudo o que cada plano inclui" style="display:block; width:100%;"></div>
-          <figcaption style="display:flex; gap:8px; align-items:center; margin-top:8px; font-size:12.5px; color:var(--text-muted);"><span style="margin-right:auto;">2 · tudo o que cada um inclui</span><button class="btn btn-ghost btn-sm" type="button" data-pm-copiar="1">Copiar</button><button class="btn btn-ghost btn-sm" type="button" data-pm-baixar="1">Baixar</button></figcaption>
-        </figure>
-      </div>
-      <label style="display:block; margin-top:14px;"><span style="display:block; font-size:12.5px; color:var(--text-muted); margin-bottom:4px;">A mensagem (dá pra mudar antes de copiar)</span><textarea id="pmMsg" class="input" rows="9" style="width:100%;"></textarea></label>
-      <div style="display:flex; gap:10px; align-items:center; margin-top:8px; flex-wrap:wrap;">
-        <span id="pmStatus" role="status" style="margin-right:auto; font-size:12.5px; color:var(--text-dim);"></span>
-        <button class="btn btn-primary btn-sm" type="button" id="pmCopiarMsg">Copiar a mensagem</button>
-      </div>
-    </div>
-  </div>
-
   <!-- anotações internas da proposta (nunca sai em PDF) -->
   <div id="ovObsInterna" style="display:none; position:fixed; inset:0; background:var(--overlay); z-index:90; align-items:flex-start; justify-content:center; overflow:auto; padding:40px 16px;">
     <div style="background:var(--surface); border:1px solid var(--fill-3); border-radius:16px; padding:18px 22px; max-width:560px; width:100%;">
@@ -374,8 +347,7 @@
       ultimaDeclaracaoPorCliente, ordenarCarteira, proximaOrdem, ordemValida } from './assets/js/precificacao-carteira.js';
     import { SOCIOS, nomePorEmail } from './assets/js/equipe.js';
     // os planos do MEI pro WhatsApp (24/11/2026): as duas imagens (os planos com o recomendado e a lista completa) e a mensagem
-    import { montarVitrine, recomendados as recomendadosMei, mensagemWhats, primeiroNome } from './assets/js/mei-planos.js';
-    import { imagensDosPlanos, paraBlob } from './assets/js/mei-planos-imagem.js';
+    import { abrirPlanosMei } from './assets/js/mei-planos-janela.js';
     const escHtml = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));   // texto do banco nunca vira HTML (o nome que veio do formulário público, por exemplo)
     const user = await getCurrentUser();
     if (user) { const el = document.getElementById('userName'); if (el) el.textContent = user.email; const av = document.getElementById('userAvatar'); if (av) av.textContent = (user.email || '?').charAt(0).toUpperCase(); }
@@ -1351,88 +1323,17 @@
       if (btn) btn.addEventListener('click', gerarOrcamentoMei);
       const bw = document.getElementById('meiWhats');
       if (bw) bw.addEventListener('click', abrirPlanosWhats);
-      document.getElementById('pmFechar').addEventListener('click', fecharPlanosWhats);
-      document.querySelectorAll('[data-pm-copiar]').forEach(b => b.addEventListener('click', () => pmCopiar(Number(b.dataset.pmCopiar))));
-      document.querySelectorAll('[data-pm-baixar]').forEach(b => b.addEventListener('click', () => pmBaixar(Number(b.dataset.pmBaixar))));
-      document.getElementById('pmCopiarMsg').addEventListener('click', pmCopiarMsg);
       const bs = document.getElementById('meiSalvar');
       if (bs) bs.addEventListener('click', () => salvarMei(false));
       const bn = document.getElementById('meiNova');
       if (bn) bn.addEventListener('click', () => { fecharRevisao(); novaMei(); });
     }
-    // ---------- os planos do MEI pro WhatsApp (24/11/2026): as duas imagens, com o recomendado, e a mensagem ----------
-    // O recomendado é o plano marcado na tela (marcar o plano é recomendar); sem nenhum, o mais simples. As notas inclusas
-    // são as do campo "até X NFs/mês" (sem ele, as do folder). Nada é gravado: as imagens e a mensagem saem da tela.
-    let pmBlobs = [null, null], pmUrls = [null, null], pmVez = 0;
-    function pmAviso(t, cor){
-      const s = document.getElementById('pmStatus');
-      s.style.color = cor || 'var(--text-dim)'; s.textContent = t;
-    }
-    async function abrirPlanosWhats(){
-      if (!meiPlanos.length) { alert('Os planos do MEI ainda não carregaram: tenta de novo em 2 segundos.'); return; }
-      const vez = ++pmVez;
-      const v = montarVitrine({ planos: meiPlanos, servicos: meiServicos, comp: meiComp, nfs: mei.nfsInclusas });
-      const rec = recomendadosMei(meiPlanos, mei.bases);
-      const nomes = v.planos.filter(p => rec.includes(p.id)).map(p => p.nome);
-      const marcou = meiPlanos.some(p => mei.bases.has(p.id));
-      document.getElementById('pmRecomenda').textContent = marcou
-        ? `Recomendado: ${nomes.join(' + ')}, o que está marcado na tela.`
-        : `Recomendado: ${nomes.join(' + ')}, o mais simples. Pra recomendar outro, feche aqui e marque o plano na tela.`;
-      document.getElementById('pmMsg').value = mensagemWhats({ nome: mei.cliente, quem: nomePorEmail(user && user.email), vitrine: v, recomendados: rec });
-      ['pmImg1', 'pmImg2'].forEach(id => document.getElementById(id).removeAttribute('src'));
-      pmBlobs = [null, null];
-      document.getElementById('ovPlanosMei').style.display = 'flex';
-      pmAviso('Montando as imagens…');
-      try {
-        await logoPronto();
-        const { capa, lista } = await imagensDosPlanos(v, { recomendados: rec, nome: mei.cliente, logo: LOGO_MR });
-        const blobs = await Promise.all([paraBlob(capa), paraBlob(lista)]);
-        if (vez !== pmVez) return;
-        pmBlobs = blobs;
-        pmUrls.forEach(u => u && URL.revokeObjectURL(u));
-        pmUrls = blobs.map(b => URL.createObjectURL(b));
-        document.getElementById('pmImg1').src = pmUrls[0];
-        document.getElementById('pmImg2').src = pmUrls[1];
-        pmAviso('Pronto: copie ou baixe as duas imagens e mande com a mensagem.');
-      } catch (e) {
-        if (vez !== pmVez) return;
-        pmAviso('Não deu pra montar as imagens: ' + ((e && e.message) || e), 'var(--err)');
-      }
-    }
-    function fecharPlanosWhats(){
-      pmVez++;
-      document.getElementById('ovPlanosMei').style.display = 'none';
-    }
-    async function pmCopiar(i){
-      const b = pmBlobs[i];
-      if (!b) return;
-      try {
-        if (!navigator.clipboard || !window.ClipboardItem) throw new Error('sem cópia de imagem');
-        await navigator.clipboard.write([new ClipboardItem({ 'image/png': b })]);
-        pmAviso(`Imagem ${i + 1} copiada: no WhatsApp, cole com Ctrl+V.`, 'var(--ok)');
-      } catch (e) {
-        pmAviso('O navegador não deixou copiar a imagem: use o Baixar.', 'var(--warn)');
-      }
-    }
-    function pmBaixar(i){
-      const b = pmBlobs[i];
-      if (!b) return;
-      const pn = primeiroNome(mei.cliente);
-      const a = document.createElement('a');
-      a.href = URL.createObjectURL(b);
-      a.download = `Planos MEI${pn ? ' - ' + pn : ''} (${i + 1} de 2).png`;
-      document.body.appendChild(a); a.click(); a.remove();
-      setTimeout(() => URL.revokeObjectURL(a.href), 5000);
-    }
-    async function pmCopiarMsg(){
-      const ta = document.getElementById('pmMsg');
-      try {
-        await navigator.clipboard.writeText(ta.value);
-        pmAviso('Mensagem copiada.', 'var(--ok)');
-      } catch (e) {
-        ta.focus(); ta.select();
-        pmAviso('Selecionei a mensagem: copie com Ctrl+C.', 'var(--warn)');
-      }
+    // ---------- os planos do MEI pro WhatsApp (24/11/2026): a janela é a mesma da Vitrine de serviços ----------
+    // (assets/js/mei-planos-janela.js). Abre com o que está na tela: o cliente, os planos marcados (marcar o plano é
+    // recomendar; sem nenhum, o mais simples) e as notas do campo "até X NFs/mês". Nada é gravado.
+    function abrirPlanosWhats(){
+      abrirPlanosMei({ supabase, catalogo: meiPlanos.length ? { planos: meiPlanos, servicos: meiServicos, comp: meiComp } : null,
+        cliente: mei.cliente, marcados: [...mei.bases], nfs: mei.nfsInclusas, quem: nomePorEmail(user && user.email), logo: LOGO_MR });
     }
     async function gerarOrcamentoMei(){
       if (!window.jspdf) { alert('Gerador de PDF ainda carregando — tenta de novo em 2 segundos.'); return; }

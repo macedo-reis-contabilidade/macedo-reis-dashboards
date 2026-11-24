@@ -1,9 +1,12 @@
 // Os planos do MEI pro cliente (assets/js/mei-planos.js, 24/11/2026): a ordem dos planos, o recomendado (o marcado na aba
 // MEI ou o mais simples), a lista por grupo com o ✓ de cada plano, o que todos têm, o que é cobrado à parte, o nome do
-// cliente e a mensagem do WhatsApp. Dados inventados (os planos de verdade ficam no banco). Rodar com:
-// node tests/mei-planos.test.mjs
+// cliente e a mensagem do WhatsApp; as páginas da lista (assets/js/mei-planos-imagem.js: nenhuma imagem passa de 1600 px)
+// e o que a janela diz e lê (assets/js/mei-planos-janela.js). Dados inventados (os planos de verdade ficam no banco).
+// Rodar com: node tests/mei-planos.test.mjs
 import { NFS_PADRAO, GRUPOS, ESCRITORIO, IRPF_A_PARTE, reais, reaisCurto, planosEmOrdem, planoMaisSimples, recomendados, nomeCurto, qtdNotas,
-  nomeDoServico, juntar, montarVitrine, precoAParte, primeiroNome, mensagemWhats } from '../assets/js/mei-planos.js';
+  nomeDoServico, juntar, montarVitrine, precoAParte, primeiroNome, mensagemWhats, quantasImagens } from '../assets/js/mei-planos.js';
+import { empacotar, paginar, ALTURA_MAX, LARGURA } from '../assets/js/mei-planos-imagem.js';
+import { textoDaRecomendacao, nomeDoArquivo, lerCatalogoMei, COLS_PLANOS, COLS_SERVICOS, COLS_COMP } from '../assets/js/mei-planos-janela.js';
 
 let falhas = 0;
 const chk = (nome, cond, extra) => { if (!cond) falhas++; console.log((cond ? '  ✓ ' : '  ✗ ') + nome + (!cond && extra !== undefined ? ' → ' + JSON.stringify(extra) : '')); };
@@ -97,6 +100,51 @@ const m4 = mensagemWhats({ nome: 'Ana', quem: 'Fulano', vitrine: v, recomendados
 chk('quem fala de fora da equipe, sem artigo e sem espaço sobrando', m4.includes('Aqui é Fulano, da Macedo'), m4.split('\n')[0]);
 const vc = montarVitrine({ planos: PLANOS.slice(0, 2), servicos: [S('das', 'x', 'mensal', 1), S('dasn', 'y', 'anual', 2)], comp: { basico: ['das', 'dasn'], cresce: ['das', 'dasn'] } });
 chk('com o que todos têm, a mensagem diz', mensagemWhats({ nome: 'Ana', quem: 'Samuel', vitrine: vc, recomendados: ['basico'] }).includes('Todos já incluem a guia do DAS todo mês e a declaração anual.'));
+chk('quantas imagens, por extenso', quantasImagens(1) === 'uma imagem' && quantasImagens(2) === 'duas imagens' && quantasImagens(4) === 'quatro imagens'
+  && quantasImagens(12) === '12 imagens' && quantasImagens('') === 'uma imagem', [quantasImagens(4), quantasImagens(12)]);
+chk('duas imagens: a primeira com os planos, a segunda com a lista', m.includes('Te mandei duas imagens: na primeira, os planos; na segunda, tudo o que cada um inclui.'), m);
+const m5 = mensagemWhats({ nome: 'Ana', quem: 'Samuel', vitrine: v, recomendados: ['basico'], imagens: 4 });
+chk('a lista em mais de uma imagem: a mensagem diz quantas', m5.includes('Te mandei quatro imagens: na primeira, os planos; nas outras, tudo o que cada um inclui.'), m5);
+
+console.log('As páginas da lista (nenhuma imagem passa de ' + ALTURA_MAX + ' px):');
+const somas = pags => pags.map(pg => pg.reduce((s, b) => s + b.h, 0));
+const G = (rotulo, h = 62) => ({ tipo: 'grupo', rotulo, h });
+const Ln = (rotulo, h = 100) => ({ tipo: 'linha', rotulo, h });
+chk('a largura e a altura de cada imagem', LARGURA === 1080 && ALTURA_MAX === 1600);
+chk('o que cabe numa página fica numa só', paginar([G('Todo mês'), Ln('Todo mês'), Ln('Todo mês'), { tipo: 'aParte', h: 200 }], 1000, 62).length === 1);
+const seis = [G('Todo mês'), ...Array.from({ length: 6 }, () => Ln('Todo mês')), { tipo: 'aParte', h: 300 }];
+const p1 = empacotar(seis, 700, 62);
+chk('sem caber, a página seguinte: o resto do grupo ganha o nome de novo, com a continuação', p1.length === 2 && igual(somas(p1), [662, 300]), somas(p1));
+const p2 = paginar(seis, 700, 62);
+chk('as páginas parecidas: a menor altura com o mesmo número de páginas (não uma cheia e a outra quase vazia)', p2.length === 2 && igual(somas(p2), [562, 462])
+  && p2[1][0].tipo === 'grupo' && p2[1][0].continua === true && p2[1][0].rotulo === 'Todo mês', somas(p2));
+const p3 = empacotar([G('Todo mês'), Ln('Todo mês', 300), G('Todo ano'), Ln('Todo ano', 300), { tipo: 'aParte', h: 50 }], 700, 62);
+chk('o nome do grupo vai junto com a primeira linha dele (não fica sozinho no fim da página)', p3.length === 2 && p3[1][0].tipo === 'grupo' && !p3[1][0].continua && p3[1][0].rotulo === 'Todo ano', p3.map(pg => pg.map(b => b.tipo)));
+chk('nenhuma página passa da altura que cabe', paginar(Array.from({ length: 40 }, (_, i) => i % 8 === 0 ? G('g' + i) : Ln('g' + (i - (i % 8)), 58 + (i % 3) * 32)), 1000, 62)
+  .every(pg => pg.reduce((s, b) => s + b.h, 0) <= 1000));
+chk('sem blocos, uma página vazia', igual(paginar([], 1000, 62), [[]]));
+
+console.log('A janela:');
+chk('o aviso do recomendado: o mais simples', textoDaRecomendacao(PLANOS, ['basico']) === 'Recomendado: MEI BÁSICO, o mais simples. Clique num plano pra mudar a recomendação.', textoDaRecomendacao(PLANOS, ['basico']));
+chk('o aviso: outro plano, sem o "mais simples" (e sem o ponto dobrado no nome que termina em ponto)', textoDaRecomendacao(PLANOS, ['equipe']) === 'Recomendado: MEI EQUIPE DE PGTO. Clique num plano pra mudar a recomendação.'
+  && textoDaRecomendacao(PLANOS, ['cresce']) === 'Recomendado: MEI CRESCE MAIS. Clique num plano pra mudar a recomendação.', [textoDaRecomendacao(PLANOS, ['equipe']), textoDaRecomendacao(PLANOS, ['cresce'])]);
+chk('o aviso: dois planos, com a soma', textoDaRecomendacao(PLANOS, ['equipe', 'basico']) === 'Recomendados: MEI BÁSICO + MEI EQUIPE DE PGTO., R$ 500,00 por mês, juntos. Clique num plano pra mudar.', textoDaRecomendacao(PLANOS, ['equipe', 'basico']));
+chk('o nome do arquivo: o primeiro nome do cliente e qual imagem', nomeDoArquivo('63.829.984 FULANA DE TAL', 1, 4) === 'Planos MEI - Fulana (2 de 4).png' && nomeDoArquivo('', 0, 3) === 'Planos MEI (1 de 3).png');
+// a leitura do banco: as colunas uma a uma, só os ativos, na ordem; o que cada plano tem num conjunto
+const pedidos = [];
+const banco = (erroEm) => ({ from: tabela => {
+  const q = { cols: null, filtros: [], ordem: null };
+  const dados = { mei_planos: [PLANOS[0]], mei_servicos: [SERVICOS[0]], mei_plano_servicos: [{ plano_id: 'basico', servico_id: 'guia' }, { plano_id: 'basico', servico_id: 'dasn' }] }[tabela];
+  const fim = () => { pedidos.push({ tabela, ...q }); return Promise.resolve(erroEm === tabela ? { data: null, error: { message: 'permission denied' } } : { data: dados, error: null }); };
+  const c = { select: cols => { q.cols = cols; return c; }, eq: (k, v) => { q.filtros.push([k, v]); return c; }, order: k => { q.ordem = k; return c; }, then: (r, j) => fim().then(r, j) };
+  return c;
+} });
+const cat = await lerCatalogoMei(banco());
+chk('a leitura do catálogo: as colunas explícitas, só os ativos, na ordem', igual(pedidos.map(x => [x.tabela, x.cols, x.filtros, x.ordem]), [
+  ['mei_planos', COLS_PLANOS, [['ativo', true]], 'ordem'], ['mei_servicos', COLS_SERVICOS, [['ativo', true]], 'ordem'], ['mei_plano_servicos', COLS_COMP, [], null]])
+  && !/\*/.test(COLS_PLANOS + COLS_SERVICOS + COLS_COMP), pedidos);
+chk('o que cada plano tem, num conjunto', cat.comp.basico instanceof Set && igual([...cat.comp.basico], ['guia', 'dasn']) && cat.planos.length === 1 && cat.servicos.length === 1);
+chk('a leitura que falha devolve o erro, sem a mensagem do banco', igual(await lerCatalogoMei(banco('mei_servicos')), { erro: true }));
 
 console.log(falhas ? '\n' + falhas + ' falha(s).' : '\nTudo certo.');
 process.exit(falhas ? 1 : 0);

@@ -5,8 +5,9 @@
 // recomendação é o plano mais simples. "Eu quero objetividade e simplicidade na nossa entrega."
 //
 // Os planos e os serviços são os da aba MEI da Precificação (mei_planos, mei_servicos e mei_plano_servicos): mudou lá,
-// muda aqui, sem cópia. Puro, sem DOM e sem banco: as imagens saem de mei-planos-imagem.js, e a tela é a aba MEI de
-// comercial-precificacao.html (o botão "Planos pro WhatsApp").
+// muda aqui, sem cópia. Puro, sem DOM e sem banco: as imagens saem de mei-planos-imagem.js, e a janela (mei-planos-janela.js)
+// abre em duas telas: a aba MEI de comercial-precificacao.html e o produto "Planos do MEI" da Vitrine de serviços
+// (comercial-servicos.html), o botão "Planos pro WhatsApp" nas duas.
 // ============================================================================
 
 // as notas inclusas no plano que tem a emissão, quando a proposta não diz quantas (o folder dos planos, de 07/2026)
@@ -139,8 +140,21 @@ export function primeiroNome(nome) {
   return p.charAt(0).toUpperCase() + p.slice(1).toLowerCase();
 }
 
-// a mensagem que vai junto das imagens, no WhatsApp (a tela deixa editar antes de copiar)
-export function mensagemWhats({ nome, quem, vitrine, recomendados: rec } = {}) {
+// "duas imagens", "quatro imagens": quantas foram (a lista grande vai em mais de uma imagem, pra caber na tela do celular)
+const POR_EXTENSO = ['', 'uma', 'duas', 'três', 'quatro', 'cinco', 'seis', 'sete', 'oito', 'nove', 'dez'];
+export function quantasImagens(n) {
+  const k = Math.max(1, Math.floor(Number(n) || 0));
+  return (POR_EXTENSO[k] || String(k)) + (k === 1 ? ' imagem' : ' imagens');
+}
+// o que cada imagem tem, na ordem em que chegam: a primeira com os planos, as outras com a lista
+function frasesDasImagens(n) {
+  const k = Math.max(2, Math.floor(Number(n) || 2));
+  if (k === 2) return `Te mandei duas imagens: na primeira, os planos; na segunda, tudo o que cada um inclui.`;
+  return `Te mandei ${quantasImagens(k)}: na primeira, os planos; nas outras, tudo o que cada um inclui.`;
+}
+
+// a mensagem que vai junto das imagens, no WhatsApp (a tela deixa editar antes de copiar). imagens: quantas vão (2 ou mais)
+export function mensagemWhats({ nome, quem, vitrine, recomendados: rec, imagens = 2 } = {}) {
   const v = vitrine || { planos: [] };
   const pn = primeiroNome(nome);
   const ids = new Set(rec || []);
@@ -151,7 +165,7 @@ export function mensagemWhats({ nome, quem, vitrine, recomendados: rec } = {}) {
   const eu = texto(quem);
   linhas.push(`Oi${pn ? ', ' + pn : ''}! Tudo bem? ${eu ? `Aqui é ${[artigo(eu), eu].filter(Boolean).join(' ')}, da Macedo & Reis Contabilidade.` : 'Aqui é da Macedo & Reis Contabilidade.'}`);
   linhas.push('');
-  linhas.push(`Pra deixar o seu MEI em dia, a gente tem ${n === 1 ? 'um plano mensal' : n + ' planos mensais'}. Te mandei duas imagens: na primeira, os planos; na segunda, tudo o que cada um inclui.`);
+  linhas.push(`Pra deixar o seu MEI em dia, a gente tem ${n === 1 ? 'um plano mensal' : n + ' planos mensais'}. ${frasesDasImagens(imagens)}`);
   if (escolhidos.length === 1) {
     const p = escolhidos[0];
     const porque = simples && p.id === simples.id && n > 1 ? ' É o mais simples' + (p.slogan ? ': ' + minuscula(p.slogan) : '') + '.' : (p.slogan ? ' ' + ponto(p.slogan) : '');
