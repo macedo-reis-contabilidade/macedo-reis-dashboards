@@ -1,0 +1,1249 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Comercial — Consultorias — Macedo & Reis</title>
+  <link rel="icon" href="assets/favicon.ico">
+  <link rel="stylesheet" href="assets/css/style.css">
+  <script type="module" src="assets/js/auth-guard.js"></script>
+</head>
+<body>
+  <!-- Consultorias (Comercial, 25/11/2026, pedido do Samuel com a Thalia): as consultorias contábeis do escritório, as
+       sessões de cada uma e a tarefa de montar cada sessão, que o banco cria e acompanha na Agenda de quem monta (os
+       gatilhos de consultoria_sessoes e consultorias). Cada sessão tem a pauta como nas Reuniões (o pedido da Thalia, no
+       mesmo dia): a abertura, os assuntos com o tempo e os horários, os arquivos, as anotações durante a sessão e o PDF
+       pro cliente (consultoria_pautas e a pasta privada "consultorias"). As regras puras em assets/js/consultorias.js. -->
+  <div class="app-shell">
+    <header class="topbar">
+      <div class="topbar-brand">
+        <div class="topbar-logo"><img src="assets/logo-mr.png" alt="Macedo & Reis" width="32" height="32" style="display:block;object-fit:contain;"></div>
+        <div class="topbar-name">Macedo <span>&</span> Reis</div>
+      </div>
+      <div class="topbar-actions">
+        <div class="user-chip"><div class="user-avatar" id="userAvatar">—</div><span id="userName">Carregando…</span></div>
+        <button class="btn btn-ghost btn-sm" id="btnLogout">Sair</button>
+      </div>
+    </header>
+
+    <main class="content">
+      <div class="page-header">
+        <div class="breadcrumb">
+          <a href="index.html">Painel central</a>
+          <span class="breadcrumb-sep">/</span>
+          <a href="comercial.html">Comercial</a>
+          <span class="breadcrumb-sep">/</span>
+          <span>Consultorias</span>
+        </div>
+        <div class="eyebrow">Consultoria contábil</div>
+        <h1>Consultorias</h1>
+        <p>As sessões de cada empresa, com a pauta, os arquivos e as anotações de cada uma. Pra cada sessão prevista, a tarefa de montar a sessão aparece sozinha na Agenda de quem monta, com prioridade alta, alguns dias antes.</p>
+      </div>
+
+      <div id="aviso" class="cs-aviso" role="status" aria-live="polite" hidden></div>
+
+      <!-- A LISTA -->
+      <section id="vLista">
+        <div class="toolbar">
+          <div class="cs-filtro" role="group" aria-label="Quais consultorias mostrar">
+            <button type="button" class="cs-filtro-btn" data-f="ativa" aria-pressed="true">Ativas <span class="cs-filtro-n" id="nAtivas">0</span></button>
+            <button type="button" class="cs-filtro-btn" data-f="encerrada" aria-pressed="false">Encerradas <span class="cs-filtro-n" id="nEncerradas">0</span></button>
+          </div>
+          <button class="btn btn-primary" id="btnNova">+ Nova consultoria</button>
+        </div>
+        <div id="lista"></div>
+        <div id="vazio" class="empty-state" hidden></div>
+      </section>
+
+      <!-- A CONSULTORIA -->
+      <section id="vFicha" hidden>
+        <button type="button" class="btn btn-ghost btn-sm" id="btnVoltar">← Todas as consultorias</button>
+        <div class="cs-ficha-topo">
+          <div class="cs-ficha-titulo">
+            <h2 id="fNome"></h2>
+            <div id="fEmpresa" class="cs-empresa"></div>
+          </div>
+          <button type="button" class="btn btn-ghost btn-sm" id="btnEditar">Editar a consultoria</button>
+        </div>
+        <dl class="cs-dados" id="fDados"></dl>
+        <div class="cs-resumo" id="fResumo"></div>
+
+        <h3 class="cs-h3">Sessões</h3>
+        <div class="table-wrap">
+          <table class="table cs-tab">
+            <thead><tr><th scope="col">Nº</th><th scope="col">Data</th><th scope="col">Horário</th><th scope="col">Situação</th><th scope="col">Pauta</th><th scope="col">Montagem</th><th scope="col" class="cs-acoes"><span class="cs-sr">Ações</span></th></tr></thead>
+            <tbody id="fSessoes"></tbody>
+          </table>
+        </div>
+        <p id="fSemSessoes" class="cs-dica" hidden>Nenhuma sessão ainda: cole as datas embaixo.</p>
+
+        <details class="cs-add" id="addSessoes">
+          <summary>+ Adicionar sessões</summary>
+          <div class="cs-add-corpo">
+            <label class="fa-field"><span>As datas, uma por linha (dá pra colar a agenda que vai pro cliente)</span>
+              <textarea id="addTexto" class="input" rows="6" placeholder="07/12/2026&#10;21/12/2026 9h30 às 11h30"></textarea>
+            </label>
+            <p class="cs-dica" id="addHorario"></p>
+            <ul class="cs-previa" id="addPrevia" aria-live="polite"></ul>
+            <div class="cs-add-acoes">
+              <button type="button" class="btn btn-primary" id="addSalvar" disabled>Adicionar as sessões</button>
+              <span class="cs-erro" id="addErro" role="alert"></span>
+            </div>
+          </div>
+        </details>
+      </section>
+
+      <!-- A SESSÃO -->
+      <section id="vSessao" hidden>
+        <button type="button" class="btn btn-ghost btn-sm" id="btnVoltarFicha">← <span id="sVoltarNome"></span></button>
+        <div class="cs-ficha-topo">
+          <div class="cs-ficha-titulo">
+            <div class="cs-onde" id="sOnde"></div>
+            <h2 id="sTitulo"></h2>
+            <div class="cs-sub" id="sSub"></div>
+          </div>
+          <div class="cs-sess-acoes">
+            <select id="sSit" class="select cs-sel-sit" aria-label="Situação da sessão"></select>
+            <button type="button" class="btn btn-ghost btn-sm" id="sRemarcar">Remarcar</button>
+            <button type="button" class="btn btn-primary btn-sm" id="sPdf">Gerar PDF</button>
+          </div>
+        </div>
+        <div id="sCancelada" class="cs-faixa" hidden>Sessão cancelada: a pauta fica só pra consulta.</div>
+
+        <div class="cs-bloco">
+          <div class="cs-bloco-topo">
+            <h3>Abertura da sessão</h3>
+            <span class="cs-chip" id="sAbFaixa"></span>
+            <label class="cs-min">Tempo (min) <input type="number" id="sAbMin" class="input" min="0" max="600" step="5" placeholder="0"></label>
+          </div>
+          <textarea id="sAbertura" class="input" rows="4" maxlength="8000" placeholder="O objetivo do encontro e o que vai ser visto. Vai no topo do PDF."></textarea>
+          <div class="cs-salvo" id="sAbSalvo"></div>
+        </div>
+
+        <div class="cs-pauta-topo">
+          <h3>Pauta <span id="sTempo" class="cs-tempo"></span></h3>
+          <div class="cs-pauta-botoes">
+            <button type="button" class="btn btn-ghost btn-sm" id="sCopiar" hidden></button>
+            <button type="button" class="btn btn-primary btn-sm" id="sNovo">+ Adicionar assunto</button>
+          </div>
+        </div>
+        <div id="sItens"></div>
+
+        <div class="cs-bloco">
+          <div class="cs-bloco-topo"><h3>Anotações gerais e próximos passos</h3></div>
+          <textarea id="sAnotacoes" class="input" rows="5" maxlength="8000" placeholder="O que ficou combinado com a empresa e o que fazer até a próxima sessão. Vai no fim do PDF."></textarea>
+          <div class="cs-salvo" id="sAnSalvo"></div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <!-- NOVA / EDITAR CONSULTORIA -->
+  <div class="fa-modal-overlay" id="ovC">
+    <div class="fa-modal" role="dialog" aria-modal="true" aria-labelledby="cTitulo">
+      <div class="fa-modal-head"><h3 id="cTitulo">Nova consultoria</h3><button class="fa-modal-close" id="cClose" aria-label="Fechar">&times;</button></div>
+      <div class="fa-modal-body">
+        <label class="fa-field"><span>Nome *</span><input type="text" id="cNome" class="input" maxlength="120" placeholder="Como a equipe chama a consultoria, ex.: o nome da loja"></label>
+        <label class="fa-field"><span>Empresa do cadastro</span><select id="cCliente" class="select"><option value="">— sem empresa do cadastro —</option></select></label>
+        <label class="fa-field"><span>Com quem</span><input type="text" id="cContatos" class="input" maxlength="300" placeholder="Quem participa pela empresa"></label>
+        <div class="fa-field-row">
+          <label class="fa-field"><span>Quem monta as sessões</span><select id="cResp" class="select"></select></label>
+          <label class="fa-field"><span>A tarefa de montar, quantos dias antes</span><input type="number" id="cDias" class="input" min="0" max="30" step="1"></label>
+        </div>
+        <div class="fa-field-row">
+          <label class="fa-field"><span>Horário das sessões: começa</span><input type="time" id="cIni" class="input"></label>
+          <label class="fa-field"><span>termina</span><input type="time" id="cFim" class="input"></label>
+        </div>
+        <label class="fa-field" id="cSitCampo"><span>Situação</span>
+          <select id="cSit" class="select"><option value="ativa">Ativa</option><option value="encerrada">Encerrada</option></select>
+        </label>
+        <label class="fa-field"><span>Observação</span><textarea id="cObs" class="input" rows="2" maxlength="4000"></textarea></label>
+        <p class="cs-dica" id="cDica"></p>
+        <div id="cErro" class="cs-erro" role="alert"></div>
+      </div>
+      <div class="fa-modal-foot">
+        <button class="btn btn-ghost" id="cCancelar">Cancelar</button>
+        <button class="btn btn-primary" id="cSalvar">Salvar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- REMARCAR UMA SESSÃO -->
+  <div class="fa-modal-overlay" id="ovR">
+    <div class="fa-modal" role="dialog" aria-modal="true" aria-labelledby="rTitulo">
+      <div class="fa-modal-head"><h3 id="rTitulo">Remarcar a sessão</h3><button class="fa-modal-close" id="rClose" aria-label="Fechar">&times;</button></div>
+      <div class="fa-modal-body">
+        <label class="fa-field"><span>Dia *</span><input type="date" id="rData" class="input"></label>
+        <div class="fa-field-row">
+          <label class="fa-field"><span>Começa</span><input type="time" id="rIni" class="input"></label>
+          <label class="fa-field"><span>Termina</span><input type="time" id="rFim" class="input"></label>
+        </div>
+        <p class="cs-dica" id="rPrevia" aria-live="polite"></p>
+        <div id="rErro" class="cs-erro" role="alert"></div>
+      </div>
+      <div class="fa-modal-foot">
+        <button class="btn btn-ghost" id="rCancelar">Cancelar</button>
+        <button class="btn btn-primary" id="rSalvar">Remarcar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- UM ASSUNTO DA PAUTA -->
+  <div class="fa-modal-overlay" id="ovP">
+    <div class="fa-modal" role="dialog" aria-modal="true" aria-labelledby="pTitulo">
+      <div class="fa-modal-head"><h3 id="pTitulo">Adicionar assunto</h3><button class="fa-modal-close" id="pClose" aria-label="Fechar">&times;</button></div>
+      <div class="fa-modal-body">
+        <label class="fa-field"><span>Assunto *</span><input type="text" id="pAssunto" class="input" maxlength="200" placeholder="Ex.: Resultado de novembro"></label>
+        <label class="fa-field"><span>Detalhe</span><textarea id="pDetalhe" class="input" rows="4" maxlength="4000" placeholder="O que mostrar e o que conversar (opcional)"></textarea></label>
+        <div class="fa-field-row">
+          <label class="fa-field"><span>Tempo previsto (min)</span><input type="number" id="pMin" class="input" min="0" max="600" step="5" placeholder="Ex.: 20"></label>
+          <label class="cs-check"><input type="checkbox" id="pInterno"> <span>Só do escritório: não vai no PDF do cliente</span></label>
+        </div>
+        <div class="fa-field">
+          <span>Arquivos</span>
+          <ul class="cs-anexos-ed" id="pAnexos"></ul>
+          <div class="cs-anexos-add">
+            <button type="button" class="btn btn-ghost btn-sm" id="pAnexar">+ Adicionar arquivos</button>
+            <span class="cs-dica">até 25 MB cada · a imagem anexada aparece no PDF</span>
+            <input type="file" id="pArquivo" multiple hidden>
+          </div>
+          <div class="cs-dica" id="pAnexoSt" aria-live="polite"></div>
+        </div>
+        <div id="pErro" class="cs-erro" role="alert"></div>
+      </div>
+      <div class="fa-modal-foot">
+        <button class="btn btn-danger" id="pTirar" hidden>Tirar da pauta</button>
+        <button class="btn btn-ghost" id="pCancelar">Cancelar</button>
+        <button class="btn btn-primary" id="pSalvar">Salvar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- DURANTE A SESSÃO: as anotações de cada assunto -->
+  <div class="fa-modal-overlay" id="ovN">
+    <div class="fa-modal cs-modal-notas" role="dialog" aria-modal="true" aria-labelledby="nTitulo">
+      <div class="fa-modal-head">
+        <div><div class="cs-onde" id="nOnde"></div><h3 id="nTitulo"></h3></div>
+        <button class="fa-modal-close" id="nClose" aria-label="Fechar">&times;</button>
+      </div>
+      <div class="fa-modal-body">
+        <div class="cs-item-desc" id="nDesc"></div>
+        <div class="cs-anexos" id="nAnexos"></div>
+        <label class="fa-field"><span>Anotações da sessão (grava sozinho enquanto você digita)</span>
+          <textarea id="nTexto" class="input" rows="12" maxlength="20000" placeholder="O que foi conversado neste assunto"></textarea></label>
+        <div class="cs-salvo" id="nStatus" aria-live="polite"></div>
+      </div>
+      <div class="fa-modal-foot">
+        <button class="btn btn-ghost" id="nAnterior">← Anterior</button>
+        <button class="btn btn-ghost" id="nProximo">Próximo →</button>
+        <button class="btn btn-primary" id="nFechar">Fechar</button>
+      </div>
+    </div>
+  </div>
+
+  <script type="module">
+    import { supabase, getCurrentUser, signOut } from './assets/js/supabase.js';
+    import { hojeLocal } from './assets/js/utils.js';
+    import { EQUIPE, nomePorEmail } from './assets/js/equipe.js';
+    import { fmtData } from './assets/js/rescisao-datas.js';
+    import { ANTECEDENCIA_PADRAO, SITUACOES, nomeDaSituacao, textoHora, faixaDeHorario, horarioDaSessao, dataPorExtenso, avisoDoDia,
+      diaDeMontar, lerDatas, PROBLEMAS, ordenarSessoes, resumo, montagem, ordenarPauta, cronograma, faixaDoCronograma,
+      textoMinutos, duracaoDaSessao, tempoDaPauta, resumoDaPauta, trocarOrdem, proximaOrdem, sessaoAnteriorComPauta,
+      itensParaCopiar, caminhoDoArquivo, ehImagem, conferirArquivos, tamanhoDoArquivo, anexosValidos,
+      tituloDoDocumento } from './assets/js/consultorias.js';
+
+    const HOJE = hojeLocal();
+    const COLS_C = 'id, cliente_id, nome, contatos, responsavel, antecedencia_dias, hora_inicio, hora_fim, situacao, observacao, atualizado_em, atualizado_por';
+    const COLS_S = 'id, consultoria_id, data, hora_inicio, hora_fim, situacao, abertura, abertura_min, anotacoes, tarefa_id, atualizado_em, atualizado_por';
+    const COLS_T = 'id, status, prazo, responsavel, concluida_em';
+    const COLS_P = 'id, sessao_id, titulo, descricao, minutos, interno, ordem, discussao, anexos, criado_em, atualizado_em, atualizado_por';
+    const PASTA = 'consultorias';
+    let consultorias = [], sessoes = [], tarefas = {}, tarefasErro = false, clientes = {};
+    let pautaResumo = {}, pautaErro = false;   // sessão → os assuntos (só id e tempo), das sessões da consultoria aberta
+    let itens = [], itensErro = false;        // os assuntos da sessão aberta
+    let filtro = 'ativa';
+    let atual = null, sessaoAtual = null;     // a consultoria e a sessão abertas (ids)
+    let editando = null, remarcando = null;
+
+    const $ = id => document.getElementById(id);
+    const esc = t => String(t == null ? '' : t).replace(/[&<>"']/g, m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m]));
+    const hhmm = h => (h ? String(h).slice(0, 5) : '');
+    const ddmm = iso => fmtData(iso).slice(0, 5);
+    const maiuscula = t => (t ? t.charAt(0).toUpperCase() + t.slice(1) : '');
+    const agora = () => new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+
+    // o erro do banco nunca vai pra tela como veio
+    function erroDoBanco(e, fazendo) {
+      if (e && e.code === '23505') return 'Já tem uma sessão nesse dia.';
+      if (e && e.code === '42501') return 'Você não tem permissão pra isso.';
+      return 'Não consegui ' + fazendo + '. Tente de novo.';
+    }
+    let avisoTimer = null;
+    function aviso(texto, tipo = 'ok') {
+      const el = $('aviso');
+      el.textContent = texto; el.dataset.tipo = tipo; el.hidden = false;
+      clearTimeout(avisoTimer);
+      avisoTimer = setTimeout(() => { el.hidden = true; }, tipo === 'erro' ? 9000 : 6000);
+    }
+
+    (async () => {
+      const user = await getCurrentUser();
+      if (user) {
+        const n = user.user_metadata?.full_name || nomePorEmail(user.email) || user.email?.split('@')[0] || 'Usuário';
+        $('userName').textContent = n;
+        $('userAvatar').textContent = n.charAt(0).toUpperCase();
+      }
+      await carregarClientes();
+      if (!(await carregar())) return;
+      await mostrarRota(rota());
+    })();
+    $('btnLogout').addEventListener('click', signOut);
+
+    async function carregarClientes() {
+      const { data } = await supabase.todosClientes('id, nome_principal, nome_fantasia');
+      const lista = (data || []).slice().sort((a, b) => nomeCliente(a).localeCompare(nomeCliente(b), 'pt-BR'));
+      lista.forEach(c => { clientes[c.id] = c; });
+      $('cCliente').insertAdjacentHTML('beforeend', lista.map(c => '<option value="' + esc(c.id) + '">' + esc(nomeCliente(c)) + '</option>').join(''));
+    }
+    function nomeCliente(c) {
+      if (!c) return '';
+      return c.nome_fantasia && c.nome_fantasia !== c.nome_principal ? c.nome_fantasia + ' (' + (c.nome_principal || '') + ')' : (c.nome_principal || '');
+    }
+
+    async function carregar() {
+      const [rc, rs] = await Promise.all([
+        supabase.from('consultorias').select(COLS_C),
+        supabase.from('consultoria_sessoes').select(COLS_S)
+      ]);
+      if (rc.error || rs.error) {
+        $('lista').innerHTML = '<p class="cs-erro">Não consegui ler as consultorias. Recarregue a página.</p>';
+        return false;
+      }
+      consultorias = rc.data || [];
+      sessoes = rs.data || [];
+      await carregarTarefas();
+      return true;
+    }
+    // a tarefa de montar de cada sessão (a que o banco criou), pra mostrar se já foi montada
+    async function carregarTarefas() {
+      const ids = [...new Set(sessoes.map(s => s.tarefa_id).filter(Boolean))];
+      tarefas = {}; tarefasErro = false;
+      for (let i = 0; i < ids.length; i += 100) {
+        const { data, error } = await supabase.from('tarefas').select(COLS_T).in('id', ids.slice(i, i + 100));
+        if (error) { tarefasErro = true; continue; }
+        (data || []).forEach(t => { tarefas[t.id] = t; });
+      }
+    }
+    async function carregarResumoPauta(cid) {
+      const ids = sessoes.filter(s => s.consultoria_id === cid).map(s => s.id);
+      pautaResumo = {}; pautaErro = false;
+      if (!ids.length) return;
+      const { data, error } = await supabase.from('consultoria_pautas').select('id, sessao_id, minutos').in('sessao_id', ids);
+      if (error) { pautaErro = true; return; }
+      (data || []).forEach(p => { (pautaResumo[p.sessao_id] ||= []).push(p); });
+    }
+    async function carregarItens(sid) {
+      const { data, error } = await supabase.from('consultoria_pautas').select(COLS_P).eq('sessao_id', sid);
+      itensErro = !!error;
+      itens = error ? [] : ordenarPauta(data || []);
+    }
+    // depois de gravar: o banco pode ter mexido nas sessões e nas tarefas (os gatilhos), então lê tudo de novo
+    async function recarregar({ comItens = false } = {}) {
+      if (!(await carregar())) return false;
+      if (atual) await carregarResumoPauta(atual);
+      if (sessaoAtual && comItens) await carregarItens(sessaoAtual);
+      renderAtual();
+      return true;
+    }
+    function renderAtual() {
+      if (sessaoAtual && sessoes.some(s => s.id === sessaoAtual)) renderSessao();
+      else if (atual && consultorias.some(c => c.id === atual)) renderFicha();
+      else renderLista();
+    }
+
+    const sessoesDe = id => ordenarSessoes(sessoes.filter(s => s.consultoria_id === id));
+    const empresaDe = c => (c && c.cliente_id && clientes[c.cliente_id]) || null;
+    const diasAntes = c => (c.antecedencia_dias === 1 ? '1 dia antes' : c.antecedencia_dias + ' dias antes');
+    function textoProxima(c, r) {
+      if (!r.proxima) return r.total ? 'Nenhuma sessão prevista daqui pra frente.' : 'Sem sessões ainda.';
+      const s = r.proxima, h = horarioDaSessao(s, c);
+      const t = s.tarefa_id ? tarefas[s.tarefa_id] : null;
+      const m = t && t.status !== 'concluida' && t.prazo ? ' · montar em ' + ddmm(t.prazo) : (t && t.status === 'concluida' ? ' · já montada' : '');
+      return 'Próxima: ' + dataPorExtenso(s.data) + (h ? ' · ' + h : '') + m;
+    }
+    function montagemDe(s) {
+      const t = s.tarefa_id ? tarefas[s.tarefa_id] : null;
+      const m = tarefasErro && s.tarefa_id && !t ? { estado: 'nenhuma', texto: 'não consegui ler a tarefa' } : montagem(s, t, HOJE);
+      return { m, t };
+    }
+
+    /* ---------- O CAMINHO: ?c= (a consultoria) e ?c=&s= (a sessão) ---------- */
+    function rota() {
+      const q = new URLSearchParams(location.search);
+      return { c: q.get('c'), s: q.get('s') };
+    }
+    async function irPara({ c = null, s = null } = {}) {
+      await salvarPendentes();
+      history.pushState({}, '', c ? '?c=' + encodeURIComponent(c) + (s ? '&s=' + encodeURIComponent(s) : '') : location.pathname);
+      await mostrarRota({ c, s });
+    }
+    async function mostrarRota({ c, s }) {
+      const cons = c ? consultorias.find(x => x.id === c) : null;
+      const ses = cons && s ? sessoes.find(x => x.id === s && x.consultoria_id === cons.id) : null;
+      if (!cons || cons.id !== atual) { $('addTexto').value = ''; $('addSessoes').open = false; }
+      atual = cons ? cons.id : null;
+      sessaoAtual = ses ? ses.id : null;
+      $('vLista').hidden = !!cons; $('vFicha').hidden = !cons || !!ses; $('vSessao').hidden = !ses;
+      if (!cons) { renderLista(); window.scrollTo(0, 0); return; }
+      await carregarResumoPauta(cons.id);
+      if (ses) { await carregarItens(ses.id); renderSessao({ textos: true }); } else renderFicha();
+      window.scrollTo(0, 0);
+    }
+    window.addEventListener('popstate', async () => { await salvarPendentes(); await mostrarRota(rota()); });
+
+    /* ---------- A LISTA ---------- */
+    document.querySelectorAll('.cs-filtro-btn').forEach(b => b.addEventListener('click', () => {
+      filtro = b.dataset.f;
+      document.querySelectorAll('.cs-filtro-btn').forEach(x => x.setAttribute('aria-pressed', x === b ? 'true' : 'false'));
+      renderLista();
+    }));
+
+    function renderLista() {
+      const ativas = consultorias.filter(c => c.situacao === 'ativa'), encerradas = consultorias.filter(c => c.situacao !== 'ativa');
+      $('nAtivas').textContent = ativas.length;
+      $('nEncerradas').textContent = encerradas.length;
+      const lista = (filtro === 'ativa' ? ativas : encerradas).map(c => ({ c, r: resumo(sessoesDe(c.id), HOJE) }))
+        .sort((a, b) => String(a.r.proxima ? a.r.proxima.data : '9999').localeCompare(String(b.r.proxima ? b.r.proxima.data : '9999'))
+          || String(a.c.nome).localeCompare(String(b.c.nome), 'pt-BR'));
+      const vazio = $('vazio');
+      if (!lista.length) {
+        $('lista').innerHTML = '';
+        vazio.textContent = filtro === 'ativa' ? 'Nenhuma consultoria ativa. Clique em "+ Nova consultoria" pra começar.' : 'Nenhuma consultoria encerrada.';
+        vazio.hidden = false;
+        return;
+      }
+      vazio.hidden = true;
+      $('lista').innerHTML = lista.map(({ c, r }) => {
+        const emp = empresaDe(c);
+        const h = faixaDeHorario(c.hora_inicio, c.hora_fim);
+        const pct = r.total ? Math.round(100 * r.realizadas / r.total) : 0;
+        return '<div class="cs-card" data-id="' + esc(c.id) + '" tabindex="0" role="button" aria-label="Abrir a consultoria ' + esc(c.nome) + '">'
+          + '<div class="cs-card-topo"><span class="cs-nome">' + esc(c.nome) + '</span>'
+          + (c.situacao !== 'ativa' ? ' <span class="cs-pill cs-pill-enc">Encerrada</span>' : '') + '</div>'
+          + '<div class="cs-empresa">' + (emp ? esc(nomeCliente(emp)) : '<span class="cs-sem">sem empresa do cadastro</span>') + '</div>'
+          + '<div class="cs-meta">' + (c.contatos ? '<span>Com ' + esc(c.contatos) + '</span>' : '')
+          + '<span>Monta: ' + esc((c.responsavel || '—') + ', ' + diasAntes(c)) + '</span>' + (h ? '<span>' + esc(h) + '</span>' : '') + '</div>'
+          + '<div class="cs-prog"><div class="cs-barra" aria-hidden="true"><i style="width:' + pct + '%"></i></div>'
+          + '<span>' + r.realizadas + ' de ' + r.total + (r.total === 1 ? ' sessão feita' : ' sessões feitas')
+          + (r.primeira ? ' · de ' + esc(fmtData(r.primeira)) + ' a ' + esc(fmtData(r.ultima)) : '') + '</span></div>'
+          + (c.situacao === 'ativa' ? '<div class="cs-prox">' + esc(textoProxima(c, r)) + '</div>' : '')
+          + '</div>';
+      }).join('');
+      $('lista').querySelectorAll('.cs-card').forEach(el => {
+        el.addEventListener('click', () => irPara({ c: el.dataset.id }));
+        el.addEventListener('keydown', e => { if ((e.key === 'Enter' || e.key === ' ') && e.target === el) { e.preventDefault(); irPara({ c: el.dataset.id }); } });
+      });
+    }
+
+    /* ---------- A CONSULTORIA ---------- */
+    $('btnVoltar').addEventListener('click', () => irPara({}));
+
+    function renderFicha() {
+      const c = consultorias.find(x => x.id === atual);
+      if (!c) return;
+      const lista = sessoesDe(c.id), r = resumo(lista, HOJE), emp = empresaDe(c);
+      $('fNome').innerHTML = esc(c.nome) + (c.situacao !== 'ativa' ? ' <span class="cs-pill cs-pill-enc">Encerrada</span>' : '');
+      $('fEmpresa').innerHTML = emp
+        ? '<a href="clientes/editar.html?id=' + encodeURIComponent(emp.id) + '">' + esc(nomeCliente(emp)) + '</a>'
+        : '<span class="cs-sem">sem empresa do cadastro</span>';
+      const h = faixaDeHorario(c.hora_inicio, c.hora_fim);
+      $('fDados').innerHTML = [
+        ['Com quem', c.contatos || '—'],
+        ['Quem monta', (c.responsavel || '—') + ', ' + diasAntes(c) + ' da sessão'],
+        ['Horário', h || '—'],
+        ['Observação', c.observacao || '—']
+      ].map(([k, v]) => '<div><dt>' + esc(k) + '</dt><dd>' + esc(v) + '</dd></div>').join('');
+      $('fResumo').innerHTML = '<span><b>' + r.realizadas + '</b> de ' + r.total + (r.total === 1 ? ' sessão feita' : ' sessões feitas') + '</span>'
+        + (r.canceladas ? '<span>' + r.canceladas + (r.canceladas === 1 ? ' cancelada' : ' canceladas') + '</span>' : '')
+        + (c.situacao === 'ativa' ? '<span>' + esc(textoProxima(c, r)) + '</span>' : '');
+      $('fSemSessoes').hidden = lista.length > 0;
+      $('fSessoes').innerHTML = lista.map((s, i) => linhaSessao(c, s, i + 1)).join('');
+      ligarSessoes();
+      $('addSessoes').hidden = c.situacao !== 'ativa';
+      $('addHorario').textContent = (h ? 'A linha sem horário fica com o da consultoria: ' + h + '. ' : '')
+        + 'A tarefa de montar de cada sessão vai pra Agenda de ' + (c.responsavel || '—') + ', ' + diasAntes(c) + '.';
+      previa();
+    }
+
+    function linhaSessao(c, s, n) {
+      const { m, t } = montagemDe(s);
+      const av = avisoDoDia(s.data);
+      const passou = s.situacao === 'prevista' && s.data < HOJE;
+      const h = horarioDaSessao(s, c);
+      const pauta = pautaErro ? '—' : resumoDaPauta(pautaResumo[s.id]);
+      const opcoes = SITUACOES.map(([v, rot]) => '<option value="' + v + '"' + (v === s.situacao ? ' selected' : '') + '>' + rot + '</option>').join('');
+      return '<tr class="cs-linha cs-sit-' + esc(s.situacao) + '" data-id="' + esc(s.id) + '">'
+        + '<td data-label="Nº" class="cs-num">' + n + '</td>'
+        + '<td data-label="Data"><span class="cs-data">' + esc(dataPorExtenso(s.data)) + '</span>'
+        + (av ? ' <span class="cs-pill cs-pill-aviso" title="Confira com a empresa">' + esc(av) + '</span>' : '')
+        + (passou ? ' <span class="cs-pill cs-pill-passou">já passou: marque como foi</span>' : '') + '</td>'
+        + '<td data-label="Horário" class="cs-nowrap">' + esc(h || '—') + '</td>'
+        + '<td data-label="Situação"><select class="select cs-sel-sit" data-id="' + esc(s.id) + '" aria-label="Situação da sessão de ' + esc(fmtData(s.data)) + '"' + (c.situacao !== 'ativa' ? ' disabled' : '') + '>' + opcoes + '</select></td>'
+        + '<td data-label="Pauta" class="cs-nowrap"><span class="' + (pauta === 'vazia' ? 'cs-sem' : 'cs-pauta-res') + '">' + esc(pauta) + '</span></td>'
+        + '<td data-label="Montagem"><span class="cs-mont cs-mont-' + m.estado + '">' + esc(m.texto) + '</span>'
+        + (t ? ' <a class="cs-link" href="agenda.html?tarefa=' + encodeURIComponent(t.id) + '">na Agenda</a>' : '') + '</td>'
+        + '<td data-label="Ações" class="cs-acoes">'
+        + '<button type="button" class="btn btn-ghost btn-sm cs-btn-abrir" data-id="' + esc(s.id) + '">Abrir a sessão</button>'
+        + (c.situacao === 'ativa' && s.situacao !== 'cancelada' ? '<button type="button" class="btn btn-ghost btn-sm cs-btn-remarcar" data-id="' + esc(s.id) + '">Remarcar</button>' : '')
+        + '</td></tr>';
+    }
+    function ligarSessoes() {
+      const corpo = $('fSessoes');
+      corpo.querySelectorAll('.cs-sel-sit').forEach(sel => sel.addEventListener('change', () => mudarSituacao(sel.dataset.id, sel.value, sel)));
+      corpo.querySelectorAll('.cs-btn-abrir').forEach(b => b.addEventListener('click', () => irPara({ c: atual, s: b.dataset.id })));
+      corpo.querySelectorAll('.cs-btn-remarcar').forEach(b => b.addEventListener('click', () => abrirRemarcar(b.dataset.id)));
+    }
+
+    async function mudarSituacao(id, nova, sel) {
+      const s = sessoes.find(x => x.id === id);
+      if (!s || nova === s.situacao) return;
+      if (nova === 'cancelada' && !confirm('Cancelar a sessão de ' + fmtData(s.data) + '? A tarefa de montar sai da Agenda.')) { sel.value = s.situacao; return; }
+      sel.disabled = true;
+      await salvarPendentes();
+      const { error } = await supabase.from('consultoria_sessoes').update({ situacao: nova }).eq('id', id);
+      if (error) { sel.value = s.situacao; sel.disabled = false; aviso(erroDoBanco(error, 'mudar a sessão'), 'erro'); return; }
+      await recarregar();
+      const msg = { realizada: 'Sessão de ' + fmtData(s.data) + ' marcada como realizada.', cancelada: 'Sessão de ' + fmtData(s.data) + ' cancelada: a tarefa de montar saiu da Agenda.', prevista: 'Sessão de ' + fmtData(s.data) + ' prevista de novo.' };
+      aviso(msg[nova] || 'Sessão atualizada.');
+    }
+
+    /* ---------- ADICIONAR SESSÕES ---------- */
+    let itensDaPrevia = [];
+    function previa() {
+      const c = consultorias.find(x => x.id === atual);
+      const ul = $('addPrevia');
+      if (!c) { ul.innerHTML = ''; return; }
+      const existentes = sessoesDe(c.id).filter(s => s.situacao !== 'cancelada').map(s => s.data);
+      const lidas = lerDatas($('addTexto').value, { hoje: HOJE, existentes });
+      itensDaPrevia = lidas.filter(i => !i.problema);
+      const semData = lidas.filter(i => i.problema === 'sem_data').length;
+      ul.innerHTML = lidas.filter(i => i.problema !== 'sem_data').map(i => {
+        if (i.problema) return '<li class="cs-previa-erro">✗ ' + esc(i.linha) + ': ' + esc(PROBLEMAS[i.problema] || 'não entendi') + '</li>';
+        const h = faixaDeHorario(i.hora_inicio || c.hora_inicio, i.hora_fim || c.hora_fim);
+        const av = avisoDoDia(i.data);
+        return '<li>✓ ' + esc(dataPorExtenso(i.data)) + (h ? ' · ' + esc(h) : '') + ' · montar em ' + esc(ddmm(diaDeMontar(i.data, c.antecedencia_dias, HOJE)))
+          + (av ? ' <span class="cs-pill cs-pill-aviso">' + esc(av) + '</span>' : '')
+          + (i.escrito ? ' <span class="cs-pill cs-pill-aviso" title="A data colada já passou, e a da linha de cima é mais nova">estava ' + esc(fmtData(i.escrito)) + ': vai pro ano seguinte</span>' : '')
+          + '</li>';
+      }).join('') + (semData ? '<li class="cs-previa-fora">' + semData + (semData === 1 ? ' linha sem data ficou de fora.' : ' linhas sem data ficaram de fora.') + '</li>' : '');
+      const n = itensDaPrevia.length;
+      $('addSalvar').disabled = !n;
+      $('addSalvar').textContent = n ? 'Adicionar ' + (n === 1 ? '1 sessão' : n + ' sessões') : 'Adicionar as sessões';
+      $('addErro').textContent = '';
+    }
+    let previaTimer = null;
+    $('addTexto').addEventListener('input', () => { clearTimeout(previaTimer); previaTimer = setTimeout(previa, 150); });
+    $('addSalvar').addEventListener('click', async () => {
+      const c = consultorias.find(x => x.id === atual);
+      if (!c || !itensDaPrevia.length) return;
+      // o horário igual ao da consultoria fica em branco na sessão: segue o da consultoria se ele mudar
+      const linhas = itensDaPrevia.map(i => ({
+        consultoria_id: c.id, data: i.data,
+        hora_inicio: i.hora_inicio && i.hora_inicio !== hhmm(c.hora_inicio) ? i.hora_inicio : null,
+        hora_fim: i.hora_fim && i.hora_fim !== hhmm(c.hora_fim) ? i.hora_fim : null
+      }));
+      const btn = $('addSalvar'); btn.disabled = true;
+      const { error } = await supabase.from('consultoria_sessoes').insert(linhas);
+      if (error) { btn.disabled = false; $('addErro').textContent = erroDoBanco(error, 'adicionar as sessões'); return; }
+      $('addTexto').value = '';
+      $('addSessoes').open = false;
+      await recarregar();
+      aviso((linhas.length === 1 ? '1 sessão adicionada' : linhas.length + ' sessões adicionadas') + ': as tarefas de montar estão na Agenda de ' + (c.responsavel || '—') + '.');
+    });
+
+    /* ---------- A SESSÃO ---------- */
+    $('btnVoltarFicha').addEventListener('click', () => irPara({ c: atual }));
+    $('sSit').innerHTML = SITUACOES.map(([v, rot]) => '<option value="' + v + '">' + rot + '</option>').join('');
+    $('sSit').addEventListener('change', () => mudarSituacao(sessaoAtual, $('sSit').value, $('sSit')));
+    $('sRemarcar').addEventListener('click', () => abrirRemarcar(sessaoAtual));
+    $('sPdf').addEventListener('click', gerarPdf);
+
+    const sessaoAberta = () => sessoes.find(x => x.id === sessaoAtual) || null;
+    const consultoriaAberta = () => consultorias.find(x => x.id === atual) || null;
+    const somenteLeitura = () => { const s = sessaoAberta(); return !s || s.situacao === 'cancelada'; };
+
+    // textos: põe a abertura e as anotações nos campos (ao abrir a sessão; depois, só o que não está sendo digitado)
+    function renderSessao({ textos = false } = {}) {
+      const s = sessaoAberta(), c = consultoriaAberta();
+      if (!s || !c) return;
+      const lista = sessoesDe(c.id), n = lista.findIndex(x => x.id === s.id) + 1;
+      const { m, t } = montagemDe(s);
+      const h = horarioDaSessao(s, c), av = avisoDoDia(s.data);
+      $('sVoltarNome').textContent = c.nome;
+      $('sOnde').textContent = c.nome + ' · sessão ' + n + ' de ' + lista.length;
+      $('sTitulo').textContent = maiuscula(dataPorExtenso(s.data));
+      $('sSub').innerHTML = (h ? '<span>' + esc(h) + '</span>' : '')
+        + '<span class="cs-pill cs-pill-' + esc(s.situacao) + '">' + esc(nomeDaSituacao(s.situacao)) + '</span>'
+        + (av ? '<span class="cs-pill cs-pill-aviso">' + esc(av) + '</span>' : '')
+        + '<span class="cs-mont cs-mont-' + m.estado + '">' + esc(m.texto) + '</span>'
+        + (t ? '<a class="cs-link" href="agenda.html?tarefa=' + encodeURIComponent(t.id) + '">na Agenda</a>' : '');
+      $('sSit').value = s.situacao;
+      $('sSit').disabled = c.situacao !== 'ativa';
+      const ro = somenteLeitura();
+      $('sRemarcar').hidden = ro || c.situacao !== 'ativa';
+      $('sCancelada').hidden = !ro;
+      $('sNovo').hidden = ro;
+      ['sAbertura', 'sAbMin', 'sAnotacoes'].forEach(id => { $(id).disabled = ro; });
+      if (textos || document.activeElement !== $('sAbertura')) $('sAbertura').value = s.abertura || '';
+      if (textos || document.activeElement !== $('sAnotacoes')) $('sAnotacoes').value = s.anotacoes || '';
+      if (textos || document.activeElement !== $('sAbMin')) $('sAbMin').value = s.abertura_min || '';
+      if (textos) { $('sAbSalvo').textContent = ''; $('sAnSalvo').textContent = ''; }
+      renderItens();
+    }
+
+    function renderItens() {
+      const s = sessaoAberta(), c = consultoriaAberta();
+      if (!s || !c) return;
+      const cr = cronograma(s.hora_inicio || c.hora_inicio, s.abertura_min, itens);
+      $('sAbFaixa').textContent = faixaDoCronograma(cr.abertura);
+      const tp = tempoDaPauta(cr.total, duracaoDaSessao(s, c));
+      $('sTempo').textContent = tp.texto ? '· ' + tp.texto : '';
+      $('sTempo').classList.toggle('cs-tempo-passou', tp.passou);
+      const ro = somenteLeitura();
+      // copiar a pauta: só com a pauta vazia, da sessão anterior que tem assunto
+      const contagem = Object.fromEntries(Object.entries(pautaResumo).map(([k, v]) => [k, v.length]));
+      const anterior = !ro && !itens.length && !itensErro ? sessaoAnteriorComPauta(sessoesDe(c.id), s, contagem) : null;
+      $('sCopiar').hidden = !anterior;
+      $('sCopiar').dataset.de = anterior ? anterior.id : '';
+      $('sCopiar').textContent = anterior ? 'Copiar a pauta de ' + ddmm(anterior.data) : '';
+      const el = $('sItens');
+      if (itensErro) { el.innerHTML = '<p class="cs-erro">Não consegui ler a pauta. Recarregue a página.</p>'; return; }
+      if (!itens.length) {
+        el.innerHTML = '<div class="cs-pauta-vazia">' + (ro ? 'Sem pauta.' : 'Pauta vazia. Adicione os assuntos' + (anterior ? ' ou copie a pauta da sessão anterior.' : '.')) + '</div>';
+        return;
+      }
+      el.innerHTML = itens.map((p, i) => {
+        const f = cr.itens[p.id];
+        const anexos = anexosValidos(p.anexos, s.id);
+        const notas = String(p.discussao || '').trim();
+        return '<div class="cs-item' + (p.interno ? ' cs-item-interno' : '') + '" data-id="' + esc(p.id) + '">'
+          + '<div class="cs-item-hora">' + (f ? '<b>' + esc(faixaDoCronograma(f)) + '</b>' : '') + (p.minutos ? '<span>' + esc(textoMinutos(p.minutos)) + '</span>' : (f ? '' : '<span class="cs-sem">sem tempo</span>')) + '</div>'
+          + '<div class="cs-item-corpo">'
+          + '<div class="cs-item-tit">' + esc(p.titulo) + (p.interno ? ' <span class="cs-pill cs-pill-int">só do escritório</span>' : '') + '</div>'
+          + (p.descricao ? '<div class="cs-item-desc">' + esc(p.descricao) + '</div>' : '')
+          + (anexos.length ? '<div class="cs-anexos">' + anexos.map(a => chipAnexo(a)).join('') + '</div>' : '')
+          + (notas ? '<div class="cs-item-notas"><b>Anotações:</b> ' + esc(notas.length > 220 ? notas.slice(0, 220) + '…' : notas) + '</div>' : '')
+          + '</div>'
+          + '<div class="cs-item-acoes">'
+          + '<button type="button" class="btn btn-ghost btn-sm" data-anotar="' + esc(p.id) + '">' + (notas ? 'Anotações' : 'Anotar') + '</button>'
+          + (ro ? '' : '<button type="button" class="btn btn-ghost btn-sm" data-editar="' + esc(p.id) + '">Editar</button>'
+            + '<button type="button" class="cs-seta" data-subir="' + esc(p.id) + '" aria-label="Subir ' + esc(p.titulo) + '"' + (i === 0 ? ' disabled' : '') + '>↑</button>'
+            + '<button type="button" class="cs-seta" data-descer="' + esc(p.id) + '" aria-label="Descer ' + esc(p.titulo) + '"' + (i === itens.length - 1 ? ' disabled' : '') + '>↓</button>')
+          + '</div></div>';
+      }).join('');
+      el.querySelectorAll('[data-anotar]').forEach(b => b.addEventListener('click', () => abrirNotas(b.dataset.anotar)));
+      el.querySelectorAll('[data-editar]').forEach(b => b.addEventListener('click', () => abrirItem(itens.find(p => p.id === b.dataset.editar))));
+      el.querySelectorAll('[data-subir]').forEach(b => b.addEventListener('click', () => mover(b.dataset.subir, -1)));
+      el.querySelectorAll('[data-descer]').forEach(b => b.addEventListener('click', () => mover(b.dataset.descer, 1)));
+      ligarAnexos(el);
+    }
+
+    // o arquivo abre numa aba nova pelo link assinado (a pasta é privada)
+    function chipAnexo(a, remover = false) {
+      return '<span class="cs-anexo"><a href="#" data-caminho="' + esc(a.caminho) + '" title="' + esc(a.nome) + ' · ' + esc(tamanhoDoArquivo(a.tamanho)) + '">'
+        + (ehImagem(a) ? '🖼 ' : '📎 ') + esc(a.nome) + '</a>'
+        + (remover ? '<button type="button" class="cs-anexo-x" data-tirar="' + esc(a.caminho) + '" aria-label="Tirar ' + esc(a.nome) + '">&times;</button>' : '')
+        + '</span>';
+    }
+    function ligarAnexos(el) {
+      el.querySelectorAll('a[data-caminho]').forEach(a => a.addEventListener('click', async e => {
+        e.preventDefault();
+        const { data, error } = await supabase.storage.from(PASTA).createSignedUrl(a.dataset.caminho, 3600);
+        if (error || !data || !data.signedUrl) { aviso('Não consegui abrir o arquivo. Tente de novo.', 'erro'); return; }
+        window.open(data.signedUrl, '_blank', 'noopener');
+      }));
+    }
+
+    async function mover(id, dir) {
+      const mudancas = trocarOrdem(itens, id, dir);
+      if (!mudancas.length) return;
+      for (const m of mudancas) {
+        const { error } = await supabase.from('consultoria_pautas').update({ ordem: m.ordem }).eq('id', m.id);
+        if (error) { aviso(erroDoBanco(error, 'mudar a ordem'), 'erro'); break; }
+      }
+      await carregarItens(sessaoAtual);
+      renderItens();
+      const b = document.querySelector('[data-' + (dir < 0 ? 'subir' : 'descer') + '="' + CSS.escape(id) + '"]');
+      if (b && !b.disabled) b.focus(); else { const o = document.querySelector('[data-editar="' + CSS.escape(id) + '"]'); if (o) o.focus(); }
+    }
+
+    // a abertura, o tempo dela e as anotações gerais gravam sozinhos (800 ms depois de parar de digitar, e ao sair do campo)
+    const pendentes = new Map();
+    function campoDaSessao(el, campo, status, ler) {
+      const gravar = async () => {
+        pendentes.delete(campo);
+        const s = sessaoAberta();
+        if (!s || somenteLeitura()) return;
+        const valor = ler();
+        if ((s[campo] ?? null) === valor) return;
+        $(status).textContent = 'gravando…';
+        const { error } = await supabase.from('consultoria_sessoes').update({ [campo]: valor }).eq('id', s.id);
+        if (error) { $(status).textContent = erroDoBanco(error, 'gravar') + ' O texto continua aqui.'; return; }
+        s[campo] = valor;
+        $(status).textContent = 'gravado ✓ ' + agora();
+        if (campo === 'abertura_min') renderItens();
+      };
+      el.addEventListener('input', () => {
+        clearTimeout((pendentes.get(campo) || {}).timer);
+        $(status).textContent = 'digitando…';
+        pendentes.set(campo, { timer: setTimeout(gravar, 800), gravar });
+      });
+      el.addEventListener('change', () => { const p = pendentes.get(campo); if (p) { clearTimeout(p.timer); gravar(); } });
+    }
+    campoDaSessao($('sAbertura'), 'abertura', 'sAbSalvo', () => $('sAbertura').value.trim() || null);
+    campoDaSessao($('sAnotacoes'), 'anotacoes', 'sAnSalvo', () => $('sAnotacoes').value.trim() || null);
+    campoDaSessao($('sAbMin'), 'abertura_min', 'sAbSalvo', () => {
+      const n = Number($('sAbMin').value);
+      return Number.isInteger(n) && n > 0 && n <= 600 ? n : null;
+    });
+    async function salvarPendentes() {
+      const lista = [...pendentes.values()];
+      lista.forEach(p => clearTimeout(p.timer));
+      for (const p of lista) await p.gravar();
+      await salvarNotas();
+    }
+    document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') salvarPendentes(); });
+
+    /* ---------- COPIAR A PAUTA DA SESSÃO ANTERIOR ---------- */
+    $('sCopiar').addEventListener('click', async () => {
+      const s = sessaoAberta(), de = sessoes.find(x => x.id === $('sCopiar').dataset.de);
+      if (!s || !de || itens.length) return;
+      const btn = $('sCopiar'); btn.disabled = true;
+      const { data, error } = await supabase.from('consultoria_pautas').select(COLS_P).eq('sessao_id', de.id);
+      if (error || !data || !data.length) { btn.disabled = false; aviso('Não consegui ler a pauta de ' + fmtData(de.data) + '.', 'erro'); return; }
+      const novos = itensParaCopiar(data).map(p => ({ ...p, sessao_id: s.id }));
+      const { error: e2 } = await supabase.from('consultoria_pautas').insert(novos);
+      if (e2) { btn.disabled = false; aviso(erroDoBanco(e2, 'copiar a pauta'), 'erro'); return; }
+      // a abertura vem junto quando a desta sessão está vazia
+      if (!s.abertura && (de.abertura || de.abertura_min)) {
+        await supabase.from('consultoria_sessoes').update({ abertura: de.abertura || null, abertura_min: de.abertura_min || null }).eq('id', s.id);
+      }
+      btn.disabled = false;
+      await recarregar({ comItens: true });
+      renderSessao({ textos: true });
+      aviso((novos.length === 1 ? '1 assunto copiado' : novos.length + ' assuntos copiados') + ' da sessão de ' + fmtData(de.data) + ', sem as anotações e os arquivos de lá.');
+    });
+
+    /* ---------- UM ASSUNTO: adicionar, editar, os arquivos, tirar ---------- */
+    const ovP = $('ovP');
+    let itemEd = null, anexosEd = [], subidosAgora = [], tiradosAgora = [], subindo = 0;
+    $('sNovo').addEventListener('click', () => abrirItem(null));
+    function abrirItem(p) {
+      itemEd = p || null;
+      const s = sessaoAberta();
+      $('pTitulo').textContent = p ? 'Editar assunto' : 'Adicionar assunto';
+      $('pAssunto').value = p ? p.titulo : '';
+      $('pDetalhe').value = p ? (p.descricao || '') : '';
+      $('pMin').value = p && p.minutos ? p.minutos : '';
+      $('pInterno').checked = !!(p && p.interno);
+      anexosEd = p ? anexosValidos(p.anexos, s.id) : [];
+      subidosAgora = []; tiradosAgora = []; subindo = 0;
+      $('pTirar').hidden = !p;
+      $('pSalvar').disabled = false; $('pClose').disabled = false; $('pCancelar').disabled = false;
+      $('pErro').textContent = ''; $('pAnexoSt').textContent = '';
+      renderAnexosEd();
+      ovP.classList.add('is-open');
+      $('pAssunto').focus();
+    }
+    function renderAnexosEd() {
+      const ul = $('pAnexos');
+      ul.innerHTML = anexosEd.map(a => '<li>' + chipAnexo(a, true) + '<span class="cs-dica">' + esc(tamanhoDoArquivo(a.tamanho)) + '</span></li>').join('');
+      ul.querySelectorAll('[data-tirar]').forEach(b => b.addEventListener('click', async () => {
+        const cam = b.dataset.tirar;
+        anexosEd = anexosEd.filter(a => a.caminho !== cam);
+        if (subidosAgora.includes(cam)) { subidosAgora = subidosAgora.filter(x => x !== cam); await supabase.storage.from(PASTA).remove([cam]); }
+        else tiradosAgora.push(cam);   // o que já estava gravado sai da pasta só depois de salvar
+        renderAnexosEd();
+      }));
+      ligarAnexos(ul);
+      $('pAnexar').disabled = anexosEd.length >= 20;
+    }
+    $('pAnexar').addEventListener('click', () => $('pArquivo').click());
+    $('pArquivo').addEventListener('change', async () => {
+      const s = sessaoAberta();
+      const { ok, recusados } = conferirArquivos($('pArquivo').files, anexosEd.length);
+      $('pArquivo').value = '';
+      const falhas = recusados.map(r => r.nome + ' (' + r.motivo + ')');
+      if (!s) return;
+      // enquanto sobe, a janela não fecha nem grava (o arquivo que chegasse depois ficaria solto na pasta)
+      subindo += ok.length;
+      const travar = v => { $('pSalvar').disabled = v; $('pClose').disabled = v; $('pCancelar').disabled = v; };
+      if (ok.length) travar(true);
+      $('pAnexoSt').textContent = ok.length ? 'Enviando ' + (ok.length === 1 ? '1 arquivo' : ok.length + ' arquivos') + '…' : '';
+      for (const f of ok) {
+        const caminho = caminhoDoArquivo(s.id, crypto.randomUUID(), f.name);
+        const { error } = await supabase.storage.from(PASTA).upload(caminho, f, { contentType: f.type || 'application/octet-stream', upsert: false });
+        if (error) falhas.push(f.name + ' (não subiu)');
+        else { anexosEd.push({ caminho, nome: f.name, tamanho: f.size, tipo: f.type || '' }); subidosAgora.push(caminho); }
+        subindo--;
+      }
+      travar(subindo > 0);
+      $('pAnexoSt').textContent = falhas.length ? 'Ficaram de fora: ' + falhas.join(', ') + '.' : '';
+      renderAnexosEd();
+    });
+    async function fecharItem() {
+      if (subindo > 0) return;
+      if (subidosAgora.length) await supabase.storage.from(PASTA).remove(subidosAgora);   // desistiu: o que subiu agora sai
+      subidosAgora = []; tiradosAgora = []; itemEd = null;
+      ovP.classList.remove('is-open');
+    }
+    $('pClose').addEventListener('click', fecharItem);
+    $('pCancelar').addEventListener('click', fecharItem);
+    ovP.addEventListener('click', e => { if (e.target === ovP) fecharItem(); });
+    $('pSalvar').addEventListener('click', async () => {
+      const s = sessaoAberta();
+      if (!s || subindo > 0) return;
+      const titulo = $('pAssunto').value.trim();
+      const min = $('pMin').value === '' ? null : Number($('pMin').value);
+      if (!titulo) { $('pErro').textContent = 'Escreva o assunto.'; $('pAssunto').focus(); return; }
+      if (min != null && !(Number.isInteger(min) && min >= 0 && min <= 600)) { $('pErro').textContent = 'O tempo vai de 0 a 600 minutos.'; $('pMin').focus(); return; }
+      const dados = { titulo, descricao: $('pDetalhe').value.trim() || null, minutos: min || null, interno: $('pInterno').checked, anexos: anexosEd };
+      const btn = $('pSalvar'); btn.disabled = true;
+      const { error } = itemEd
+        ? await supabase.from('consultoria_pautas').update(dados).eq('id', itemEd.id)
+        : await supabase.from('consultoria_pautas').insert({ ...dados, sessao_id: s.id, ordem: proximaOrdem(itens) });
+      btn.disabled = false;
+      if (error) { $('pErro').textContent = erroDoBanco(error, 'salvar o assunto'); return; }
+      if (tiradosAgora.length) await supabase.storage.from(PASTA).remove(tiradosAgora);
+      const novo = !itemEd;
+      subidosAgora = []; tiradosAgora = []; itemEd = null;
+      ovP.classList.remove('is-open');
+      await carregarItens(s.id);
+      await carregarResumoPauta(atual);
+      renderItens();
+      aviso(novo ? 'Assunto "' + titulo + '" na pauta.' : 'Assunto salvo.');
+    });
+    $('pTirar').addEventListener('click', async () => {
+      const p = itemEd, s = sessaoAberta();
+      if (!p || !s) return;
+      if (!confirm('Tirar "' + p.titulo + '" da pauta? As anotações e os arquivos dele saem junto.')) return;
+      const { error } = await supabase.from('consultoria_pautas').delete().eq('id', p.id);
+      if (error) { $('pErro').textContent = erroDoBanco(error, 'tirar o assunto'); return; }
+      const caminhos = [...new Set(anexosValidos(p.anexos, s.id).map(a => a.caminho).concat(subidosAgora))];
+      if (caminhos.length) await supabase.storage.from(PASTA).remove(caminhos);
+      subidosAgora = []; tiradosAgora = []; itemEd = null;
+      ovP.classList.remove('is-open');
+      await carregarItens(s.id);
+      await carregarResumoPauta(atual);
+      renderItens();
+      aviso('"' + p.titulo + '" saiu da pauta.');
+    });
+
+    /* ---------- DURANTE A SESSÃO: as anotações de cada assunto ---------- */
+    const ovN = $('ovN');
+    let notaId = null, notaTimer = null, notaPendente = false;
+    function abrirNotas(id) {
+      const s = sessaoAberta(), c = consultoriaAberta();
+      const i = itens.findIndex(p => p.id === id);
+      if (i < 0 || !s || !c) return;
+      const p = itens[i];
+      notaId = p.id; notaPendente = false;
+      const f = cronograma(s.hora_inicio || c.hora_inicio, s.abertura_min, itens).itens[p.id];
+      $('nOnde').textContent = 'Assunto ' + (i + 1) + ' de ' + itens.length + (f ? ' · ' + faixaDoCronograma(f) : (p.minutos ? ' · ' + textoMinutos(p.minutos) : ''));
+      $('nTitulo').textContent = p.titulo;
+      $('nDesc').textContent = p.descricao || '';
+      const anexos = anexosValidos(p.anexos, s.id);
+      $('nAnexos').innerHTML = anexos.map(a => chipAnexo(a)).join('');
+      ligarAnexos($('nAnexos'));
+      $('nTexto').value = p.discussao || '';
+      $('nTexto').disabled = somenteLeitura();
+      $('nStatus').textContent = '';
+      $('nAnterior').disabled = i === 0;
+      $('nProximo').disabled = i === itens.length - 1;
+      if (!ovN.classList.contains('is-open')) ovN.classList.add('is-open');
+      $('nTexto').focus();
+    }
+    async function salvarNotas() {
+      clearTimeout(notaTimer);
+      if (!notaPendente || !notaId) return;
+      notaPendente = false;
+      const p = itens.find(x => x.id === notaId);
+      if (!p) return;
+      const valor = $('nTexto').value.trim() || null;
+      if ((p.discussao || null) === valor) return;
+      $('nStatus').textContent = 'gravando…';
+      const { error } = await supabase.from('consultoria_pautas').update({ discussao: valor }).eq('id', p.id);
+      if (error) { notaPendente = true; $('nStatus').textContent = erroDoBanco(error, 'gravar') + ' O texto continua aqui.'; return; }
+      p.discussao = valor;
+      $('nStatus').textContent = 'gravado ✓ ' + agora();
+    }
+    $('nTexto').addEventListener('input', () => {
+      notaPendente = true;
+      $('nStatus').textContent = 'digitando…';
+      clearTimeout(notaTimer);
+      notaTimer = setTimeout(salvarNotas, 800);
+    });
+    async function irNota(dir) {
+      await salvarNotas();
+      const i = itens.findIndex(p => p.id === notaId), j = i + dir;
+      if (j >= 0 && j < itens.length) abrirNotas(itens[j].id);
+    }
+    $('nAnterior').addEventListener('click', () => irNota(-1));
+    $('nProximo').addEventListener('click', () => irNota(1));
+    async function fecharNotas() {
+      await salvarNotas();
+      if (notaPendente) return;   // não gravou: fica aberta, com o aviso
+      ovN.classList.remove('is-open');
+      const foco = notaId;
+      notaId = null;
+      renderItens();
+      const b = document.querySelector('[data-anotar="' + CSS.escape(foco || '') + '"]');
+      if (b) b.focus();
+    }
+    $('nClose').addEventListener('click', fecharNotas);
+    $('nFechar').addEventListener('click', fecharNotas);
+    ovN.addEventListener('click', e => { if (e.target === ovN) fecharNotas(); });
+
+    /* ---------- O PDF (a página pra imprimir, como a das Reuniões) ---------- */
+    async function gerarPdf() {
+      const s = sessaoAberta(), c = consultoriaAberta();
+      if (!s || !c) return;
+      // a janela abre já no clique (depois de esperar o banco, o navegador pode barrar), e o documento entra quando estiver pronto
+      const w = window.open('', '_blank');
+      if (!w) { aviso('O navegador bloqueou a janela do PDF: libere as janelas deste site e tente de novo.', 'erro'); return; }
+      w.document.write('<p style="font-family:sans-serif;padding:24px">Montando o PDF…</p>');
+      await salvarPendentes();
+      const lista = sessoesDe(c.id), n = lista.findIndex(x => x.id === s.id) + 1;
+      const emp = empresaDe(c);
+      const doCliente = itens.filter(p => !p.interno);
+      const cr = cronograma(s.hora_inicio || c.hora_inicio, s.abertura_min, itens);
+      // as imagens anexadas vão no documento (o link assinado vale 1 hora)
+      const imagens = {};
+      const caminhos = doCliente.flatMap(p => anexosValidos(p.anexos, s.id).filter(ehImagem).map(a => a.caminho));
+      if (caminhos.length) {
+        const { data } = await supabase.storage.from(PASTA).createSignedUrls(caminhos, 3600);
+        (data || []).forEach(x => { if (x && x.signedUrl && !x.error) imagens[x.path] = x.signedUrl; });
+      }
+      const urlLogo = new URL('assets/logo-mr.png', location.href).href;
+      const h = horarioDaSessao(s, c);
+      const blocos = doCliente.map(p => {
+        const f = cr.itens[p.id];
+        const imgs = anexosValidos(p.anexos, s.id).filter(a => ehImagem(a) && imagens[a.caminho]);
+        return '<div class="pauta"><div class="pauta-tit">' + esc(p.titulo)
+          + (f || p.minutos ? '<span class="tag-min">' + esc(f ? faixaDoCronograma(f) : textoMinutos(p.minutos)) + '</span>' : '') + '</div>'
+          + (p.descricao ? '<div class="pauta-desc">' + esc(p.descricao).replace(/\n/g, '<br>') + '</div>' : '')
+          + imgs.map(a => '<img class="pauta-img" src="' + esc(imagens[a.caminho]) + '" alt="' + esc(a.nome) + '">').join('')
+          + (String(p.discussao || '').trim() ? '<div class="notas"><b>Anotações da sessão</b><br>' + esc(p.discussao.trim()).replace(/\n/g, '<br>') + '</div>' : '')
+          + '</div>';
+      }).join('') || '<p class="vazio">Sem assuntos na pauta.</p>';
+      const titulo = tituloDoDocumento(itens, s);
+      const html = '<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8">'
+        + '<title>' + esc(titulo) + ' — ' + esc(c.nome) + ' — ' + esc(fmtData(s.data)) + '</title><style>'
+        + '*{box-sizing:border-box;margin:0;padding:0;} body{font-family:"Segoe UI",Helvetica,Arial,sans-serif;color:#2A2F37;background:#fff;padding:32px;}'
+        + '.toolbar-print{max-width:780px;margin:0 auto 18px;text-align:right;} .toolbar-print button{background:#5B82A6;color:#fff;border:none;border-radius:8px;padding:9px 16px;font-size:14px;cursor:pointer;}'
+        + '.folha{max-width:780px;margin:0 auto;} .cab{display:flex;align-items:center;justify-content:space-between;gap:16px;}'
+        + '.cab img{height:52px;width:auto;object-fit:contain;} .firma{text-align:right;line-height:1.4;}'
+        + '.firma strong{display:block;color:#3A5878;font-size:16px;} .firma span{display:block;color:#6B7280;font-size:12px;}'
+        + '.reg{border:none;border-top:2px solid #5B82A6;margin:14px 0 22px;} h1{color:#3A5878;font-size:22px;margin-bottom:14px;}'
+        + '.dados{display:flex;flex-wrap:wrap;gap:6px 28px;font-size:14px;margin-bottom:24px;padding-bottom:16px;border-bottom:1px solid #E3E8EF;} .dados b{color:#3A5878;}'
+        + '.intro{font-size:13.5px;line-height:1.6;margin:0 0 22px;padding:12px 16px;background:#F7F9FB;border-left:4px solid #5B82A6;border-radius:6px;white-space:pre-wrap;}'
+        + '.intro-min{font-size:11px;font-weight:600;color:#3A5878;text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px;}'
+        + '.sec{background:#5B82A6;color:#fff;font-weight:600;font-size:14px;padding:7px 14px;border-radius:8px 8px 0 0;}'
+        + '.pauta{border:1px solid #E3E8EF;border-top:none;border-left:3px solid #8AAEC8;padding:10px 14px;break-inside:avoid;} .pauta:last-child{border-radius:0 0 8px 8px;}'
+        + '.pauta-tit{font-weight:600;font-size:14px;} .pauta-desc{font-size:13px;color:#555B66;margin-top:4px;line-height:1.5;}'
+        + '.tag-min{display:inline-block;font-size:11px;padding:1px 8px;border-radius:999px;margin-left:8px;vertical-align:middle;background:#EEF2F6;color:#3A5878;font-weight:500;}'
+        + '.pauta-img{display:block;max-width:100%;max-height:520px;margin-top:8px;border:1px solid #E3E8EF;border-radius:6px;}'
+        + '.notas{font-size:13px;line-height:1.5;margin-top:8px;padding:8px 10px;background:#F2F5F8;border-left:3px solid #5B82A6;} .notas b{color:#3A5878;}'
+        + '.geral{margin-top:22px;break-inside:avoid;} .geral h2{color:#3A5878;font-size:15px;margin-bottom:8px;} .geral div{font-size:13.5px;line-height:1.6;white-space:pre-wrap;}'
+        + '.vazio{color:#888;font-size:14px;font-style:italic;padding:10px 14px;border:1px solid #E3E8EF;border-top:none;}'
+        + '.rodape{margin-top:34px;padding-top:12px;border-top:1px solid #E3E8EF;color:#8A93A6;font-size:11px;text-align:center;}'
+        + '@page{margin:1.4cm;} @media print{ body{padding:0;} .toolbar-print{display:none;} }'
+        + '</style></head><body onload="window.print()">'
+        + '<div class="toolbar-print"><button onclick="window.print()">Imprimir / Salvar PDF</button></div>'
+        + '<div class="folha">'
+        + '<header class="cab"><img src="' + esc(urlLogo) + '" alt="Macedo & Reis"><div class="firma"><strong>Macedo &amp; Reis Contabilidade</strong><span>CRC/RS 006418/O</span><span>Três Coroas – RS</span></div></header>'
+        + '<hr class="reg"><h1>' + esc(titulo) + '</h1>'
+        + '<div class="dados"><div><b>Empresa:</b> ' + esc(emp ? (emp.nome_fantasia || emp.nome_principal) : c.nome) + '</div>'
+        + '<div><b>Consultoria contábil:</b> sessão ' + n + ' de ' + lista.length + '</div>'
+        + '<div><b>Data:</b> ' + esc(maiuscula(dataPorExtenso(s.data))) + '</div>'
+        + (h ? '<div><b>Horário:</b> ' + esc(h) + '</div>' : '')
+        + (c.contatos ? '<div><b>Com:</b> ' + esc(c.contatos) + '</div>' : '') + '</div>'
+        + (s.abertura || s.abertura_min ? '<div class="intro">' + (s.abertura_min ? '<div class="intro-min">Abertura · ' + esc(cr.abertura ? faixaDoCronograma(cr.abertura) : textoMinutos(s.abertura_min)) + '</div>' : '') + esc(s.abertura || '') + '</div>' : '')
+        + '<div class="sec">Pauta</div>' + blocos
+        + (String(s.anotacoes || '').trim() ? '<div class="geral"><h2>Anotações gerais e próximos passos</h2><div>' + esc(s.anotacoes.trim()) + '</div></div>' : '')
+        + '<div class="rodape">Emitido em ' + esc(fmtData(HOJE)) + ' · Macedo &amp; Reis Contabilidade · CRC/RS 006418/O</div>'
+        + '</div></body></html>';
+      w.document.open();
+      w.document.write(html);
+      w.document.close();
+    }
+
+    /* ---------- REMARCAR ---------- */
+    const ovR = $('ovR');
+    function abrirRemarcar(id) {
+      const s = sessoes.find(x => x.id === id), c = consultorias.find(x => x.id === (s && s.consultoria_id));
+      if (!s || !c) return;
+      remarcando = s;
+      $('rTitulo').textContent = 'Remarcar a sessão de ' + fmtData(s.data);
+      $('rData').value = s.data;
+      $('rIni').value = hhmm(s.hora_inicio || c.hora_inicio);
+      $('rFim').value = hhmm(s.hora_fim || c.hora_fim);
+      $('rErro').textContent = '';
+      previaRemarcar();
+      ovR.classList.add('is-open');
+      $('rData').focus();
+    }
+    function fecharRemarcar() { ovR.classList.remove('is-open'); remarcando = null; }
+    function previaRemarcar() {
+      const c = remarcando && consultorias.find(x => x.id === remarcando.consultoria_id), d = $('rData').value;
+      if (!c || !d) { $('rPrevia').textContent = ''; return; }
+      const av = avisoDoDia(d);
+      $('rPrevia').textContent = dataPorExtenso(d) + '.'
+        + (d < HOJE ? ' Essa data já passou: a tarefa de montar não é criada.' : ' A tarefa de montar vai pra ' + fmtData(diaDeMontar(d, c.antecedencia_dias, HOJE)) + '.')
+        + (av ? ' Atenção: ' + av + '.' : '');
+    }
+    ['rData', 'rIni', 'rFim'].forEach(id => $(id).addEventListener('input', previaRemarcar));
+    $('rClose').addEventListener('click', fecharRemarcar);
+    $('rCancelar').addEventListener('click', fecharRemarcar);
+    ovR.addEventListener('click', e => { if (e.target === ovR) fecharRemarcar(); });
+    $('rSalvar').addEventListener('click', async () => {
+      const s = remarcando, c = s && consultorias.find(x => x.id === s.consultoria_id);
+      if (!s || !c) return;
+      const d = $('rData').value, ini = $('rIni').value || null, fim = $('rFim').value || null;
+      if (!d) { $('rErro').textContent = 'Escolha o dia.'; $('rData').focus(); return; }
+      if (ini && fim && fim <= ini) { $('rErro').textContent = 'O fim tem de vir depois do começo.'; $('rFim').focus(); return; }
+      const patch = { data: d, hora_inicio: ini && ini !== hhmm(c.hora_inicio) ? ini : null, hora_fim: fim && fim !== hhmm(c.hora_fim) ? fim : null };
+      const btn = $('rSalvar'); btn.disabled = true;
+      await salvarPendentes();
+      const { error } = await supabase.from('consultoria_sessoes').update(patch).eq('id', s.id);
+      btn.disabled = false;
+      if (error) { $('rErro').textContent = erroDoBanco(error, 'remarcar'); return; }
+      const de = s.data;
+      fecharRemarcar();
+      await recarregar();
+      aviso('Sessão de ' + fmtData(de) + ' remarcada pra ' + fmtData(d) + (d >= HOJE ? ': a tarefa de montar foi junto.' : '.'));
+    });
+
+    /* ---------- NOVA / EDITAR CONSULTORIA ---------- */
+    const ovC = $('ovC');
+    function opcoesResp(atualNome) {
+      const nomes = EQUIPE.slice();
+      if (atualNome && !nomes.includes(atualNome)) nomes.push(atualNome);
+      $('cResp').innerHTML = nomes.map(n => '<option value="' + esc(n) + '">' + esc(n) + '</option>').join('');
+    }
+    function abrirConsultoria(c = null) {
+      editando = c;
+      $('cTitulo').textContent = c ? 'Editar a consultoria' : 'Nova consultoria';
+      $('cNome').value = c ? c.nome : '';
+      $('cCliente').value = c && c.cliente_id && clientes[c.cliente_id] ? c.cliente_id : '';
+      $('cContatos').value = c ? (c.contatos || '') : '';
+      opcoesResp(c ? c.responsavel : null);
+      $('cResp').value = c ? c.responsavel : 'Thalia';
+      $('cDias').value = c ? c.antecedencia_dias : ANTECEDENCIA_PADRAO;
+      $('cIni').value = c ? hhmm(c.hora_inicio) : '';
+      $('cFim').value = c ? hhmm(c.hora_fim) : '';
+      $('cSit').value = c ? c.situacao : 'ativa';
+      $('cSitCampo').hidden = !c;
+      $('cObs').value = c ? (c.observacao || '') : '';
+      $('cSalvar').textContent = c ? 'Salvar alterações' : 'Criar a consultoria';
+      $('cDica').textContent = c
+        ? 'Mudar quem monta ou quantos dias antes muda as tarefas de montar que ainda não foram feitas.'
+        : 'Depois de criar, você cola as datas das sessões.';
+      $('cErro').textContent = '';
+      ovC.classList.add('is-open');
+      $('cNome').focus();
+    }
+    function fecharConsultoria() { ovC.classList.remove('is-open'); editando = null; }
+    $('btnNova').addEventListener('click', () => abrirConsultoria(null));
+    $('btnEditar').addEventListener('click', () => abrirConsultoria(consultoriaAberta()));
+    $('cClose').addEventListener('click', fecharConsultoria);
+    $('cCancelar').addEventListener('click', fecharConsultoria);
+    ovC.addEventListener('click', e => { if (e.target === ovC) fecharConsultoria(); });
+    $('cSalvar').addEventListener('click', async () => {
+      const nome = $('cNome').value.trim();
+      const dias = Number($('cDias').value);
+      const ini = $('cIni').value || null, fim = $('cFim').value || null;
+      if (!nome) { $('cErro').textContent = 'Dê um nome à consultoria.'; $('cNome').focus(); return; }
+      if ($('cDias').value === '' || !Number.isInteger(dias) || dias < 0 || dias > 30) { $('cErro').textContent = 'Os dias antes vão de 0 a 30.'; $('cDias').focus(); return; }
+      if (ini && fim && fim <= ini) { $('cErro').textContent = 'O fim tem de vir depois do começo.'; $('cFim').focus(); return; }
+      const dados = { nome, cliente_id: $('cCliente').value || null, contatos: $('cContatos').value.trim() || null, responsavel: $('cResp').value,
+        antecedencia_dias: dias, hora_inicio: ini, hora_fim: fim, observacao: $('cObs').value.trim() || null };
+      const btn = $('cSalvar');
+      if (editando) {
+        dados.situacao = $('cSit').value;
+        if (dados.situacao !== 'ativa' && editando.situacao === 'ativa') {
+          const faltam = sessoesDe(editando.id).filter(s => s.situacao === 'prevista' && s.data >= HOJE).length;
+          if (faltam && !confirm('Encerrar a consultoria? ' + (faltam === 1 ? 'A sessão que falta fica cancelada' : 'As ' + faltam + ' sessões que faltam ficam canceladas') + ', e as tarefas de montar saem da Agenda.')) return;
+        }
+        btn.disabled = true;
+        const { error } = await supabase.from('consultorias').update(dados).eq('id', editando.id);
+        btn.disabled = false;
+        if (error) { $('cErro').textContent = erroDoBanco(error, 'salvar'); return; }
+        fecharConsultoria();
+        await recarregar();
+        aviso('Consultoria salva.');
+        return;
+      }
+      btn.disabled = true;
+      const { data, error } = await supabase.from('consultorias').insert(dados).select(COLS_C);
+      btn.disabled = false;
+      if (error || !data || !data[0]) { $('cErro').textContent = erroDoBanco(error, 'criar a consultoria'); return; }
+      fecharConsultoria();
+      consultorias.push(data[0]);
+      await irPara({ c: data[0].id });
+      $('addSessoes').open = true;
+      $('addTexto').focus();
+    });
+  </script>
+
+  <style>
+    .cs-sr { position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0 0 0 0); white-space:nowrap; }
+    .btn[hidden], .fa-field[hidden], .cs-check[hidden], .cs-tab tr[hidden] { display:none !important; }
+    .cs-aviso { border-radius:10px; padding:10px 14px; font-size:14px; margin-bottom:16px; border:1px solid rgba(63,176,122,.45); background:rgba(63,176,122,.10); color:var(--text); }
+    .cs-aviso[data-tipo="erro"] { border-color:rgba(224,108,108,.5); background:rgba(224,108,108,.10); }
+
+    .cs-filtro { display:flex; gap:8px; flex-wrap:wrap; }
+    .cs-filtro-btn { background:var(--fill-1); border:1px solid var(--line); border-radius:999px; padding:7px 14px; color:var(--text-2); font:inherit; font-size:14px; cursor:pointer; display:inline-flex; gap:8px; align-items:center; }
+    .cs-filtro-btn:hover { border-color:rgba(138,174,200,.45); }
+    .cs-filtro-btn[aria-pressed="true"] { border-color:var(--brand-primary); background:rgba(91,130,166,.14); color:var(--text); }
+    .cs-filtro-n { font-weight:700; }
+
+    .cs-card { background:var(--fill-1); border:1px solid var(--line); border-radius:14px; padding:16px 18px; margin-bottom:12px; cursor:pointer; transition:border-color .15s; display:flex; flex-direction:column; gap:6px; }
+    .cs-card:hover, .cs-card:focus-visible { border-color:rgba(138,174,200,.45); }
+    .cs-card-topo { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+    .cs-nome { font-weight:600; color:var(--text); font-size:16px; }
+    .cs-empresa { color:var(--brand-pale); font-size:14px; }
+    .cs-sem { color:var(--text-dim); }
+    .cs-meta { color:var(--text-muted); font-size:13px; display:flex; gap:16px; flex-wrap:wrap; }
+    .cs-prog { display:flex; align-items:center; gap:10px; font-size:13px; color:var(--text-2); flex-wrap:wrap; }
+    .cs-barra { width:140px; height:6px; border-radius:999px; background:var(--fill-2); overflow:hidden; flex:none; }
+    .cs-barra i { display:block; height:100%; background:var(--ok); border-radius:999px; }
+    .cs-prox { font-size:13.5px; color:var(--text); }
+
+    .cs-pill { font-size:12px; padding:2px 10px; border-radius:999px; border:1px solid; white-space:nowrap; font-weight:500; }
+    .cs-pill-enc, .cs-pill-cancelada { color:var(--text-muted); border-color:rgba(138,147,166,.45); }
+    .cs-pill-prevista { color:var(--brand-light); border-color:rgba(138,174,200,.45); }
+    .cs-pill-realizada { color:var(--ok); border-color:rgba(63,176,122,.45); }
+    .cs-pill-aviso { color:var(--warn); border-color:rgba(227,179,65,.45); }
+    .cs-pill-passou { color:var(--err); border-color:rgba(224,108,108,.5); }
+    .cs-pill-int { color:var(--sol); border-color:var(--sol); }
+
+    .cs-ficha-topo { display:flex; justify-content:space-between; align-items:flex-start; gap:16px; margin:18px 0 12px; flex-wrap:wrap; }
+    .cs-ficha-titulo { min-width:0; }
+    .cs-ficha-titulo h2 { margin:0 0 4px; color:var(--text); font-size:24px; display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
+    .cs-onde { font-size:13px; color:var(--text-muted); margin-bottom:2px; }
+    .cs-sub { display:flex; align-items:center; gap:10px; flex-wrap:wrap; font-size:14px; color:var(--text-2); }
+    .cs-sess-acoes { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+    .cs-dados { display:grid; grid-template-columns:repeat(auto-fit, minmax(200px, 1fr)); gap:10px 24px; margin:0 0 14px; }
+    .cs-dados div { min-width:0; }
+    .cs-dados dt { font-size:12px; color:var(--text-muted); margin-bottom:2px; }
+    .cs-dados dd { margin:0; color:var(--text); font-size:14px; overflow-wrap:anywhere; white-space:pre-line; }
+    .cs-resumo { display:flex; gap:18px; flex-wrap:wrap; font-size:14px; color:var(--text-2); margin-bottom:18px; }
+    .cs-resumo b { color:var(--text); }
+    .cs-h3 { margin:6px 0 10px; color:var(--text); font-size:17px; }
+
+    .cs-tab td { vertical-align:middle; }
+    .cs-num { color:var(--text-muted); width:44px; }
+    .cs-data { color:var(--text); }
+    .cs-sel-sit { padding:6px 30px 6px 10px; min-width:130px; }
+    .cs-linha.cs-sit-cancelada .cs-data { text-decoration:line-through; color:var(--text-muted); }
+    .cs-linha.cs-sit-realizada .cs-data { color:var(--text-2); }
+    .cs-pauta-res { color:var(--text); }
+    .cs-tab td.cs-nowrap { white-space:nowrap; }
+    #sSit { width:auto; min-width:150px; }
+    .cs-mont { font-size:13.5px; }
+    .cs-mont-feita { color:var(--ok); }
+    .cs-mont-hoje { color:var(--warn); font-weight:600; }
+    .cs-mont-atrasada { color:var(--err); font-weight:600; }
+    .cs-mont-futura { color:var(--text-2); }
+    .cs-mont-sem, .cs-mont-nenhuma { color:var(--text-dim); }
+    .cs-link { font-size:12.5px; }
+    .cs-tab td.cs-acoes, .cs-tab th.cs-acoes { white-space:nowrap; text-align:right; }
+    .cs-acoes .btn + .btn { margin-left:6px; }
+
+    .cs-add { margin-top:18px; background:var(--fill-1); border:1px solid var(--line); border-radius:14px; padding:14px 18px; }
+    .cs-add > summary { cursor:pointer; color:var(--brand-light); font-weight:600; }
+    .cs-add-corpo { display:flex; flex-direction:column; gap:12px; margin-top:12px; }
+    .cs-previa { list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:5px; font-size:14px; color:var(--text); }
+    .cs-previa-erro { color:var(--err); }
+    .cs-previa-fora { color:var(--text-dim); font-size:13px; }
+    .cs-add-acoes { display:flex; align-items:center; gap:12px; flex-wrap:wrap; }
+    .cs-dica { margin:0; font-size:13px; color:var(--text-muted); }
+    .cs-erro { color:var(--err); font-size:13px; }
+    .cs-erro:empty { display:none; }
+    textarea.input { resize:vertical; font-family:inherit; width:100%; }
+
+    /* a sessão */
+    .cs-faixa { border:1px solid rgba(138,147,166,.45); background:var(--fill-1); color:var(--text-2); border-radius:10px; padding:10px 14px; font-size:14px; margin-bottom:14px; }
+    .cs-bloco { background:var(--fill-1); border:1px solid var(--line); border-radius:14px; padding:14px 18px; margin:0 0 18px; }
+    .cs-bloco-topo { display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin-bottom:10px; }
+    .cs-bloco-topo h3 { margin:0; font-size:15px; color:var(--text); }
+    .cs-chip { font-size:12px; color:var(--brand-light); }
+    .cs-chip:empty { display:none; }
+    .cs-min { margin-left:auto; display:flex; align-items:center; gap:8px; font-size:13px; color:var(--text-muted); }
+    .cs-min .input { width:90px; padding:6px 10px; }
+    .cs-salvo { font-size:12.5px; color:var(--text-dim); margin-top:6px; min-height:16px; }
+    .cs-pauta-topo { display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap; margin:4px 0 10px; }
+    .cs-pauta-topo h3 { margin:0; color:var(--text); font-size:17px; }
+    .cs-tempo { font-size:13px; font-weight:400; color:var(--text-muted); }
+    .cs-tempo.cs-tempo-passou { color:var(--warn); }
+    .cs-pauta-botoes { display:flex; gap:8px; flex-wrap:wrap; }
+    .cs-pauta-vazia { border:1px dashed var(--line); border-radius:14px; padding:22px; text-align:center; color:var(--text-muted); font-size:14px; margin-bottom:18px; }
+    #sItens { display:flex; flex-direction:column; gap:10px; margin-bottom:18px; }
+    .cs-item { display:grid; grid-template-columns:120px minmax(0, 1fr) auto; gap:14px; align-items:start; background:var(--surface); border:1px solid var(--line); border-left:3px solid var(--brand-primary); border-radius:12px; padding:12px 14px; }
+    .cs-item-interno { border-left-color:var(--sol); }
+    .cs-item-hora { display:flex; flex-direction:column; gap:2px; font-size:13px; color:var(--text-muted); }
+    .cs-item-hora b { color:var(--text); font-weight:600; }
+    .cs-item-corpo { min-width:0; display:flex; flex-direction:column; gap:6px; }
+    .cs-item-tit { font-weight:600; color:var(--text); font-size:15px; overflow-wrap:anywhere; }
+    .cs-item-desc { font-size:13.5px; color:var(--text-2); white-space:pre-wrap; overflow-wrap:anywhere; }
+    .cs-item-desc:empty { display:none; }
+    .cs-item-notas { font-size:13px; color:var(--text-2); background:var(--fill-1); border-left:3px solid var(--ok); padding:6px 10px; border-radius:6px; white-space:pre-wrap; overflow-wrap:anywhere; }
+    .cs-item-notas b { color:var(--text); }
+    .cs-item-acoes { display:flex; align-items:center; gap:6px; flex-wrap:wrap; justify-content:flex-end; }
+    .cs-seta { width:32px; height:32px; border-radius:8px; border:1px solid var(--line); background:transparent; color:var(--text-2); font-size:15px; cursor:pointer; }
+    .cs-seta:hover:not(:disabled) { border-color:var(--brand-light); color:var(--text); }
+    .cs-seta:disabled { opacity:.35; cursor:default; }
+    .cs-anexos { display:flex; flex-wrap:wrap; gap:6px; }
+    .cs-anexos:empty { display:none; }
+    .cs-anexo { display:inline-flex; align-items:center; gap:4px; max-width:100%; font-size:12.5px; border:1px solid var(--line); border-radius:999px; padding:3px 10px; background:var(--fill-1); }
+    .cs-anexo a { color:var(--brand-light); text-decoration:none; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:260px; }
+    .cs-anexo a:hover { text-decoration:underline; }
+    .cs-anexo-x { background:none; border:none; color:var(--text-muted); font-size:16px; line-height:1; cursor:pointer; padding:0 2px; }
+    .cs-anexo-x:hover { color:var(--err); }
+    .cs-anexos-ed { list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:6px; }
+    .cs-anexos-ed:empty { display:none; }
+    .cs-anexos-ed li { display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
+    .cs-anexos-add { display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
+    .cs-check { display:flex; align-items:center; gap:8px; font-size:14px; color:var(--text-2); padding-top:22px; cursor:pointer; }
+    .fa-modal.cs-modal-notas { max-width:760px; }
+
+    .fa-modal-overlay { position:fixed; inset:0; background:var(--overlay); display:none; align-items:center; justify-content:center; padding:20px; z-index:100; }
+    .fa-modal-overlay.is-open { display:flex; }
+    .fa-modal { width:100%; max-width:580px; max-height:calc(100vh - 40px); overflow:auto; background:var(--surface); border:1px solid var(--fill-3); border-radius:16px; }
+    .fa-modal-head { display:flex; align-items:flex-start; justify-content:space-between; gap:12px; padding:18px 22px; border-bottom:1px solid var(--line); }
+    .fa-modal-head h3 { margin:0; color:var(--text); font-size:18px; overflow-wrap:anywhere; }
+    .fa-modal-close { background:none; border:none; color:var(--text-muted); font-size:26px; line-height:1; cursor:pointer; padding:0 4px; }
+    .fa-modal-close:hover { color:var(--text); }
+    .fa-modal-body { padding:22px; display:flex; flex-direction:column; gap:14px; }
+    .fa-field { display:flex; flex-direction:column; gap:6px; min-width:0; }
+    .fa-field > span { font-size:13px; color:var(--brand-light); }
+    .fa-field-row { display:grid; grid-template-columns:1fr 1fr; gap:14px; }
+    .fa-modal-foot { display:flex; justify-content:flex-end; gap:10px; padding:16px 22px; border-top:1px solid var(--line); flex-wrap:wrap; }
+    #pTirar { margin-right:auto; }
+
+    @media (max-width:768px) {
+      .fa-field-row { grid-template-columns:1fr; }
+      .cs-check { padding-top:0; }
+      .cs-tab td.cs-acoes { text-align:left; white-space:normal; }
+      .cs-acoes .btn { margin:4px 0 0 6px; }
+      .cs-num { width:auto; }
+      .cs-barra { width:100px; }
+      .cs-item { grid-template-columns:1fr; gap:8px; }
+      .cs-item-hora { flex-direction:row; gap:10px; }
+      .cs-item-acoes { justify-content:flex-start; }
+      .cs-min { margin-left:0; }
+    }
+  </style>
+</body>
+</html>

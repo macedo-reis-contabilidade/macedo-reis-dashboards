@@ -16,6 +16,7 @@
     a[href="comercial-precificacao.html"] .dashboard-card-icon { background: rgba(82,180,198,.16); color:#52B4C6; }
     a[href="comercial-transicao.html"] .dashboard-card-icon { background: rgba(127,191,142,.16); color:#7FBF8E; }
     a[href="comercial-servicos.html"] .dashboard-card-icon { background: rgba(224,164,88,.16); color:#E0A458; }
+    a[href="comercial-consultorias.html"] .dashboard-card-icon { background: rgba(210,132,164,.16); color:#D284A4; }
     a[href="comercial-tarefas.html"] .dashboard-card-icon { background: rgba(138,174,200,.16); color:#8AAEC8; }
     a[href="comercial-relatorios.html"] .dashboard-card-icon { background: rgba(133,151,224,.16); color:#8597E0; }
     a[href="comercial-reunioes.html"] .dashboard-card-icon { background: rgba(164,143,224,.16); color:#A48FE0; }
@@ -56,7 +57,7 @@
         </div>
         <div class="eyebrow">Setor</div>
         <h1>Comercial</h1>
-        <p>Módulos do setor: carteira, precificação, transição, vitrine de serviços, tarefas, relatórios, reuniões.</p>
+        <p>Módulos do setor: carteira, precificação, transição, vitrine de serviços, consultorias, tarefas, relatórios, reuniões.</p>
       </div>
 
       <div class="dashboard-grid">
@@ -96,6 +97,15 @@
           <div class="dashboard-card-footer"><span>Acessar →</span><span class="badge card-status st-load" data-mod="comercial-servicos.html">·</span></div>
         </a>
 
+        <a href="comercial-consultorias.html" class="dashboard-card">
+          <div class="dashboard-card-icon">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="17" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="16" y1="2" x2="16" y2="6"/><path d="M8 14h8"/><path d="M8 17.5h5"/></svg>
+          </div>
+          <h3>Consultorias</h3>
+          <p>As sessões de consultoria de cada empresa: a pauta, os arquivos, as anotações e o PDF. A tarefa de montar cada sessão vai sozinha pra Agenda.</p>
+          <div class="dashboard-card-footer"><span>Acessar →</span><span class="badge card-status st-load" data-mod="comercial-consultorias.html">·</span></div>
+        </a>
+
         <a href="comercial-tarefas.html" class="dashboard-card">
           <div class="dashboard-card-icon">
             <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
@@ -131,6 +141,7 @@
     import { supabase, getCurrentUser, signOut } from './assets/js/supabase.js';
     import { hojeLocal } from './assets/js/utils.js';   // dia no fuso local (toISOString é UTC)
     import { seloDoCard } from './assets/js/servicos-digitais.js';
+    import { seloDoCard as seloConsultorias } from './assets/js/consultorias.js';
     const user = await getCurrentUser();
     if (user) { const el = document.getElementById('userName'); if (el) el.textContent = user.email; const av = document.getElementById('userAvatar'); if (av) av.textContent = (user.email || '?').charAt(0).toUpperCase(); }
     const btnOut = document.getElementById('btnLogout');
@@ -166,6 +177,9 @@
         // (a leitura que falha deixa o traço)
         const { data: servs, error: eServs } = await supabase.from('servicos_digitais').select('situacao');
         setBadge('comercial-servicos.html', eServs ? '—' : seloDoCard(servs || []));
+        // Consultorias (25/11/2026): quantas ativas (a leitura que falha deixa o traço)
+        const { data: cons, error: eCons } = await supabase.from('consultorias').select('situacao');
+        setBadge('comercial-consultorias.html', eCons ? '—' : seloConsultorias(cons || []));
         ["comercial-relatorios.html", "comercial-reunioes.html"].forEach(h => setBadge(h, '—'));
       } catch (e) { console.error(e); }
     }
