@@ -35,11 +35,11 @@ COMP = HOJE.strftime('%Y-%m')
 ANT = (HOJE.replace(day=1) - datetime.timedelta(days=1)).strftime('%Y-%m')
 MES_BR = COMP[5:7] + '/' + COMP[:4]
 E1, E2, E4 = ('9b1b2c3d-0000-4000-8000-0000000000f1', '9b1b2c3d-0000-4000-8000-0000000000f2', '9b1b2c3d-0000-4000-8000-0000000000f4')
-CLIENTES = [{'id': E1, 'nome_principal': 'MERCADO DO TESTE LTDA', 'nome_fantasia': 'MERCADINHO', 'documento': '63552438000100', 'status': 'ativo', 'tipo_pessoa': 'PJ',
+CLIENTES = [{'id': E1, 'nome_principal': 'MERCADO DO TESTE LTDA', 'nome_fantasia': 'MERCADINHO', 'documento': '86868686000186', 'status': 'ativo', 'tipo_pessoa': 'PJ',
              'regime_tributario': 'Lucro Real', 'cnae_principal': '4711-3/02 - Supermercados', 'cidade': 'Três Coroas'},
             {'id': E2, 'nome_principal': 'OFICINA DO TESTE LTDA', 'nome_fantasia': None, 'documento': '10000000000353', 'status': 'ativo', 'tipo_pessoa': 'PJ',
              'regime_tributario': 'Simples Nacional', 'cnae_principal': '4520-0/01', 'cidade': 'Igrejinha'},
-            {'id': E4, 'nome_principal': 'ESCRITORIO DO TESTE LTDA', 'nome_fantasia': 'CONTABILIDADE DE TESTE', 'documento': '19208576000177', 'status': 'ativo', 'tipo_pessoa': 'PJ',
+            {'id': E4, 'nome_principal': 'ESCRITORIO DO TESTE LTDA', 'nome_fantasia': 'CONTABILIDADE DE TESTE', 'documento': '87878787000187', 'status': 'ativo', 'tipo_pessoa': 'PJ',
              'regime_tributario': 'Simples Nacional', 'cnae_principal': '6920-6/01', 'cidade': 'Três Coroas'}]
 CASOS = [{'id': 'yc-2', 'cliente_id': E2, 'campanha': 'Opção IBS/CBS 2027', 'prazo_opcao': '2026-10-30', 'cnae_base': '4520-0/01', 'segmento': None, 'triagem': 'simular', 'score': 3,
           'sinal_b2b': 1, 'sinal_entradas': 1, 'sinal_reducao': 0, 'sinal_aliquota': 1, 'perfil_validado': False, 'decisao': 'pendente', 'status': 'triado', 'comunicado_em': None,
@@ -115,7 +115,7 @@ def main():
         card = p.inner_text(ultimo)
         ok(card.startswith('Incluir 2 empresas na campanha da Reforma?') and 'MERCADO DO TESTE LTDA' in card and 'ESCRITORIO DO TESTE LTDA' in card
            and 'Já está na campanha: OFICINA DO TESTE LTDA.' in card, f'o cartão: as duas sem caso, e a que já está à parte ({card[:200]!r})')
-        ok('MERCADINHO · 63.552.438/0001-00 · na carteira desde 01/01/2026' in card and 'CONTABILIDADE DE TESTE · 19.208.576/0001-77 · fora da carteira' in card,
+        ok('MERCADINHO · 86.868.686/0001-86 · na carteira desde 01/01/2026' in card and 'CONTABILIDADE DE TESTE · 87.878.787/0001-87 · fora da carteira' in card,
            'cada uma com a fantasia, o CNPJ e se está na carteira')
         tags = p.eval_on_selector_all(ultimo + ' .as-tag', 'ts => ts.map(t => t.innerText)')
         ok(tags == ['hoje: Lucro Real'], f'o regime de hoje marcado só na que não é do Simples ({tags})')

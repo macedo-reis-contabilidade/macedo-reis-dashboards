@@ -867,11 +867,12 @@ console.log('Os cadastros (30/10/2026): incluir na Reforma, pôr num mês dos bo
   // a campanha da Reforma: das parecidas, a da carteira; de empresa com filiais, a matriz; o escritório, fora da carteira
   const U = n => '7e000000-0000-4000-8000-' + String(n).padStart(12, '0');
   const cli = (n, nome, fantasia, doc, regime, extra = {}) => ({ id: U(n), nome_principal: nome, nome_fantasia: fantasia, documento: doc, tipo_pessoa: 'PJ', regime_tributario: regime, status: 'ativo', cidade: 'Três Coroas', uf: 'RS', ...extra });
-  const muller = [cli(1, 'MERCADO MULLER COMERCIO DE ALIMENTOS LTDA', 'MERCADO MULLER', '41723102000112', 'Lucro Real'), cli(2, 'MERCADO MULLER COMERCIO DE ALIMENTOS LTDA (FILIAL)', 'MERCADO MULLER FILIAL', '41723102000384', 'Lucro Presumido'),
-    cli(3, 'COMERCIO DE ALIMENTOS SUPERMERCADO MULLER LTDA', 'MERCADO E ACOUGUE MULLER', '63552438000100', 'Lucro Real')];
-  const raupp = [cli(11, 'J. RAUPP COMERCIO DE MOVEIS LTDA (MATRIZ)', 'MOVEIS RAUPP', '05586949000139', 'Lucro Presumido'), cli(12, 'J. RAUPP COMERCIO DE MOVEIS LTDA (FILIAL 1)', 'MOVEIS RAUPP', '05586949000210', 'Lucro Presumido'),
-    cli(13, 'J. RAUPP COMERCIO DE MOVEIS LTDA (FILIAL 2)', 'REDLAR - MOVEIS RAUPP', '05586949000309', 'Lucro Presumido'), cli(14, 'MOVEIS RAUPP LTDA', null, '01921789000186', 'Lucro Presumido'),
-    { ...cli(15, 'RICARDO PIRES GRAUPPE', null, '03733178084', null), tipo_pessoa: 'PF' }];
+  // os nomes e os documentos são inventados (o repositório é público): os dois casos reais de 30/10/2026 com outros nomes
+  const aldeia = [cli(1, 'MERCADO ALDEIA COMERCIO DE ALIMENTOS LTDA', 'MERCADO ALDEIA', '81818181000181', 'Lucro Real'), cli(2, 'MERCADO ALDEIA COMERCIO DE ALIMENTOS LTDA (FILIAL)', 'MERCADO ALDEIA FILIAL', '81818181000262', 'Lucro Presumido'),
+    cli(3, 'COMERCIO DE ALIMENTOS SUPERMERCADO ALDEIA LTDA', 'MERCADO E ACOUGUE ALDEIA', '82828282000182', 'Lucro Real')];
+  const velmar = [cli(11, 'J. VELMAR COMERCIO DE MOVEIS LTDA (MATRIZ)', 'MOVEIS VELMAR', '83838383000183', 'Lucro Presumido'), cli(12, 'J. VELMAR COMERCIO DE MOVEIS LTDA (FILIAL 1)', 'MOVEIS VELMAR', '83838383000264', 'Lucro Presumido'),
+    cli(13, 'J. VELMAR COMERCIO DE MOVEIS LTDA (FILIAL 2)', 'LARCASA - MOVEIS VELMAR', '83838383000345', 'Lucro Presumido'), cli(14, 'MOVEIS VELMAR LTDA', null, '84848484000184', 'Lucro Presumido'),
+    { ...cli(15, 'ANTONIO SILVA AVELMARES', null, '12312312312', null), tipo_pessoa: 'PF' }];
   const escritorio = [cli(21, 'DIEGO REIS CONTABILIDADE LTDA', 'MACEDO & REIS CONTABILIDADE', '19208576000177', 'Simples Nacional'),
     cli(22, 'DIEGO REIS CONTABILIDADE LTDA - FILIAL', 'MACEDO & REIS CONTABILIDADE', '19208576000258', 'Simples Nacional', { status: 'inativo' })];
   const carteira = [{ cliente_id: U(3), entrada: '2026-01-01', saida: null }, { cliente_id: U(11), entrada: '2026-03-01', saida: null }, { cliente_id: U(12), entrada: '2026-03-02', saida: null },
@@ -880,27 +881,27 @@ console.log('Os cadastros (30/10/2026): incluir na Reforma, pôr num mês dos bo
   // o banco de mentira não filtra o nome_busca: cada busca vê só as empresas daquele teste
   const comCadastro = (clientes, extras = {}) => criarFerramentas({ banco: bancoFalso({ extras: { clientes, carteira_info: carteira, rt_casos: [{ id: 'cz', cliente_id: U(14), decisao: 'pendente', status: 'triado' }], ...extras } }).banco,
     hoje: '2026-10-30', usuario: { email: 'financeiro@macedoereis.com.br', nome: 'Samuel', socio: true }, aoPropor: a => propostas.push(a) });
-  const r1 = await comCadastro(muller).propor_incluir_reforma({ empresas: ['Mercado Muller'], observacao: 'vai pro Simples Nacional em 2027' });
-  chk('Reforma: "Mercado Muller" é a da carteira (o de nome exato está fora dela); o nome, o CNPJ, o regime de hoje e a carteira vão pro modelo', propostas.length === 1
+  const r1 = await comCadastro(aldeia).propor_incluir_reforma({ empresas: ['Mercado Aldeia'], observacao: 'vai pro Simples Nacional em 2027' });
+  chk('Reforma: "Mercado Aldeia" é a da carteira (o de nome exato está fora dela); o nome, o CNPJ, o regime de hoje e a carteira vão pro modelo', propostas.length === 1
     && JSON.stringify(propostas[0]) === JSON.stringify({ tipo: 'incluir_reforma', ids: [U(3)], observacao: 'vai pro Simples Nacional em 2027' })
-    && /COMERCIO DE ALIMENTOS SUPERMERCADO MULLER LTDA \(MERCADO E ACOUGUE MULLER\) · 63\.552\.438\/0001-00 · hoje Lucro Real · na carteira desde 01\/01\/2026/.test(r1) && /Nada foi incluído ainda/.test(r1), r1);
-  const r2 = await comCadastro(raupp).propor_incluir_reforma({ empresas: ['J Raupp'] });
-  chk('Reforma: "J Raupp" — na carteira há a matriz, as filiais e outra empresa: fica a matriz (a opção é da empresa); a pessoa física não entra', propostas.length === 2
-    && JSON.stringify(propostas[1].ids) === JSON.stringify([U(11)]) && /05\.586\.949\/0001-39/.test(r2), r2);
+    && /COMERCIO DE ALIMENTOS SUPERMERCADO ALDEIA LTDA \(MERCADO E ACOUGUE ALDEIA\) · 82\.828\.282\/0001-82 · hoje Lucro Real · na carteira desde 01\/01\/2026/.test(r1) && /Nada foi incluído ainda/.test(r1), r1);
+  const r2 = await comCadastro(velmar).propor_incluir_reforma({ empresas: ['J Velmar'] });
+  chk('Reforma: "J Velmar" — na carteira há a matriz, as filiais e outra empresa: fica a matriz (a opção é da empresa); a pessoa física não entra', propostas.length === 2
+    && JSON.stringify(propostas[1].ids) === JSON.stringify([U(11)]) && /83\.838\.383\/0001-83/.test(r2), r2);
   const r3 = await comCadastro(escritorio).propor_incluir_reforma({ empresas: ['Macedo & Reis'] });
   chk('Reforma: o escritório (fora da carteira): a matriz ativa, dita fora da carteira', propostas.length === 3 && JSON.stringify(propostas[2].ids) === JSON.stringify([U(21)]) && /fora da carteira/.test(r3), r3);
-  const r4 = await comCadastro(raupp).propor_incluir_reforma({ empresas: [U(14), U(11)] });
-  chk('Reforma: a que já está na campanha fica de fora, dita à parte; a outra entra', propostas.length === 4 && JSON.stringify(propostas[3].ids) === JSON.stringify([U(11)]) && /Já está na campanha: MOVEIS RAUPP LTDA/.test(r4), r4);
-  chk('Reforma: só a que já está: nada proposto; mais de 20, ou nenhuma: pede', /Já está na campanha.*Nada foi proposto/.test(await comCadastro(raupp).propor_incluir_reforma({ empresas: [U(14)] }))
-    && /Até 20/.test(await comCadastro(raupp).propor_incluir_reforma({ empresas: Array.from({ length: 21 }, (_, i) => 'x' + i) })) && /Diga quais empresas/.test(await comCadastro(raupp).propor_incluir_reforma({})) && propostas.length === 4);
+  const r4 = await comCadastro(velmar).propor_incluir_reforma({ empresas: [U(14), U(11)] });
+  chk('Reforma: a que já está na campanha fica de fora, dita à parte; a outra entra', propostas.length === 4 && JSON.stringify(propostas[3].ids) === JSON.stringify([U(11)]) && /Já está na campanha: MOVEIS VELMAR LTDA/.test(r4), r4);
+  chk('Reforma: só a que já está: nada proposto; mais de 20, ou nenhuma: pede', /Já está na campanha.*Nada foi proposto/.test(await comCadastro(velmar).propor_incluir_reforma({ empresas: [U(14)] }))
+    && /Até 20/.test(await comCadastro(velmar).propor_incluir_reforma({ empresas: Array.from({ length: 21 }, (_, i) => 'x' + i) })) && /Diga quais empresas/.test(await comCadastro(velmar).propor_incluir_reforma({})) && propostas.length === 4);
   const amb = await comCadastro([cli(31, 'PADARIA SOL LTDA', null, '11111111000111', 'Simples Nacional'), cli(32, 'PADARIA SOL NASCENTE LTDA', null, '22222222000122', 'Lucro Presumido')]).propor_incluir_reforma({ empresas: ['Padaria'] });
   chk('Reforma: duas empresas parecidas, nenhuma na carteira: a lista pra escolher, com o regime e a carteira', /Mais de uma empresa com "Padaria"/.test(amb) && /PADARIA SOL NASCENTE LTDA · 22\.222\.222\/0001-22 · Lucro Presumido · fora da carteira · id /.test(amb) && propostas.length === 4, amb);
-  // "Móveis Raupp" (30/10/2026): o nome de uma (MOVEIS RAUPP LTDA — o LTDA não desempata) e a fantasia de outra (a J. Raupp e uma
-  // filial): a lista, com a empresa das filiais pela matriz e a que já está na campanha marcada
-  const mr = await comCadastro(raupp).propor_incluir_reforma({ empresas: ['Móveis Raupp'] });
-  chk('Reforma: o nome que é de uma e a fantasia de outra: a lista, a das filiais pela matriz, a que já está na campanha marcada', /Mais de uma empresa com "Móveis Raupp"/.test(mr)
-    && /- MOVEIS RAUPP LTDA · 01\.921\.789\/0001-86 · Lucro Presumido · na carteira desde 01\/03\/2026 · já na campanha · id /.test(mr)
-    && /- J\. RAUPP COMERCIO DE MOVEIS LTDA \(MATRIZ\) \(MOVEIS RAUPP\) · 05\.586\.949\/0001-39 · Lucro Presumido · na carteira desde 01\/03\/2026 · com 2 filiais \(a opção é da empresa: entra a matriz\) · id /.test(mr)
+  // "Móveis Velmar" (o caso de 30/10/2026, com o nome inventado): o nome de uma (MOVEIS VELMAR LTDA — o LTDA não desempata) e a
+  // fantasia de outra (a J. Velmar e uma filial): a lista, com a empresa das filiais pela matriz e a que já está na campanha marcada
+  const mr = await comCadastro(velmar).propor_incluir_reforma({ empresas: ['Móveis Velmar'] });
+  chk('Reforma: o nome que é de uma e a fantasia de outra: a lista, a das filiais pela matriz, a que já está na campanha marcada', /Mais de uma empresa com "Móveis Velmar"/.test(mr)
+    && /- MOVEIS VELMAR LTDA · 84\.848\.484\/0001-84 · Lucro Presumido · na carteira desde 01\/03\/2026 · já na campanha · id /.test(mr)
+    && /- J\. VELMAR COMERCIO DE MOVEIS LTDA \(MATRIZ\) \(MOVEIS VELMAR\) · 83\.838\.383\/0001-83 · Lucro Presumido · na carteira desde 01\/03\/2026 · com 2 filiais \(a opção é da empresa: entra a matriz\) · id /.test(mr)
     && !/FILIAL/.test(mr) && /dizendo a que já está na campanha/.test(mr) && propostas.length === 4, mr);
   const ltda = await comCadastro([cli(33, 'DOCES DA VO LTDA', 'DOCES DA VO', '66666666000166', 'Simples Nacional'), cli(34, 'DOCES DA VO LTDA', null, '66666666000247', 'Simples Nacional'),
     cli(35, 'DOCES DA VOVO MARIA EIRELI', null, '77777777000177', 'Simples Nacional')]).propor_incluir_reforma({ empresas: ['Doces da Vó Ltda'] });
