@@ -64,7 +64,7 @@ const PELO_CONTRATO = [...DO_CONTRATO.map(([img]) => img), 'A contabilidade da e
 chk('cada serviço da imagem tem o seu no contrato (e só os de lá)', itens.length === PELO_CONTRATO.length && itens.every(i => PELO_CONTRATO.includes(i))
   && DO_CONTRATO.every(([, ctr]) => contrato.includes(ctr)),
   { sobra: itens.filter(i => !PELO_CONTRATO.includes(i)), falta_no_contrato: DO_CONTRATO.filter(([, ctr]) => !contrato.includes(ctr)).map(([, c]) => c) });
-chk('a contabilidade pelas normas (a ITG 1000 do contrato)', contrato.includes('normas e princípios contábeis vigentes na ITG 1000'));
+chk('a contabilidade pelas normas (a NBC TG 1002 ou a 1001 do contrato)', contrato.includes('normas e princípios contábeis vigentes na NBC TG 1002 (Contabilidade para Microentidades) ou na NBC TG 1001'));
 
 console.log('O horário de atendimento: o mesmo nas imagens, no contrato e no robô do WhatsApp');
 const turnos = TURNOS.map(([a, f]) => [textoDaHora(a), textoDaHora(f)]);
