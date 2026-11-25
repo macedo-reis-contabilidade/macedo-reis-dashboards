@@ -6,14 +6,19 @@
 // De onde vem cada coisa (não inventar serviço: mudou lá, mude aqui):
 // - o que está incluso: o contrato de prestação de serviços, o do kit de boas-vindas (clientes/editar.html, cláusulas 1
 //   a 3: a área contábil, a fiscal e a trabalhista e previdenciária, as que a mensalidade cobre, cláusula 9.1). O
-//   enquadramento tributário (cláusula 4) saiu da lista na revisão do Samuel (24/11/2026, 21h47): "dependendo da
-//   complexidade de um comparativo tributário, temos que cobrar por fora";
+//   enquadramento tributário (cláusula 4) não aparece, nem no incluso nem no cobrado à parte (a revisão do Samuel,
+//   24/11/2026: "dependendo da complexidade de um comparativo tributário, temos que cobrar por fora" e "o regime nem
+//   deveria aparecer");
 // - todo mês: o que o escritório faz no mês (a mesma revisão). O que o cliente manda e quando (as cláusulas 6.2 e 6.3)
 //   não entra: as notas chegam pelo sistema de importação do Domínio e os extratos, cada vez mais, por acesso direto;
-// - o que é cobrado à parte: o orçamento da Precificação (ORC_SERVICOS_SEPARADOS, em comercial-precificacao.html), com o
-//   adicional anual pela cláusula 13.4 do contrato. O teste confere que a lista daqui segue a de lá;
-// - o horário de atendimento: o que o Samuel definiu em 24/11/2026. O contrato (cláusula 7.8) ainda diz das 8h às 12h
-//   e das 13h30 às 18h18.
+// - o que é cobrado à parte: o orçamento da Precificação (ORC_SERVICOS_SEPARADOS, em comercial-precificacao.html). O
+//   adicional anual cita a cláusula 13.4 do contrato e a Resolução CFC 1.590/2020, que manda o contrato trazer o
+//   honorário de cada serviço (art. 2º, e). Resolução que crie o adicional não existe: o CFC não fixa valores e diz que
+//   é praxe a cláusula do adicional, de uma mensalidade, pelos serviços do fim do exercício (a resposta "Cobrança de 13º
+//   Salário por parte do Contabilista", nas perguntas frequentes do CFC, lida em 24/11/2026). O teste confere que a lista
+//   daqui segue a de lá;
+// - o horário de atendimento: o que o Samuel definiu em 24/11/2026, o mesmo do contrato (cláusula 7.8) e do robô do
+//   WhatsApp (TURNOS de atendimento-robo.js): o teste confere os três.
 // Sem valores: o honorário de cada empresa sai da proposta, feita sob medida pela Precificação. A mensagem leva o link
 // do questionário da proposta (proposta.html), que vira proposta na Precificação e tarefa na agenda.
 // Puro, sem DOM e sem banco: as imagens saem de honorarios-contabeis-imagem.js, e a janela, de
@@ -54,12 +59,11 @@ export const COMO_FUNCIONA = [
 
 // o que é cobrado à parte, na ordem do orçamento da Precificação (ORC_SERVICOS_SEPARADOS)
 export const A_PARTE = [
-  'O honorário adicional anual, conforme a cláusula 13.4 do contrato: um honorário mensal a mais, na competência de outubro (vence em novembro), que cobre o fechamento do balanço, as declarações anuais, as duas parcelas do 13º salário dos funcionários e a apuração do estoque, entre outros serviços do fim do ano',
+  'O honorário adicional anual, previsto na cláusula 13.4 do contrato, como manda a Resolução CFC 1.590/2020: um honorário mensal a mais, na competência de outubro (vence em novembro), que cobre o fechamento do balanço, as declarações anuais, as duas parcelas do 13º salário dos funcionários e a apuração do estoque, entre outros serviços do fim do ano',
   'A declaração do imposto de renda (IRPF)',
   'As alterações no CNPJ',
   'A reemissão de guias de impostos',
-  'O parcelamento de impostos em atraso',
-  'O comparativo tributário pra trocar de regime, dependendo da complexidade'
+  'O parcelamento de impostos em atraso'
 ];
 
 // os dois questionários da proposta (o mesmo proposta.html, com as perguntas de cada perfil; os convites da Precificação

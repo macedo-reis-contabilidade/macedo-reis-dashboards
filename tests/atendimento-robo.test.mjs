@@ -12,9 +12,11 @@ let falhas = 0;
 const chk = (nome, cond, extra) => { if (!cond) falhas++; console.log((cond ? '  ✓ ' : '  ✗ ') + nome + (!cond && extra !== undefined ? ' → ' + JSON.stringify(extra) : '')); };
 const T = s => new Date(s);
 
-console.log('O horário da equipe (de segunda a sexta, das 7h30 às 17h30, Brasília):');
+console.log('O horário da equipe (de segunda a sexta, das 7h30 às 12h e das 13h30 às 17h30, Brasília; 24/11/2026):');
 chk('quarta 10h está no horário', R.dentroDoHorario(T('2026-11-11T13:00:00Z')));
 chk('7h29 ainda não, 7h30 já', !R.dentroDoHorario(T('2026-11-11T10:29:00Z')) && R.dentroDoHorario(T('2026-11-11T10:30:00Z')));
+chk('11h59 sim, 12h não (o almoço)', R.dentroDoHorario(T('2026-11-11T14:59:00Z')) && !R.dentroDoHorario(T('2026-11-11T15:00:00Z')));
+chk('13h29 ainda não, 13h30 já', !R.dentroDoHorario(T('2026-11-11T16:29:00Z')) && R.dentroDoHorario(T('2026-11-11T16:30:00Z')));
 chk('17h29 sim, 17h30 não', R.dentroDoHorario(T('2026-11-11T20:29:00Z')) && !R.dentroDoHorario(T('2026-11-11T20:30:00Z')));
 chk('sábado não', !R.dentroDoHorario(T('2026-11-14T13:00:00Z')));
 chk('feriado em dia de semana não (20/11, Consciência Negra)', !R.dentroDoHorario(T('2026-11-20T13:00:00Z')));
@@ -24,6 +26,7 @@ chk('a meia-noite de Brasília é a de UTC−3 (quinta 1h UTC = quarta 22h)', !R
 console.log('Quando a equipe volta:');
 chk('no horário, null', R.voltaDaEquipe(T('2026-11-11T13:00:00Z')) === null);
 chk('6h da manhã: hoje', (R.voltaDaEquipe(T('2026-11-11T09:00:00Z')) || {}).texto === 'hoje, às 7h30');
+chk('no almoço: hoje, às 13h30', (v => v && v.texto === 'hoje, às 13h30' && v.hora === '13h30' && v.dia === '2026-11-11')(R.voltaDaEquipe(T('2026-11-11T15:30:00Z'))));
 chk('quarta 18h: amanhã', (R.voltaDaEquipe(T('2026-11-11T21:00:00Z')) || {}).texto === 'amanhã, às 7h30');
 chk('sexta 18h: segunda', (R.voltaDaEquipe(T('2026-11-13T21:00:00Z')) || {}).texto === 'segunda, às 7h30');
 chk('quinta 19/11 18h, com o feriado na sexta: segunda 23/11', (R.voltaDaEquipe(T('2026-11-19T21:00:00Z')) || {}).dia === '2026-11-23');
@@ -49,7 +52,13 @@ chk('fora do horário, como o exemplo do sábado', R.textoDaPassagem({ setor: 'd
   === 'Oi! A equipe volta segunda, às 7h30 — deixei o seu recado com a Vitória. Se for boleto, guia ou formulário, te ajudo agora mesmo.');
 chk('reclamação vai pro Samuel (wa-10), no horário', R.textoDaPassagem({ setor: 'fiscal', reclamacao: true, agora: qua10 })
   === 'Desculpa a demora. Já chamei o Samuel pra ver isso agora, com o seu recado.');
-chk('reclamação fora do horário', R.textoDaPassagem({ reclamacao: true, agora: sab }).includes('volta segunda, às 7h30'));
+chk('reclamação fora do horário', R.textoDaPassagem({ reclamacao: true, agora: sab })
+  === 'Desculpa a demora. A equipe volta segunda, às 7h30 — deixei o seu recado com o Samuel, pra ver isso logo cedo.');
+const almoco = T('2026-11-11T15:30:00Z');
+chk('reclamação no almoço: volta hoje, às 13h30, e "assim que ele voltar" (não "logo cedo")', R.textoDaPassagem({ reclamacao: true, agora: almoco })
+  === 'Desculpa a demora. A equipe volta hoje, às 13h30 — deixei o seu recado com o Samuel, pra ver isso assim que ele voltar.');
+chk('no almoço, a passagem diz que a equipe volta às 13h30', R.textoDaPassagem({ setor: 'dp', agora: almoco })
+  === 'Oi! A equipe volta hoje, às 13h30 — deixei o seu recado com a Vitória. Se for boleto, guia ou formulário, te ajudo agora mesmo.');
 
 console.log('Os 30 minutos sem ninguém (wa-09):');
 const C = (x = {}) => ({ id: 'c1', situacao: 'fila', responsavel: null, ultima_do_cliente_em: '2026-11-11T12:20:00Z', ...x });
@@ -67,6 +76,7 @@ chk('trata por você, nunca por tu', !/\btu\b|\bte ajudo\b.*\btu\b/.test(Object.
 chk('o endereço fica fora até o Samuel confirmar', !('endereco' in R.BALCAO));
 chk('os formulários com o endereço do site', R.BALCAO.admissao.includes('/admissao.html') && R.BALCAO.rescisao.includes('/rescisao.html') && R.BALCAO.proposta.includes('/proposta.html'));
 chk('os prazos gerais do robo.md', R.BALCAO.prazos.includes('dia 20') && R.BALCAO.prazos.includes('5º dia útil'));
+chk('o horário do balcão, com o intervalo do almoço', R.BALCAO.horario === 'A equipe atende de segunda a sexta, das 7h30 às 12h e das 13h30 às 17h30.');
 
 console.log('O robô pela IA (supabase/functions/whatsapp/robo.js):');
 {

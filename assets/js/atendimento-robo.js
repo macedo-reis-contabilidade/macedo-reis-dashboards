@@ -2,8 +2,9 @@
 // MACEDO & REIS — O robô do atendimento pelo WhatsApp: as regras puras, sem IA (11/11/2026, o começo da etapa 4 da fase 1;
 // as etapas no Projeto, whatsapp/fase1.md; o jeito do robô em whatsapp/robo.md, com as decisões wa-01 a wa-10 de
 // 06/11/2026 em whatsapp/decisoes.md).
-// O que aqui não depende da IA: o horário da equipe (de segunda a sexta, das 7h30 às 17h30, sem os feriados de
-// rescisao-datas.js) e quando ela volta, quem do setor recebe e como o robô fala dela ("a Thalia, do fiscal"), as frases
+// O que aqui não depende da IA: o horário da equipe (de segunda a sexta, das 7h30 às 12h e das 13h30 às 17h30, sem os
+// feriados de rescisao-datas.js — o horário que o Samuel definiu em 24/11/2026; até ali, das 7h30 às 17h30, sem o
+// intervalo) e quando ela volta, quem do setor recebe e como o robô fala dela ("a Thalia, do fiscal"), as frases
 // da passagem pra pessoa (no horário e fora dele), o aviso dos 30 minutos sem ninguém assumir (decisão wa-09), as
 // respostas de balcão aprovadas (wa-08) e a apresentação (wa-02: sem nome, "o assistente da Macedo & Reis"; wa-01: você).
 // A IA (a conversa, o assunto, o resumo) entra na função whatsapp, que usa estas regras; o teste é
@@ -14,8 +15,12 @@ import { feriado } from './rescisao-datas.js';
 
 // o Brasil não tem horário de verão desde 2019: Brasília é sempre UTC−3
 const FUSO_MS = 3 * 3600e3;
-export const ABRE_MIN = 7 * 60 + 30;     // 7h30
-export const FECHA_MIN = 17 * 60 + 30;   // 17h30
+// os turnos do dia, em minutos desde a meia-noite: das 7h30 às 12h e das 13h30 às 17h30 (24/11/2026). O mesmo horário
+// está nas imagens dos honorários (ATENDIMENTO de honorarios-contabeis.js) e no contrato do kit de boas-vindas
+// (clientes/editar.html, cláusula 7.8): tests/honorarios-contabeis.test.mjs confere os três
+export const TURNOS = [[7 * 60 + 30, 12 * 60], [13 * 60 + 30, 17 * 60 + 30]];
+export const ABRE_MIN = TURNOS[0][0];                    // 7h30
+export const FECHA_MIN = TURNOS[TURNOS.length - 1][1];   // 17h30
 export const SEM_RESPOSTA_MIN = 30;      // wa-09: no horário, sem ninguém assumir em 30 minutos, o robô avisa e chama de novo
 
 const DIAS = ['domingo', 'segunda', 'terça', 'quarta', 'quinta', 'sexta', 'sábado'];
@@ -27,14 +32,17 @@ export function emBrasilia(agora = new Date()) {
   return { dia: iso(t), semana: d.getUTCDay(), minutos: d.getUTCHours() * 60 + d.getUTCMinutes() };
 }
 const diaDeTrabalho = (dia, semana) => semana !== 0 && semana !== 6 && !feriado(dia);
+// a hora de um turno: 450 → "7h30", 780 → "13h"
+export const textoDaHora = min => `${Math.floor(min / 60)}h${min % 60 ? String(min % 60).padStart(2, '0') : ''}`;
 
 export function dentroDoHorario(agora = new Date()) {
   const b = emBrasilia(agora);
-  return diaDeTrabalho(b.dia, b.semana) && b.minutos >= ABRE_MIN && b.minutos < FECHA_MIN;
+  return diaDeTrabalho(b.dia, b.semana) && TURNOS.some(([abre, fecha]) => b.minutos >= abre && b.minutos < fecha);
 }
 
-// quando a equipe volta: { dia, texto } — "hoje, às 7h30", "amanhã, às 7h30", "segunda, às 7h30" (até 6 dias) ou
-// "segunda, 23/11, às 7h30" (mais longe, no Carnaval de sábado a quarta, por exemplo). No horário, null.
+// quando a equipe volta: { dia, hora, texto } — "hoje, às 7h30", "hoje, às 13h30" (no intervalo do almoço), "amanhã,
+// às 7h30", "segunda, às 7h30" (até 6 dias) ou "segunda, 23/11, às 7h30" (mais longe, no Carnaval de sábado a quarta,
+// por exemplo). No horário, null.
 export function voltaDaEquipe(agora = new Date()) {
   if (dentroDoHorario(agora)) return null;
   const b = emBrasilia(agora);
@@ -42,9 +50,11 @@ export function voltaDaEquipe(agora = new Date()) {
   for (let n = 0; n < 15; n++) {
     const t = base + n * 864e5, dia = iso(t), semana = new Date(t).getUTCDay();
     if (!diaDeTrabalho(dia, semana)) continue;
-    if (n === 0 && b.minutos >= ABRE_MIN) continue;   // hoje já fechou
+    const turno = n === 0 ? TURNOS.find(([abre]) => abre > b.minutos) : TURNOS[0];   // hoje: o turno que ainda não começou
+    if (!turno) continue;   // hoje já fechou
     const quando = n === 0 ? 'hoje' : n === 1 ? 'amanhã' : n <= 6 ? DIAS[semana] : `${DIAS[semana]}, ${dia.slice(8, 10)}/${dia.slice(5, 7)}`;
-    return { dia, texto: `${quando}, às 7h30` };
+    const hora = textoDaHora(turno[0]);
+    return { dia, hora, texto: `${quando}, às ${hora}` };
   }
   return null;
 }
@@ -70,7 +80,7 @@ export function textoDaPassagem({ setor = null, responsavel = null, agora = new 
   const q = quemRecebe(reclamacao ? 'financeiro' : setor, reclamacao ? 'financeiro@macedoereis.com.br' : responsavel);
   const volta = voltaDaEquipe(agora);
   if (reclamacao) return volta
-    ? `Desculpa a demora. A equipe volta ${volta.texto} — deixei o seu recado com o ${q.nome}, pra ver isso logo cedo.`
+    ? `Desculpa a demora. A equipe volta ${volta.texto} — deixei o seu recado com o ${q.nome}, pra ver isso ${volta.hora === textoDaHora(ABRE_MIN) ? 'logo cedo' : `assim que ${q.pronome} voltar`}.`
     : `Desculpa a demora. Já chamei o ${q.nome} pra ver isso agora, com o seu recado.`;
   if (volta) return `Oi! A equipe volta ${volta.texto} — deixei o seu recado com ${q.artigo} ${q.nome}. `
     + 'Se for boleto, guia ou formulário, te ajudo agora mesmo.';
@@ -102,7 +112,7 @@ export const E_ROBO = 'Sou o assistente do escritório, sim — respondo o que e
 // O endereço o robo.md deixou "a confirmar": fica fora até o Samuel confirmar.
 const SITE = 'https://macedo-reis-contabilidade.github.io/macedo-reis-dashboards/';
 export const BALCAO = {
-  horario: 'A equipe atende de segunda a sexta, das 7h30 às 17h30.',
+  horario: 'A equipe atende de segunda a sexta, das 7h30 às 12h e das 13h30 às 17h30.',
   documento: 'Pode mandar por aqui mesmo, em foto ou PDF. Eu confirmo que recebi e deixo com quem cuida.',
   prazos: 'Os prazos gerais: o DAS do Simples e o do MEI vencem no dia 20; o FGTS e o INSS da folha, também no dia 20; '
     + 'o salário, até o 5º dia útil do mês seguinte. A data certa da sua empresa, quem confirma é a equipe.',

@@ -2,15 +2,17 @@
 // de serviços, pra responder "o que vocês fazem?". O que está incluso segue o contrato do kit de boas-vindas
 // (clientes/editar.html, cláusulas 1 a 3, as que a mensalidade cobre, cláusula 9.1), e o que é cobrado à parte, o
 // orçamento da Precificação (ORC_SERVICOS_SEPARADOS de comercial-precificacao.html), com o adicional anual pela cláusula
-// 13.4: os dois são conferidos aqui, pra lista não ficar pra trás quando o contrato ou o orçamento mudarem. A revisão do
-// Samuel (24/11/2026, 21h47): o enquadramento tributário saiu do incluso (o comparativo tributário, conforme a
-// complexidade, é cobrado à parte), o "Todo mês" diz o que o escritório faz (não o que o cliente manda), a proposta diz
-// "entre outras informações" e o horário de atendimento é o dele. Sem valores e sem o nome do cliente nas imagens; a
-// mensagem leva o link do questionário da proposta (proposta.html, o da empresa que já funciona ou o da nova).
+// 13.4 e a Resolução CFC 1.590/2020: os dois são conferidos aqui, pra lista não ficar pra trás quando o contrato ou o
+// orçamento mudarem. A revisão do Samuel (24/11/2026): o regime não aparece (nem no incluso nem no cobrado à parte), o
+// "Todo mês" diz o que o escritório faz (não o que o cliente manda), a proposta diz "entre outras informações" e o
+// horário de atendimento é o dele, o mesmo do contrato (7.8) e do robô do WhatsApp. Sem valores e sem o nome do cliente
+// nas imagens; a mensagem leva o link do questionário da proposta (proposta.html, o da empresa que já funciona ou o da
+// nova).
 // Rodar com: node tests/honorarios-contabeis.test.mjs
 import { readFileSync } from 'node:fs';
 import { TITULO, SUBTITULO, AREAS, ATENDIMENTO, COMO_FUNCIONA, A_PARTE, PERFIS, perfilDe, linkDaProposta, mensagemDosHonorarios, nomeDoArquivo }
   from '../assets/js/honorarios-contabeis.js';
+import { BALCAO, TURNOS, textoDaHora } from '../assets/js/atendimento-robo.js';
 
 let falhas = 0;
 const chk = (nome, cond, extra) => { if (!cond) falhas++; console.log((cond ? '  ✓ ' : '  ✗ ') + nome + (!cond && extra !== undefined ? ' → ' + JSON.stringify(extra) : '')); };
@@ -20,13 +22,15 @@ const ler = f => readFileSync(new URL('../' + f, import.meta.url), 'utf8');
 console.log('O que vai nas imagens');
 chk('o título e a frase', TITULO === 'Honorários contábeis' && SUBTITULO === 'O que fazemos pela sua empresa, todo mês.');
 chk('as três áreas do contrato, na ordem, sem o regime de impostos', igual(AREAS.map(a => a.area), ['Contabilidade', 'Fiscal', 'Departamento pessoal']));
-chk('nenhum serviço fala de escolher o regime ou do enquadramento (o comparativo é cobrado à parte)', !AREAS.some(a => a.itens.some(i => /melhor regime|escolher o regime|enquadramento/i.test(i))));
+chk('o regime não aparece: nem escolher o regime, nem o enquadramento, nem o comparativo, no incluso ou à parte',
+  ![...AREAS.flatMap(a => a.itens), ...A_PARTE].some(i => /melhor regime|escolher o regime|trocar de regime|enquadramento|comparativo/i.test(i)));
 chk('cada área com pelo menos um serviço, sem repetir', AREAS.every(a => a.itens.length >= 1)
   && new Set(AREAS.flatMap(a => a.itens)).size === AREAS.flatMap(a => a.itens).length);
 chk('o horário de atendimento, com o intervalo do almoço', ATENDIMENTO === 'De segunda a sexta, das 7h30 às 12h e das 13h30 às 17h30.', ATENDIMENTO);
 chk('como funciona: a proposta, o contrato e todo mês', igual(COMO_FUNCIONA.map(p => p.titulo), ['A proposta', 'O contrato', 'Todo mês']));
 const textoDasImagens = JSON.stringify({ TITULO, SUBTITULO, AREAS, ATENDIMENTO, COMO_FUNCIONA, A_PARTE });
-chk('nenhum valor nas imagens (servem pra qualquer cliente e pro anúncio)', !/R\$|\d+,\d{2}|\d{3,}/.test(textoDasImagens), textoDasImagens.match(/.{0,20}(R\$|\d+,\d{2}|\d{3,}).{0,20}/));
+const semNorma = textoDasImagens.replace(/Resolução CFC \d\.\d{3}\/\d{4}/g, '');   // o número da resolução não é valor
+chk('nenhum valor nas imagens (servem pra qualquer cliente e pro anúncio)', !/R\$|\d+,\d{2}|\d{3,}/.test(semNorma), semNorma.match(/.{0,20}(R\$|\d+,\d{2}|\d{3,}).{0,20}/));
 chk('nem promessa que o contrato não faz (score, garantia, grátis)', !/garant|score|gr[aá]tis|de graça/i.test(textoDasImagens));
 
 console.log('A proposta e todo mês');
@@ -62,18 +66,25 @@ chk('cada serviço da imagem tem o seu no contrato (e só os de lá)', itens.len
   { sobra: itens.filter(i => !PELO_CONTRATO.includes(i)), falta_no_contrato: DO_CONTRATO.filter(([, ctr]) => !contrato.includes(ctr)).map(([, c]) => c) });
 chk('a contabilidade pelas normas (a ITG 1000 do contrato)', contrato.includes('normas e princípios contábeis vigentes na ITG 1000'));
 
+console.log('O horário de atendimento: o mesmo nas imagens, no contrato e no robô do WhatsApp');
+const turnos = TURNOS.map(([a, f]) => [textoDaHora(a), textoDaHora(f)]);
+chk('os turnos do robô: das 7h30 às 12h e das 13h30 às 17h30', JSON.stringify(turnos) === JSON.stringify([['7h30', '12h'], ['13h30', '17h30']]), turnos);
+chk('as imagens dizem os turnos do robô', ATENDIMENTO === `De segunda a sexta, das ${turnos[0][0]} às ${turnos[0][1]} e das ${turnos[1][0]} às ${turnos[1][1]}.`);
+chk('o balcão do robô diz o mesmo', BALCAO.horario === `A equipe atende de segunda a sexta, das ${turnos[0][0]} às ${turnos[0][1]} e das ${turnos[1][0]} às ${turnos[1][1]}.`);
+chk('o contrato do kit (7.8) diz o mesmo', contrato.includes('de segunda a sexta das 7h30min às 12h e das 13h30min às 17h30min, todas as informações relativas ao andamento dos serviços'));
+
 console.log('O orçamento da Precificação segue dizendo o que é cobrado à parte');
 const prec = ler('comercial-precificacao.html');
 const bloco = (prec.match(/const ORC_SERVICOS_SEPARADOS = \[([\s\S]*?)\];/) || [])[1] || '';
 const orc = [...bloco.matchAll(/'((?:[^'\\]|\\.)*)'/g)].map(m => m[1]);
-const CHAVES = [/adicional anual/i, /IRPF/, /CNPJ/, /Reemiss/i, /Parcelamento/i, /Comparativo tributário/i];
+const CHAVES = [/adicional anual/i, /IRPF/, /CNPJ/, /Reemiss/i, /Parcelamento/i];
 chk('a mesma quantidade de itens, na mesma ordem', orc.length === A_PARTE.length && orc.length === CHAVES.length, { orc: orc.length, aqui: A_PARTE.length });
 chk('cada item da imagem é o mesmo do orçamento', CHAVES.every((re, i) => re.test(orc[i] || '') && re.test(A_PARTE[i] || '')),
   CHAVES.map((re, i) => [orc[i], A_PARTE[i]]));
-chk('o comparativo tributário, dependendo da complexidade (e o orçamento, conforme a complexidade)',
-  /dependendo da complexidade$/.test(A_PARTE[5]) && /conforme a complexidade;$/.test(orc[5] || ''));
-chk('o adicional: conforme a cláusula 13.4 do contrato, um honorário mensal a mais, na competência de outubro (vence em novembro), numa frase só',
-  /^O honorário adicional anual, conforme a cláusula 13\.4 do contrato: um honorário mensal a mais, na competência de outubro \(vence em novembro\), que cobre /.test(A_PARTE[0]) && !/\. /.test(A_PARTE[0])
+chk('nem o orçamento fala do comparativo ou do regime', !orc.some(o => /comparativo|regime|enquadramento/i.test(o)), orc);
+chk('o adicional: previsto na cláusula 13.4 do contrato, como manda a Resolução CFC 1.590/2020, um honorário mensal a mais, numa frase só',
+  /^O honorário adicional anual, previsto na cláusula 13\.4 do contrato, como manda a Resolução CFC 1\.590\/2020: um honorário mensal a mais, na competência de outubro \(vence em novembro\), que cobre /.test(A_PARTE[0])
+  && !/\. /.test(A_PARTE[0].replace(/\d\.\d/g, ''))
   && /fechamento do balanço/.test(A_PARTE[0]) && /13º salário/.test(A_PARTE[0]) && /apuração do estoque/.test(A_PARTE[0]));
 chk('e a cláusula 13.4 segue no contrato, dizendo isso', contrato.includes("kitPar(ctx, '13.4 Na competência outubro, vencimento novembro, haverá cobrança de 1 (um) honorário adicional anual, em virtude do fechamento de balanço")
   && contrato.includes('elaboração da 1ª e 2ª parcelas do 13º salário dos funcionários, apuração de estoque, entre outros serviços'));
