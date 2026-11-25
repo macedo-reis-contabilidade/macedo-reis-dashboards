@@ -29,8 +29,8 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.0";
 // o robô (11/11/2026, a etapa 4): o código do repositório (o arquivo cru do GitHub) no commit fixado, como a função
 // noticias. Mudou robo.js ou um assets/js que ele importa? Publique, troque o commit das duas linhas, publique de novo e
 // reimplante — tests/atendimento-robo.test.mjs avisa quando o commit fixado ficou pra trás.
-import { responderComoRobo, dadosDaEmpresa, MODELOS_ROBO } from "https://raw.githubusercontent.com/macedo-reis-contabilidade/macedo-reis-dashboards/46e2c9a117ceb58f5d2bba0355b08d8121cb15d7/supabase/functions/whatsapp/robo.js";
-import { criarChamador } from "https://raw.githubusercontent.com/macedo-reis-contabilidade/macedo-reis-dashboards/46e2c9a117ceb58f5d2bba0355b08d8121cb15d7/supabase/functions/noticias/triagem.js";
+import { responderComoRobo, dadosDaEmpresa, MODELOS_ROBO } from "https://raw.githubusercontent.com/macedo-reis-contabilidade/macedo-reis-dashboards/0cedefd8e75e6ddc1eb729c2d76488115a855491/supabase/functions/whatsapp/robo.js";
+import { criarChamador } from "https://raw.githubusercontent.com/macedo-reis-contabilidade/macedo-reis-dashboards/0cedefd8e75e6ddc1eb729c2d76488115a855491/supabase/functions/noticias/triagem.js";
 
 const SETORES = ["fiscal", "dp", "contabil", "societario", "financeiro", "comercial"];
 const MAX_TEXTO = 4096;
