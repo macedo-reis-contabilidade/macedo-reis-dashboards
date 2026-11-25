@@ -1,8 +1,8 @@
 // ============================================================================
 // MACEDO & REIS — As imagens dos honorários contábeis pro WhatsApp (24/11/2026). São duas, na ordem de mandar:
-// 1. o que está incluso (1/2): cada área do contrato num cartão, com o ✓ em cada serviço;
-// 2. como funciona e o que é cobrado à parte (2/2): a proposta, o contrato e o dia a dia, numa linha do tempo, e a lista
-//    do orçamento da Precificação.
+// 1. o que está incluso (1/2): cada área do contrato num cartão, com o ✓ em cada serviço, e o horário de atendimento;
+// 2. como funciona e o que é cobrado à parte (2/2): a proposta, o contrato e o que fazemos todo mês, numa linha do
+//    tempo, e a lista do orçamento da Precificação.
 // Nenhuma tem valor nem o nome do cliente: servem pra qualquer um e pro anúncio.
 // O texto vem de honorarios-contabeis.js; o tamanho, as cores, as letras, o cabeçalho, o título e o rodapé, da base
 // comum (imagens-whats.js). Nenhuma passa de 1600 px de altura: com a letra do sistema, cabem com folga; com a de
@@ -10,7 +10,7 @@
 // ============================================================================
 import { LARGURA, M, W, COR, FONTES, carregarFontes, fonte, quebrar, escrever, caixa, marca, cabecalho, rodape, desenhar, caber,
   numero, bolinha, titulo } from './imagens-whats.js';
-import { TITULO, SUBTITULO, AREAS, COMO_FUNCIONA, A_PARTE } from './honorarios-contabeis.js';
+import { TITULO, SUBTITULO, AREAS, ATENDIMENTO, COMO_FUNCIONA, A_PARTE } from './honorarios-contabeis.js';
 
 // ---------- 1. o que está incluso ----------
 function pintarIncluso(ctx, o) {
@@ -40,6 +40,20 @@ function pintarIncluso(ctx, o) {
     });
     y += h + 18;
   });
+
+  // o horário de atendimento, no mesmo cartão, sem o ✓
+  fonte(ctx, 500, 27, f.texto);
+  const at = quebrar(ctx, ATENDIMENTO, W - 2 * PAD);
+  const hAt = PAD + 34 + 14 + at.length * 36 + PAD;
+  caixa(ctx, M, y, W, hAt, 24);
+  ctx.fillStyle = COR.cartao; ctx.fill();
+  ctx.lineWidth = 2; ctx.strokeStyle = COR.linha; ctx.stroke();
+  ctx.fillStyle = COR.azulEscuro; fonte(ctx, 700, 30, f.texto);
+  ctx.fillText('Atendimento', M + PAD, y + PAD + 26);
+  ctx.fillStyle = COR.tinta; fonte(ctx, 500, 27, f.texto);
+  escrever(ctx, at, M + PAD, y + PAD + 34 + 14, 27, 36);
+  y += hAt + 18;
+
   y += 22;
   return { altura: rodape(ctx, y, f) };
 }
@@ -51,7 +65,7 @@ function pintarComoFunciona(ctx, o) {
   let y = cabecalho(ctx, 56, o.logo, f, o.pagina) + 44;
   y = titulo(ctx, 'Como funciona', 'Da proposta ao dia a dia.', y, f) + 34;
 
-  // a proposta, o contrato e o dia a dia, numa linha do tempo
+  // a proposta, o contrato e o que fazemos todo mês, numa linha do tempo
   const R = 28, cx = M + R, x0 = M + 2 * R + 26, lt = M + W - x0;
   const centros = [];
   COMO_FUNCIONA.forEach((p, i) => {

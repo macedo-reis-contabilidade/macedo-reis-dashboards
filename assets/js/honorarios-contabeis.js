@@ -5,10 +5,15 @@
 //
 // De onde vem cada coisa (não inventar serviço: mudou lá, mude aqui):
 // - o que está incluso: o contrato de prestação de serviços, o do kit de boas-vindas (clientes/editar.html, cláusulas 1
-//   a 4: a área contábil, a fiscal, a trabalhista e previdenciária e o enquadramento tributário);
-// - o que o cliente manda e quando: as cláusulas 6.2 e 6.3 do mesmo contrato;
-// - o que é cobrado à parte: o orçamento da Precificação (ORC_SERVICOS_SEPARADOS, em comercial-precificacao.html). O
-//   teste confere que a lista daqui segue a de lá.
+//   a 3: a área contábil, a fiscal e a trabalhista e previdenciária, as que a mensalidade cobre, cláusula 9.1). O
+//   enquadramento tributário (cláusula 4) saiu da lista na revisão do Samuel (24/11/2026, 21h47): "dependendo da
+//   complexidade de um comparativo tributário, temos que cobrar por fora";
+// - todo mês: o que o escritório faz no mês (a mesma revisão). O que o cliente manda e quando (as cláusulas 6.2 e 6.3)
+//   não entra: as notas chegam pelo sistema de importação do Domínio e os extratos, cada vez mais, por acesso direto;
+// - o que é cobrado à parte: o orçamento da Precificação (ORC_SERVICOS_SEPARADOS, em comercial-precificacao.html), com o
+//   adicional anual pela cláusula 13.4 do contrato. O teste confere que a lista daqui segue a de lá;
+// - o horário de atendimento: o que o Samuel definiu em 24/11/2026. O contrato (cláusula 7.8) ainda diz das 8h às 12h
+//   e das 13h30 às 18h18.
 // Sem valores: o honorário de cada empresa sai da proposta, feita sob medida pela Precificação. A mensagem leva o link
 // do questionário da proposta (proposta.html), que vira proposta na Precificação e tarefa na agenda.
 // Puro, sem DOM e sem banco: as imagens saem de honorarios-contabeis-imagem.js, e a janela, de
@@ -19,7 +24,7 @@ import { primeiroNome, artigo } from './mei-planos.js';
 export const TITULO = 'Honorários contábeis';
 export const SUBTITULO = 'O que fazemos pela sua empresa, todo mês.';
 
-// o que está incluso (o contrato, cláusulas 1 a 4)
+// o que está incluso (o contrato, cláusulas 1 a 3)
 export const AREAS = [
   { area: 'Contabilidade', itens: [
     'A contabilidade da empresa, pelas normas contábeis',
@@ -34,26 +39,27 @@ export const AREAS = [
     'A folha de pagamento e o pró-labore dos sócios',
     'As guias do FGTS, do INSS e do IRRF',
     'As férias e as rescisões, com o seguro-desemprego',
-    'As declarações mensais e anuais e o informe de rendimentos'] },
-  { area: 'Regime de impostos', itens: [
-    'Os esclarecimentos pra escolher o melhor regime, com base no movimento da empresa'] }
+    'As declarações mensais e anuais e o informe de rendimentos'] }
 ];
 
-// como funciona: a proposta (a Precificação), o contrato (e a troca de escritório, a Transição) e o dia a dia (o contrato,
-// cláusulas 6.2 e 6.3)
+// o horário de atendimento (o que o Samuel definiu em 24/11/2026), embaixo do que está incluso
+export const ATENDIMENTO = 'De segunda a sexta, das 7h30 às 12h e das 13h30 às 17h30.';
+
+// como funciona: a proposta (a Precificação), o contrato (e a troca de escritório, a Transição) e o que fazemos todo mês
 export const COMO_FUNCIONA = [
-  { titulo: 'A proposta', texto: 'Você responde um questionário rápido, e montamos os honorários sob medida: pelo regime, pelo faturamento, pelas notas e pelos funcionários da empresa.' },
+  { titulo: 'A proposta', texto: 'Você responde um questionário rápido, e montamos os honorários sob medida: pelo regime, pelo faturamento, pelas notas e pelos funcionários da empresa, entre outras informações.' },
   { titulo: 'O contrato', texto: 'Com a proposta aceita, assinamos o contrato. Se a empresa vem de outro escritório, pedimos a ele os documentos e cuidamos da troca.' },
-  { titulo: 'Todo mês', texto: 'Você manda os extratos e os comprovantes até o 4º dia útil do mês seguinte, e as notas até o 5º. Nós fazemos o resto e mandamos as guias pra pagar.' }
+  { titulo: 'Todo mês', texto: 'Apuramos os impostos, fechamos a folha, entregamos as declarações e mandamos as guias dos impostos e das contribuições pra pagar. As notas fiscais chegam pelo nosso sistema de importação e, sempre que possível, acessamos os extratos direto, sem você precisar mandar.' }
 ];
 
 // o que é cobrado à parte, na ordem do orçamento da Precificação (ORC_SERVICOS_SEPARADOS)
 export const A_PARTE = [
-  'Um honorário adicional por ano, pago em novembro: o fechamento do balanço e as declarações do fim do ano',
+  'O honorário adicional anual, conforme a cláusula 13.4 do contrato: um honorário mensal a mais, na competência de outubro (vence em novembro), que cobre o fechamento do balanço, as declarações anuais, as duas parcelas do 13º salário dos funcionários e a apuração do estoque, entre outros serviços do fim do ano',
   'A declaração do imposto de renda (IRPF)',
   'As alterações no CNPJ',
   'A reemissão de guias de impostos',
-  'O parcelamento de impostos em atraso'
+  'O parcelamento de impostos em atraso',
+  'O comparativo tributário pra trocar de regime, dependendo da complexidade'
 ];
 
 // os dois questionários da proposta (o mesmo proposta.html, com as perguntas de cada perfil; os convites da Precificação
@@ -81,7 +87,7 @@ export function mensagemDosHonorarios({ nome, quem, perfil, link } = {}) {
   linhas.push('Cuidamos da empresa todo mês: a contabilidade, os impostos e o departamento pessoal.');
   linhas.push('Na 1ª imagem, o que está incluso. Na 2ª, como funciona e o que é cobrado à parte.');
   linhas.push('');
-  linhas.push('O valor dos honorários é sob medida: depende do regime, do faturamento, das notas e dos funcionários da empresa.');
+  linhas.push('O valor dos honorários é sob medida: depende do regime, do faturamento, das notas e dos funcionários da empresa, entre outras informações.');
   if (/^https?:\/\/\S+$/.test(String(link || ''))) {
     const min = PERFIS[perfilDe(perfil)].minutos;
     linhas.push(nova
