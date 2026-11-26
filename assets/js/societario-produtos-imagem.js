@@ -1,6 +1,7 @@
 // ============================================================================
 // MACEDO & REIS — As imagens dos produtos do societário pro WhatsApp (24/11/2026: a transformação do MEI em ME e a
-// abertura de empresa). São três, pra cada produto:
+// abertura de empresa; 26/11/2026, a alteração de empresa, com as etapas, a documentação e o que muda da seleção, que
+// chegam prontas no produto: produtoDaSelecao, de societario-produtos.js). São três, pra cada produto:
 // 1. o passo a passo (1/2): os primeiros passos, que são com o cliente, e as etapas nos órgãos, numa linha do tempo;
 // 2. a documentação (2/2), que é a lista do Samuel;
 // 3. o orçamento, à parte: o cliente, a data e a validade, os dois jeitos de pagar, os prazos com a barra de cada etapa
@@ -119,7 +120,7 @@ function pintarDocumentacao(ctx, o) {
   const f = o.fontes, p = o.produto;
   ctx.fillStyle = COR.fundo; ctx.fillRect(0, 0, LARGURA, o.altura || 5000);
   let y = cabecalho(ctx, 56, o.logo, f, o.pagina) + 44;
-  y = titulo(ctx, 'Documentação necessária', 'Pode mandar tudo por aqui mesmo, em foto ou por escrito.', y, f) + 16;
+  y = titulo(ctx, 'Documentação necessária', p.docSubtitulo || 'Pode mandar tudo por aqui mesmo, em foto ou por escrito.', y, f) + 16;
 
   const S = 30, xt = M + S + 20, lt = M + W - xt;
   p.documentos.forEach(g => {
@@ -178,6 +179,19 @@ function pintarOrcamento(ctx, o) {
   if (ln.length > 2) ln = [ln[0], ln[1] + '…'];
   escrever(ctx, ln, M, y + 33, 25, 33);
   y += 33 + ln.length * 33 + 16;
+
+  // na alteração, o que muda: o que o orçamento cobre (o escopo da seleção, produtoDaSelecao)
+  if (p.escopo) {
+    fonte(ctx, 500, 25, f.texto);
+    const le = quebrar(ctx, 'O que muda: ' + p.escopo + '.', W - 2 * 26);
+    const hE = 2 * 17 + le.length * 33;
+    caixa(ctx, M, y, W, hE, 20);
+    ctx.fillStyle = COR.cartao; ctx.fill();
+    ctx.lineWidth = 2; ctx.strokeStyle = COR.linha; ctx.stroke();
+    ctx.fillStyle = COR.tinta;
+    escrever(ctx, le, M + 26, y + 17, 25, 33);
+    y += hE + 18;
+  }
 
   // os dois jeitos de pagar
   const G = 24, cw = (W - G) / 2, PAD = 26;

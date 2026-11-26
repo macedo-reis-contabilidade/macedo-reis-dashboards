@@ -11,9 +11,10 @@
      link pra eu enviar pro cliente poder preencher as informações e anexar os documentos ... tanto pra transformação quanto
      para constituição"). Um link só, com o produto no endereço: empresa.html?t=constituicao ou ?t=transformacao (sem ele,
      a abertura de empresa). As perguntas são a documentação dos dois produtos (a lista do Samuel): os dados da empresa e de
-     cada sócio, com o documento de cada sócio anexado. A conferência é a de assets/js/empresa-pedido.js, a mesma da Edge
-     Function empresa-link, a única com que esta página fala. A senha do gov.br não é pedida. Nunca importar o
-     auth-guard.js aqui. -->
+     cada sócio, com o documento de cada sócio anexado. Desde 26/11/2026, a alteração de empresa (?t=alteracao): o link da
+     janela da Vitrine leva o que muda (&m=…) e o que o escritório já tem (&n=…), e a página pergunta só o resto; sem o &m,
+     o cliente marca o que muda. A conferência é a de assets/js/empresa-pedido.js, a mesma da Edge Function empresa-link, a
+     única com que esta página fala. A senha do gov.br não é pedida. Nunca importar o auth-guard.js aqui. -->
 <style>
   * { box-sizing:border-box; margin:0; padding:0; }
   body { font-family:-apple-system, 'Segoe UI', Roboto, Arial, sans-serif; background:#EEF2F6; color:#1a2330; padding:0 0 60px; }
@@ -48,6 +49,12 @@
   .op input { margin-top:3px; width:18px; height:18px; accent-color:#3A5878; flex:none; }
   .op:has(input:checked) { border-color:#5B82A6; background:#EEF4FA; }
   .marca { display:flex; gap:8px; align-items:center; font-size:13px; color:#4a5565; margin:-6px 0 12px; cursor:pointer; }
+  [hidden] { display:none !important; }
+  /* os blocos que aparecem conforme o que se pede (a alteração) guardam a margem do campo de dentro; o último do cartão e
+     do sócio, e o de dentro da linha, ficam sem ela, como os campos soltos */
+  [data-socio-item] > .campo:last-child, [data-item] > .campo:last-child { margin-bottom:16px; }
+  .linha > [data-socio-item] > .campo:last-child { margin-bottom:0; }
+  .socio > [data-socio-item]:last-child > .campo:last-child, .card > [data-item]:last-child > .campo:last-child { margin-bottom:0; }
   .marca input { width:16px; height:16px; accent-color:#3A5878; }
   .obr::after { content:' *'; color:#C0564F; }
   .falta input[type=text], .falta input[type=email], .falta input[type=tel], .falta textarea, .falta select, .falta .op, .falta .anexo { border-color:#C0564F; }
@@ -82,6 +89,7 @@
   .anexo-item button { background:none; border:none; color:#C0564F; font-size:16px; cursor:pointer; padding:0 4px; }
   .anexo-erro { color:#C0564F; font-size:12px; margin-top:6px; }
   .anexo-erro:empty { display:none; }
+  .muda { font-size:14.5px; color:#33404f; line-height:1.55; }
   .soma { font-size:12.5px; color:#4a5565; margin:-4px 0 12px; }
   .soma.ruim { color:#C0564F; }
   .progresso { font-size:13px; color:#3A5878; margin-top:12px; text-align:center; }
@@ -106,11 +114,18 @@
 <script type="module">
   import { supabase } from './assets/js/supabase.js';
   import { buscarCEP } from './assets/js/utils.js';
-  import { TIPOS, tipoDe, AVISO_GOV, AVISO_GOV_AJUDA, ESTADOS_CIVIS, REGIMES, GOVBR, SIM_NAO, MAX_SOCIOS, MAX_ARQ, MAX_QTD, MAX_TOTAL, OUTROS,
-    grupoDoSocio, PERGUNTAS, UFS, CAMPOS_ENDERECO, conferirPedido } from './assets/js/empresa-pedido.js';
+  import { TIPOS, tipoDe, AVISO_GOV, AVISO_GOV_AJUDA, AVISO_GOV_ALT, ESTADOS_CIVIS, REGIMES, GOVBR, SIM_NAO, MAX_SOCIOS, MAX_ARQ, MAX_QTD, MAX_TOTAL, OUTROS,
+    IMOVEL, grupoDoSocio, PERGUNTAS, PERGUNTAS_ALT, UFS, CAMPOS_ENDERECO, ALTERACOES, conferirPedido, selecaoDoEndereco, comSocios, oQueMuda } from './assets/js/empresa-pedido.js';
 
-  const TIPO = tipoDe(new URLSearchParams(location.search).get('t')) || 'constituicao';
+  const PARAMS = new URLSearchParams(location.search);
+  const TIPO = tipoDe(PARAMS.get('t')) || 'constituicao';
   const T = TIPOS[TIPO];
+  // a alteração: o link da janela da Vitrine traz o que muda (m) e o que o escritório já tem (n); sem o m (ou com um que
+  // não vale), o cliente marca o que muda, e tudo do que ele marcar é perguntado
+  const ALT = TIPO === 'alteracao';
+  const DO_LINK = ALT ? selecaoDoEndereco(PARAMS.get('m'), PARAMS.get('n')) : null;
+  const FIXA = !!(DO_LINK && DO_LINK.alteracoes.length);
+  let sel = FIXA ? DO_LINK : { alteracoes: [], pedir: [] };
   const RODAPE = 'Macedo e Reis Contabilidade Ltda · Rua Luiz Volkart, 35, 1º andar – Centro – Três Coroas/RS · CEP 95660-000 · (51) 3546-1385'
     + '\nAs informações e os documentos vão direto para o escritório Macedo & Reis e são usados só para este processo.';
   const FUNCAO = 'empresa-link';
@@ -152,7 +167,9 @@
   const MSG = { 'contato.nome': 'Escreva o nome completo.', 'contato.telefone': 'Informe o telefone com o DDD.', 'contato.email': 'Confira o e-mail.',
     cnpjMei: 'Confira o CNPJ do MEI.', razao2: 'Escreva uma 2ª opção diferente da 1ª.', atividades: 'Conte um pouco mais do que a empresa vai fazer.',
     capital: 'Informe o valor em reais.', areaTotal: 'Informe a área em m².', areaUtilizada: 'Informe a área em m² (até a área total).',
-    empresaTelefone: 'Informe o telefone com o DDD.', empresaEmail: 'Confira o e-mail.' };
+    empresaTelefone: 'Informe o telefone com o DDD.', empresaEmail: 'Confira o e-mail.',
+    alteracoes: 'Marque o que vai mudar.', razaoAtual: 'Escreva a razão social, como está no CNPJ.', cnpj: 'Confira o CNPJ.',
+    fantasia: 'Escreva o nome fantasia novo.', imovel: 'Anexe o contrato de aluguel, a escritura ou o IPTU do imóvel.' };
   const msgSocio = { nome: 'Escreva o nome completo.', cpf: 'Confira o CPF (e se não é o de outro sócio).', profissao: 'Informe a profissão.',
     participacao: 'Informe a participação em %.', documento: 'Anexe a CNH ou a identidade deste sócio.' };
 
@@ -167,33 +184,106 @@
       + `<div class="linha l3">${c('cidade', { auto: 'address-level2', max: 100 })}<div class="campo" data-id="${prefixo}.uf"><label for="${idCampo(prefixo + '.uf')}"><span class="obr">Estado (UF)</span></label><select id="${idCampo(prefixo + '.uf')}">${ufs}</select><div class="falta-msg">Escolha o estado.</div></div></div>`;
   }
   const slot = (grupo, rotulo, dica, obrig) =>
-    `<div class="campo" data-id="${grupo === OUTROS ? 'outros' : grupo.replace('socio-', 'socios.') + '.documento'}"><div class="lbl"><span class="${obrig ? 'obr' : ''}">${esc(rotulo)}</span>${ajuda(dica)}</div>`
+    `<div class="campo" data-id="${grupo === OUTROS ? 'outros' : grupo === IMOVEL ? IMOVEL : grupo.replace('socio-', 'socios.') + '.documento'}"><div class="lbl"><span class="${obrig ? 'obr' : ''}">${esc(rotulo)}</span>${ajuda(dica)}</div>`
     + `<div class="anexo"><label class="anexo-btn">📎 Anexar<input type="file" multiple data-grupo="${grupo}" accept="image/*,application/pdf"></label>`
     + `<div class="anexo-lista" data-lista="${grupo}"></div><div class="anexo-erro" data-erro="${grupo}" role="alert"></div></div><div class="falta-msg"></div></div>`;
 
+  // o sócio: o nome e o CPF sempre; o resto (data-socio-item), o que a alteração pede (na abertura e na transformação, tudo)
   function blocoSocio(vaga, n) {
     const pre = `socios.${vaga}`;
     return `<div class="socio" data-vaga="${vaga}"><div class="socio-cab"><b>Sócio ${n}</b>`
       + `<button type="button" class="tirar" data-tirar="${vaga}">Tirar este sócio</button></div>`
       + caixa(pre + '.nome', PERGUNTAS['socio.nome'], { auto: 'off' })
-      + `<div class="linha">${caixa(pre + '.cpf', PERGUNTAS['socio.cpf'], { modo: 'numeric', max: 14 })}${caixa(pre + '.profissao', PERGUNTAS['socio.profissao'], { max: 120 })}</div>`
-      + lista(pre + '.estadoCivil', PERGUNTAS['socio.estadoCivil'], ESTADOS_CIVIS)
-      + `<div class="ramo" data-regime="${vaga}" hidden>${lista(pre + '.regime', PERGUNTAS['socio.regime'], REGIMES)}</div>`
+      + `<div class="linha">${caixa(pre + '.cpf', PERGUNTAS['socio.cpf'], { modo: 'numeric', max: 14 })}<div data-socio-item="profissao">${caixa(pre + '.profissao', PERGUNTAS['socio.profissao'], { max: 120 })}</div></div>`
+      + `<div data-socio-item="civil">${lista(pre + '.estadoCivil', PERGUNTAS['socio.estadoCivil'], ESTADOS_CIVIS)}`
+      + `<div class="ramo" data-regime="${vaga}" hidden>${lista(pre + '.regime', PERGUNTAS['socio.regime'], REGIMES)}</div></div>`
       + `<div data-varios hidden><div class="linha">${caixa(pre + '.participacao', PERGUNTAS['socio.participacao'], { modo: 'decimal', max: 6 })}<div></div></div>`
       + escolha(pre + '.administra', PERGUNTAS['socio.administra'], SIM_NAO, { lado: true }) + '</div>'
-      + `<label class="marca"><input type="checkbox" data-mesmo="${vaga}"> Mora no endereço da empresa</label>`
-      + `<div data-end="${vaga}">${endereco(pre + '.endereco', 'Endereço residencial')}</div>`
-      + escolha(pre + '.govbr', PERGUNTAS['socio.govbr'], GOVBR, { dica: AVISO_GOV_AJUDA })
-      + slot(grupoDoSocio(vaga), PERGUNTAS['socio.documento'], 'Pode ser foto do celular, com a frente e o verso.', true)
+      + `<div data-socio-item="residencia"><label class="marca" data-mesmo-rotulo><input type="checkbox" data-mesmo="${vaga}"> ${ALT ? 'Mora no endereço novo da empresa' : 'Mora no endereço da empresa'}</label>`
+      + `<div data-end="${vaga}">${endereco(pre + '.endereco', 'Endereço residencial')}</div></div>`
+      + `<div data-socio-item="gov">${escolha(pre + '.govbr', PERGUNTAS['socio.govbr'], GOVBR, { dica: AVISO_GOV_AJUDA })}</div>`
+      + `<div data-socio-item="doc">${slot(grupoDoSocio(vaga), PERGUNTAS['socio.documento'], 'Pode ser foto do celular, com a frente e o verso.', true)}</div>`
       + '</div>';
   }
 
+  // os cartões do fim, iguais em todos: os outros documentos, a observação e o enviar
+  const cartoesDoFim = () =>
+    `<div class="card"><h3 class="bloco">${esc(PERGUNTAS.outros)}</h3>` + slot(OUTROS, 'Se quiser, anexe outros documentos', ALT ? 'Ex.: algum documento que ajude na alteração.' : 'Ex.: o contrato de aluguel ou a escritura do imóvel.', false) + '</div>'
+    + `<div class="card"><h3 class="bloco">${esc(PERGUNTAS.obs)}</h3>${area('obs', '', { max: 2000, obrig: false })}</div>`
+    + '<div class="card"><button class="botao" id="btnEnviar">Enviar</button><div class="erro" id="msgErro" role="alert"></div>'
+    + '<div class="progresso" id="progresso" aria-live="polite"></div><div class="barra" id="barra" hidden><div></div></div></div>';
+  const seusDados = () => '<div class="card"><h3 class="bloco">Seus dados</h3>'
+    + caixa('contato.nome', PERGUNTAS['contato.nome'], { auto: 'name' })
+    + `<div class="linha">${caixa('contato.telefone', PERGUNTAS['contato.telefone'], { tipo: 'tel', dica: 'Com o DDD.', auto: 'tel', max: 20 })}${caixa('contato.email', PERGUNTAS['contato.email'], { tipo: 'email', auto: 'email' })}</div></div>`;
+
+  // a alteração: o que muda (o do link, só pra ler, ou as caixas, pro cliente marcar), a empresa e um cartão por item do
+  // que se pede (data-card: os itens dele; data-item: cada um), que aparecem conforme o que muda e o que pedir (aplicarSelecao)
+  function desenharAlteracao() {
+    let html = `<div class="card cab"><h2>${esc(T.titulo)}</h2><div class="intro">${esc(T.intro)}</div>`
+      + `<div class="gov" role="note" id="avisoGov" hidden><b>⚠ ${esc(AVISO_GOV_ALT)}</b>${esc(AVISO_GOV_AJUDA)}</div></div>`;
+    html += '<div class="card"><h3 class="bloco">O que vai mudar</h3>' + (FIXA
+      ? `<p class="muda" id="muda">${esc(oQueMuda(sel.alteracoes).replace(/^./, c => c.toUpperCase()))}.</p>`
+      : `<div class="campo" data-id="alteracoes"><div class="lbl"><span class="obr">${esc(PERGUNTAS_ALT.alteracoes)}</span>${ajuda('Marque tudo o que muda: as perguntas aparecem embaixo.')}</div><div class="ops">`
+        + ALTERACOES.map(a => `<label class="op"><input type="checkbox" data-alt="${esc(a.id)}"><span>${esc(a.rotulo)}</span></label>`).join('')
+        + '</div><div class="falta-msg">Marque o que vai mudar.</div></div>') + '</div>';
+    html += seusDados();
+    html += '<div class="card"><h3 class="bloco">A empresa</h3>'
+      + caixa('razaoAtual', PERGUNTAS_ALT.razaoAtual, { dica: 'Como está no CNPJ.' })
+      + `<div class="linha">${caixa('cnpj', PERGUNTAS_ALT.cnpj, { modo: 'numeric', max: 18 })}<div></div></div></div>`;
+    html += '<div class="card" data-card="razao"><h3 class="bloco">O nome empresarial novo</h3><div data-item="razao">'
+      + caixa('razao1', PERGUNTAS_ALT.razao1, { dica: 'Mandamos duas opções à Junta Comercial, caso a 1ª já exista.' }) + caixa('razao2', PERGUNTAS_ALT.razao2) + '</div></div>';
+    html += '<div class="card" data-card="fantasia"><h3 class="bloco">O nome fantasia</h3><div data-item="fantasia">'
+      + caixa('fantasia', PERGUNTAS_ALT.fantasia, { max: 120, dica: 'O nome do negócio, como vai aparecer no CNPJ.' }) + '</div></div>';
+    html += '<div class="card" data-card="endereco,area,horario,imovel"><h3 class="bloco">O endereço novo</h3>'
+      + `<div data-item="endereco">${endereco('endereco', '')}</div>`
+      + `<div data-item="area"><div class="linha">${caixa('areaTotal', PERGUNTAS.areaTotal, { modo: 'decimal', max: 12 })}${caixa('areaUtilizada', PERGUNTAS.areaUtilizada, { modo: 'decimal', max: 12 })}</div></div>`
+      + `<div data-item="horario">${area('funcionamento', PERGUNTAS.funcionamento, { max: 500, dica: 'Ex.: segunda a sexta, das 9h às 18h; sábado, das 9h às 13h.' })}</div>`
+      + `<div data-item="imovel">${slot(IMOVEL, PERGUNTAS_ALT.imovel, 'O que mostra que a empresa pode usar o imóvel. Pode ser foto do celular.', true)}</div></div>`;
+    html += '<div class="card" data-card="atividades"><h3 class="bloco">As atividades</h3><div data-item="atividades">'
+      + area('atividades', PERGUNTAS_ALT.atividades, { dica: 'Com as suas palavras, contando o que já faz: o que a empresa vende, fabrica ou que serviço presta.', msg: MSG.atividades }) + '</div></div>';
+    html += `<div class="card" data-card="capital"><h3 class="bloco">O capital social</h3><div data-item="capital"><div class="linha">${caixa('capital', PERGUNTAS_ALT.capital, { modo: 'decimal', max: 20 })}<div></div></div></div></div>`;
+    html += '<div class="card" data-card="contato"><h3 class="bloco">O telefone e o e-mail novos</h3><div data-item="contato">'
+      + `<div class="linha">${caixa('empresaTelefone', PERGUNTAS_ALT.empresaTelefone, { tipo: 'tel', max: 20 })}${caixa('empresaEmail', PERGUNTAS_ALT.empresaEmail, { tipo: 'email' })}</div>`
+      + '<label class="marca"><input type="checkbox" id="mesmoContato"> O telefone e o e-mail novos são os meus</label></div></div>';
+    html += '<div class="card" id="cardSocios" hidden><h3 class="bloco">Os sócios, como ficam depois da alteração</h3><div id="socios"></div><div class="soma" id="soma" aria-live="polite"></div>'
+      + '<button type="button" class="botao sec" id="maisSocio">+ Adicionar sócio</button></div>';
+    html += cartoesDoFim();
+    app.innerHTML = html;
+    maisSocio();
+    aplicarSelecao();
+    $('maisSocio').addEventListener('click', () => { maisSocio(); const ult = app.querySelector('.socio:last-child input'); if (ult) ult.focus(); });
+    $('btnEnviar').addEventListener('click', enviar);
+  }
+
+  // o que se pede agora: o do link, ou o que o cliente marcou (tudo do que ele marcou)
+  function selecaoAgora() {
+    if (FIXA) return sel;
+    return selecaoDoEndereco([...app.querySelectorAll('[data-alt]:checked')].map(x => x.dataset.alt).join(','), null);
+  }
+  // mostra só o que se pede: os itens, os cartões que têm algum, os sócios (quando muda a natureza jurídica ou o quadro), o
+  // que se pergunta de cada sócio e o aviso do gov.br (com alguma coisa a mudar)
+  function aplicarSelecao() {
+    if (!ALT) return;
+    sel = selecaoAgora();
+    const tem = i => sel.pedir.includes(i);
+    app.querySelectorAll('[data-item]').forEach(el => { el.hidden = !tem(el.dataset.item); });
+    app.querySelectorAll('[data-card]').forEach(el => { el.hidden = !el.dataset.card.split(',').some(tem); });
+    $('cardSocios').hidden = !comSocios(sel.alteracoes);
+    app.querySelectorAll('[data-socio-item]').forEach(el => { el.hidden = !tem(el.dataset.socioItem); });
+    // "Mora no endereço novo da empresa" só com o endereço novo perguntado
+    app.querySelectorAll('[data-mesmo-rotulo]').forEach(el => {
+      el.hidden = !tem('endereco');
+      const cb = el.querySelector('input');
+      if (el.hidden && cb.checked) { cb.checked = false; const box = app.querySelector(`[data-end="${cb.dataset.mesmo}"]`); if (box) box.hidden = false; }
+    });
+    $('avisoGov').hidden = !sel.alteracoes.length;
+  }
+
   function desenhar() {
+    if (ALT) return desenharAlteracao();
     let html = `<div class="card cab"><h2>${esc(T.titulo)}</h2><div class="intro">${esc(T.intro)}</div>`
       + `<div class="gov" role="note"><b>⚠ ${esc(AVISO_GOV)}</b>${esc(AVISO_GOV_AJUDA)}</div></div>`;
-    html += '<div class="card"><h3 class="bloco">Seus dados</h3>'
-      + caixa('contato.nome', PERGUNTAS['contato.nome'], { auto: 'name' })
-      + `<div class="linha">${caixa('contato.telefone', PERGUNTAS['contato.telefone'], { tipo: 'tel', dica: 'Com o DDD.', auto: 'tel', max: 20 })}${caixa('contato.email', PERGUNTAS['contato.email'], { tipo: 'email', auto: 'email' })}</div></div>`;
+    html += seusDados();
     if (TIPO === 'transformacao') {
       html += '<div class="card"><h3 class="bloco">O MEI</h3>' + caixa('cnpjMei', PERGUNTAS.cnpjMei, { modo: 'numeric', max: 18, dica: 'O CNPJ do MEI que vai virar ME.' }) + '</div>';
     }
@@ -210,10 +300,7 @@
     html += '<div class="card"><h3 class="bloco">Endereço da empresa</h3>' + endereco('endereco', '') + '</div>';
     html += '<div class="card"><h3 class="bloco">Sócios</h3><div id="socios"></div><div class="soma" id="soma" aria-live="polite"></div>'
       + `<button type="button" class="botao sec" id="maisSocio">+ Adicionar sócio</button></div>`;
-    html += `<div class="card"><h3 class="bloco">${esc(PERGUNTAS.outros)}</h3>` + slot(OUTROS, 'Se quiser, anexe outros documentos', 'Ex.: o contrato de aluguel ou a escritura do imóvel.', false) + '</div>';
-    html += `<div class="card"><h3 class="bloco">${esc(PERGUNTAS.obs)}</h3>${area('obs', '', { max: 2000, obrig: false })}</div>`;
-    html += '<div class="card"><button class="botao" id="btnEnviar">Enviar</button><div class="erro" id="msgErro" role="alert"></div>'
-      + '<div class="progresso" id="progresso" aria-live="polite"></div><div class="barra" id="barra" hidden><div></div></div></div>';
+    html += cartoesDoFim();
     app.innerHTML = html;
     maisSocio();
     $('maisSocio').addEventListener('click', () => { maisSocio(); const ult = app.querySelector('.socio:last-child input'); if (ult) ult.focus(); });
@@ -235,6 +322,7 @@
     $('socios').insertAdjacentHTML('beforeend', blocoSocio(vaga, socios.length));
     anexos.set(grupoDoSocio(vaga), []);
     renumerar();
+    aplicarSelecao();
   }
   function tirarSocio(vaga) {
     socios = socios.filter(v => v !== vaga);
@@ -289,6 +377,12 @@
     if (t.id && /^id_socios_\d+_estadoCivil$/.test(t.id)) { const v = t.id.split('_')[2]; const r = app.querySelector(`[data-regime="${v}"]`); if (r) r.hidden = t.value !== 'casado'; }
     if (t.matches('[data-mesmo]')) { const box = app.querySelector(`[data-end="${t.dataset.mesmo}"]`); if (box) box.hidden = t.checked; }
     if (t.id === 'mesmoContato') copiarContato();
+    // a alteração que o cliente marca: o endereço na mesma cidade e o de outra cidade não vão juntos
+    if (t.matches('[data-alt]')) {
+      const a = ALTERACOES.find(x => x.id === t.dataset.alt);
+      if (t.checked && a && a.sai) { const outra = app.querySelector(`[data-alt="${a.sai}"]`); if (outra) outra.checked = false; }
+      aplicarSelecao();
+    }
   });
   app.addEventListener('input', e => {
     const campo = e.target.closest('.campo');
@@ -346,6 +440,35 @@
       capital: valor('capital'), funcionamento: valor('funcionamento'), areaTotal: valor('areaTotal'), areaUtilizada: valor('areaUtilizada'),
       empresaTelefone: valor('empresaTelefone'), empresaEmail: valor('empresaEmail'), endereco: empresa, socios: lista, obs: valor('obs'), arquivos }, files };
   }
+  // a alteração: o que muda, o que pedir e só as respostas do que se pede (os sócios, quando muda a natureza jurídica ou o
+  // quadro); os anexos na ordem dos sócios da tela, o do imóvel e os outros
+  function coletarAlteracao() {
+    sel = selecaoAgora();
+    const tem = i => sel.pedir.includes(i);
+    const empresa = tem('endereco') ? endereco_('endereco') : null;
+    const comS = comSocios(sel.alteracoes);
+    const lista = comS ? socios.map(v => {
+      const pre = `socios.${v}`;
+      const mesmo = app.querySelector(`[data-mesmo="${v}"]`);
+      return { nome: valor(pre + '.nome'), cpf: valor(pre + '.cpf'),
+        estadoCivil: tem('civil') ? valor(pre + '.estadoCivil') : '', regime: tem('civil') ? valor(pre + '.regime') : '',
+        profissao: tem('profissao') ? valor(pre + '.profissao') : '',
+        endereco: tem('residencia') ? (empresa && mesmo && mesmo.checked ? empresa : endereco_(pre + '.endereco')) : null,
+        govbr: tem('gov') ? marcado(pre + '.govbr') : '', participacao: valor(pre + '.participacao'), administra: marcado(pre + '.administra') };
+    }) : [];
+    const arquivos = [], files = [];
+    const por = (grupo, comoVai) => (anexos.get(grupo) || []).forEach(f => { arquivos.push({ nome: f.name, tamanho: f.size, tipo: f.type || 'application/octet-stream', grupo: comoVai }); files.push(f); });
+    if (comS && tem('doc')) socios.forEach((v, i) => por(grupoDoSocio(v), grupoDoSocio(i)));
+    if (tem('imovel')) por(IMOVEL, IMOVEL);
+    por(OUTROS, OUTROS);
+    const se = (i, id) => (tem(i) ? valor(id) : '');
+    return { corpo: { tipo: 'alteracao', alteracoes: sel.alteracoes, pedir: sel.pedir,
+      contato: { nome: valor('contato.nome'), telefone: valor('contato.telefone'), email: valor('contato.email') },
+      razaoAtual: valor('razaoAtual'), cnpj: valor('cnpj'), razao1: se('razao', 'razao1'), razao2: se('razao', 'razao2'), fantasia: se('fantasia', 'fantasia'),
+      endereco: empresa, areaTotal: se('area', 'areaTotal'), areaUtilizada: se('area', 'areaUtilizada'), funcionamento: se('horario', 'funcionamento'),
+      atividades: se('atividades', 'atividades'), capital: se('capital', 'capital'), empresaTelefone: se('contato', 'empresaTelefone'),
+      empresaEmail: se('contato', 'empresaEmail'), socios: lista, obs: valor('obs'), arquivos }, files };
+  }
   // o id que a conferência devolve ("socios.1.cpf": o 2º sócio da tela) → o campo da tela ("socios.<vaga>.cpf")
   function campoDe(id) {
     const m = /^socios\.(\d+)\.(.+)$/.exec(id);
@@ -380,7 +503,7 @@
     const erro = $('msgErro'), btn = $('btnEnviar');
     app.querySelectorAll('.campo.falta').forEach(c => c.classList.remove('falta'));
     $('soma').classList.remove('ruim');
-    const { corpo, files } = coletar();
+    const { corpo, files } = ALT ? coletarAlteracao() : coletar();
     const c = conferirPedido(corpo);
     if (!c.pedido) {
       if (c.faltam.includes('arquivos')) { erro.textContent = c.erro; return; }
@@ -425,7 +548,8 @@
         await chamar({ acao: 'concluir', id: r.id, chave: r.chave }).catch(() => null);
       } finally { subindo = false; }
     }
-    let msg = 'Obrigado! O escritório vai conferir as informações e falar com você pelo WhatsApp.\n\nLembre: ' + AVISO_GOV.charAt(0).toLowerCase() + AVISO_GOV.slice(1);
+    const gov = ALT ? AVISO_GOV_ALT : AVISO_GOV;
+    let msg = 'Obrigado! O escritório vai conferir as informações e falar com você pelo WhatsApp.\n\nLembre: ' + gov.charAt(0).toLowerCase() + gov.slice(1);
     const foram = files.length - falhas.length;
     if (foram) msg += `\n\n${foram === 1 ? '1 documento enviado' : foram + ' documentos enviados'} para o escritório.`;
     if (falhas.length) msg += `\n\nNão conseguimos enviar: ${falhas.join(', ')}. A gente pede ${falhas.length === 1 ? 'esse arquivo' : 'esses arquivos'} pelo WhatsApp.`;

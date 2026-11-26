@@ -10,6 +10,13 @@
 //   mesmos moldes da transformação, o produto constituição de CNPJ ... documentação, informações e valores são os
 //   mesmos da transformação, com poucas exceções no texto como não mencionar sobre desenquadramento").
 //
+// - a alteração de empresa (26/11/2026, o caso real 4: uma empresa do cliente com o nome fantasia, a natureza jurídica, o
+//   endereço na mesma cidade, o e-mail e o telefone; o Samuel: "muito semelhante a constituição e transformação ... acredito que nesse
+//   produto seja interessante eu poder marcar em algum local o que vou pedir ou não, pois um o outro documento pode ser
+//   que tenhamos e outros não"). Na janela, marca-se o que muda e o que pedir (ALTERACOES e ITENS, de empresa-pedido.js);
+//   as etapas, a documentação, o começo dos prazos, o que muda no orçamento e o link do formulário saem da seleção
+//   (produtoDaSelecao, linkDoFormulario). O preço depende do que muda: sem valor de sempre, digita-se o do orçamento.
+//
 // Aqui ficam o texto de cada produto (PRODUTOS), os valores de sempre (lidos do banco), a validade e a mensagem. Puro,
 // sem DOM e sem banco: as imagens saem de societario-produtos-imagem.js, e a janela, de societario-produtos-janela.js,
 // aberta pelos produtos da Vitrine de serviços (comercial-servicos.html).
@@ -18,6 +25,7 @@
 // ============================================================================
 import { diaUtil, somaDias, isoValida, fmtData } from './rescisao-datas.js';
 import { primeiroNome, reais, artigo } from './mei-planos.js';
+import { ALTERACOES, ITENS, selecao, paramsDaSelecao, oQueMuda } from './empresa-pedido.js';
 
 // ---------- o que os produtos têm em comum ----------
 // a apresentação (as duas primeiras imagens: servem pra qualquer cliente e não têm valor nenhum)
@@ -107,10 +115,88 @@ export const PRODUTOS = {
     pronto: 'Pronto: a empresa está aberta.',
     inicio: 'Em até 24 horas depois das informações e do acerto, enviamos a viabilidade à Junta Comercial.',
     naMensagem: 'a abertura da empresa'
+  },
+  // a alteração: as etapas da abertura (a Junta e a Receita, a Junta, a SEFAZ e a prefeitura, com os mesmos prazos), com
+  // cada linha conforme o que muda (se: só quando muda um destes; naoSe: só quando não muda; geral: o texto da apresentação
+  // sem nada marcado, a que vai pro anúncio — null, a linha fica fora dela). No RS, a alteração passa toda pelo Portal de
+  // Serviços da JucisRS (a REDESIM): até o e-mail e o telefone, que chegam sozinhos à Receita Estadual
+  alteracao: {
+    ...COMUM, id: 'alteracao', slug: 'alteracao-empresa', grupo: 'alteracao_empresa',
+    titulo: 'Alteração de empresa',
+    subtitulo: 'Como funciona, na prática, do primeiro passo até a atualização na prefeitura.',
+    cliente: 'Cliente',
+    obrigatorio: 'Daqui em diante, tudo o que fazemos é obrigatório para a alteração valer de forma regular, conforme as disposições legais vigentes.',
+    selecionavel: true,
+    documentos: documentosDaSelecao(null),
+    etapas: [
+      { n: 1, titulo: 'Junta Comercial e Receita Federal', dias: 15, itens: [
+        { t: 'Envio da viabilidade à Junta Comercial', se: ['nome', 'natureza', 'endereco', 'cidade', 'atividades'],
+          geral: 'Envio da viabilidade à Junta Comercial, quando muda o nome, a natureza jurídica, o endereço ou as atividades' },
+        'Cadastro da alteração na Receita Federal (o DBE)',
+        { t: 'Assinatura do Contrato Social pelo gov.br', se: ['natureza'], geral: 'Assinatura da alteração pelo gov.br (o Contrato Social, quando muda a natureza jurídica)' },
+        { t: 'Assinatura da alteração pelo gov.br', naoSe: ['natureza'], geral: null }] },
+      { n: 2, titulo: 'Junta Comercial', dias: 5, itens: [
+        'Registro da alteração na Junta Comercial, após a assinatura, com o CNPJ atualizado'] },
+      { n: 3, titulo: 'Receita Estadual (SEFAZ RS)', dias: 2, itens: [
+        'Atualização da Inscrição Estadual (comércio e indústria)'] },
+      { n: 4, titulo: 'Prefeitura Municipal', dias: 2, itens: [
+        { t: 'Atualização da inscrição municipal', naoSe: ['endereco', 'cidade'], geral: 'Atualização da inscrição municipal (e do Alvará de Localização, quando muda o endereço)' },
+        { t: 'Atualização da inscrição municipal e do Alvará de Localização no endereço novo', se: ['endereco'], geral: null },
+        { t: 'Inscrição na prefeitura da cidade nova (Alvará de Localização) e baixa na prefeitura de antes', se: ['cidade'], geral: null }] }
+    ],
+    pronto: 'Pronto: a empresa está com os dados novos.',
+    inicio: {
+      viabilidade: 'Em até 24 horas depois das informações e do acerto, enviamos a viabilidade à Junta Comercial.',
+      dbe: 'Em até 24 horas depois das informações e do acerto, fazemos o cadastro da alteração na Receita Federal (o DBE).',
+      geral: 'Em até 24 horas depois das informações e do acerto, começamos a alteração pela Junta Comercial.' },
+    naMensagem: 'a alteração da sua empresa',
+    minutos: 5,
+    semValores: 'O preço da alteração depende do que muda: digite os valores deste orçamento.'
   }
 };
-// o produto pelo id ('transformacao', 'constituicao'); o que não existe, null
+// o produto pelo id ('transformacao', 'constituicao', 'alteracao'); o que não existe, null
 export const produtoDe = id => (Object.prototype.hasOwnProperty.call(PRODUTOS, id) ? PRODUTOS[id] : null);
+
+// ---------- a alteração: o produto da seleção ----------
+// a documentação da seleção: o que pedir, da empresa e de cada sócio; sem nada marcado (a apresentação do anúncio), tudo o
+// que a alteração pode pedir, conforme o que muda
+export function documentosDaSelecao(sel) {
+  const marcou = !!(sel && sel.alteracoes && sel.alteracoes.length);
+  const ids = marcou ? (sel.pedir || []) : Object.keys(ITENS);
+  const de = quem => ids.filter(i => ITENS[i] && ITENS[i].de === quem).map(i => (ITENS[i].nota ? { t: ITENS[i].t, nota: ITENS[i].nota } : { t: ITENS[i].t }));
+  const empresa = de('empresa'), socio = de('socio');
+  if (!marcou) return [{ grupo: 'Da empresa, conforme o que muda', itens: empresa }, { grupo: 'De cada sócio, quando muda a natureza jurídica ou o quadro de sócios', itens: socio }];
+  const g = [];
+  if (empresa.length) g.push({ grupo: 'Da empresa', itens: empresa });
+  if (socio.length) g.push({ grupo: 'De cada sócio', itens: socio });
+  if (!g.length) g.push({ grupo: 'Da empresa', itens: [{ t: 'Só confirmar os dados no formulário: o resto o escritório já tem' }] });
+  return g;
+}
+// a linha da etapa na seleção (ids: o que muda; vazio = a apresentação sem nada marcado): o texto, ou null (fica fora)
+function linhaDaEtapa(it, ids) {
+  if (typeof it === 'string') return it;
+  if (!ids.length) return it.geral === null ? null : (it.geral || it.t);
+  if (it.se && !it.se.some(x => ids.includes(x))) return null;
+  if (it.naoSe && it.naoSe.some(x => ids.includes(x))) return null;
+  return it.t;
+}
+// o produto como a imagem e a mensagem o usam: na alteração, as etapas, a documentação, o começo dos prazos e o que muda
+// (escopo) saem da seleção ({ alteracoes, pedir }); os outros produtos voltam como são
+export function produtoDaSelecao(p, sel) {
+  if (!p || !p.selecionavel) return p;
+  const s = selecao(sel && sel.alteracoes, sel && sel.pedir != null ? sel.pedir : null);
+  const ids = s.alteracoes;
+  const etapas = p.etapas.map(e => ({ ...e, itens: e.itens.map(it => linhaDaEtapa(it, ids)).filter(Boolean) }))
+    .filter(e => e.itens.length).map((e, i) => ({ ...e, n: i + 1 }));
+  const viab = (p.etapas[0].itens[0].se || []).some(x => ids.includes(x));
+  return {
+    ...p, selecao: s, etapas, documentos: documentosDaSelecao(s),
+    docSubtitulo: ids.length ? 'Só o que precisamos para o que muda. Vai tudo pelo formulário do link.' : 'Conforme o que muda, pedimos só o que for preciso.',
+    inicio: !ids.length ? p.inicio.geral : viab ? p.inicio.viabilidade : p.inicio.dbe,
+    escopo: ids.length ? oQueMuda(ids) : ''
+  };
+}
+export { ALTERACOES, ITENS };
 
 // a soma das médias de todas as etapas (24 dias úteis)
 export const totalDeDias = p => p.etapas.reduce((s, e) => s + e.dias, 0);
@@ -193,9 +279,12 @@ export function dadosDoOrcamento({ cliente = '', dia, valores = {} } = {}) {
 // o link do formulário do produto (empresa.html?t=<id do produto>, 24/11/2026): o cliente preenche os dados da empresa e
 // de cada sócio e anexa os documentos; o pedido vira tarefa na agenda (a Edge Function empresa-link). base: o endereço da
 // tela que monta o link (location.href)
-export function linkDoFormulario(p, base) {
+// Na alteração, o link leva a seleção (sel: { alteracoes, pedir }): "&m=…" (o que muda) e, quando não se pede tudo,
+// "&n=…" (o que o escritório já tem) — o formulário pergunta só o resto; sem a seleção, o cliente marca o que muda
+export function linkDoFormulario(p, base, sel = null) {
   if (!p || !p.id) return '';
-  try { return new URL('empresa.html?t=' + encodeURIComponent(p.id), base).href; } catch (e) { return ''; }
+  const extra = p.selecionavel && sel ? paramsDaSelecao(sel) : '';
+  try { return new URL('empresa.html?t=' + encodeURIComponent(p.id) + (extra ? '&' + extra : ''), base).href; } catch (e) { return ''; }
 }
 
 export function mensagemDoProduto(p, { nome, quem, validade, formulario } = {}) {
@@ -205,6 +294,8 @@ export function mensagemDoProduto(p, { nome, quem, validade, formulario } = {}) 
   linhas.push(`Oi${pn ? ', ' + pn : ''}! Tudo bem? ${eu ? `Aqui é ${[artigo(eu), eu].filter(Boolean).join(' ')}, da Macedo & Reis Contabilidade.` : 'Aqui é da Macedo & Reis Contabilidade.'}`);
   linhas.push('');
   linhas.push(`Segue como funciona, na prática, ${p.naMensagem}:`);
+  // na alteração, o que muda (o escopo da seleção)
+  if (p.escopo) linhas.push(`O que muda: ${p.escopo}.`);
   linhas.push('');
   linhas.push(`Na 1ª imagem, o passo a passo: os primeiros passos com você e as ${p.etapas.length} etapas que fazemos nos órgãos.`);
   linhas.push('Na 2ª, a documentação que vamos precisar.');
@@ -212,7 +303,7 @@ export function mensagemDoProduto(p, { nome, quem, validade, formulario } = {}) 
   // o formulário: as informações e os documentos vão por ele, não pela conversa (só o endereço http(s) entra)
   if (/^https?:\/\/\S+$/.test(String(formulario || ''))) {
     linhas.push('');
-    linhas.push('Quando quiser seguir, é só preencher este formulário com as informações e os documentos (leva uns 10 minutos):');
+    linhas.push(`Quando quiser seguir, é só preencher este formulário com as informações e os documentos (leva uns ${p.minutos || 10} minutos):`);
     linhas.push(formulario);
   }
   linhas.push('');

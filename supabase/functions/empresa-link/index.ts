@@ -4,6 +4,9 @@
 // o cliente preenche os dados da empresa e de cada sócio e anexa o documento de cada sócio. O Samuel: "cria um forms com
 // link pra eu enviar pro cliente poder preencher as informações e anexar os documentos, se nao ele tem que enviar pra mim
 // por email ou whats e dificulta mais (tanto pra transformação quanto para constituição)".
+// Desde 26/11/2026, também a alteração de empresa (empresa.html?t=alteracao&m=<o que muda>&n=<o que não se pede>): o
+// cliente diz a empresa e o CNPJ e preenche só o que muda; a lista do que se pede vai no pedido (pedir), e a conferência
+// é a mesma, pelo tipo. A pasta é ALTERAÇÃO - <a razão social de hoje>, na mesma CONSTITUIÇÕES E TRANSFORMAÇÕES.
 // O pedido nasce em pedidos_empresa e, pelo gatilho do banco (empresa_sincronizar_tarefa), na agenda do Samuel (Societário),
 // com o resumo e o link da pasta, e o aviso na conversa Avisos do sistema. As perguntas e a conferência são as de
 // assets/js/empresa-pedido.js, importado do repositório num commit fixado (abaixo), como o resto do sistema faz.
@@ -30,7 +33,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.0";
 // as perguntas, a conferência, o resumo e o nome dos anexos (os da página) vêm do repositório, no commit fixado: a função
 // roda o que estava nele. Mudou assets/js/empresa-pedido.js (ou o mei-abertura.js e o utils.js, que ele importa)? Publique,
 // troque o commit da linha e reimplante — tests/empresa-pedido.test.mjs falha enquanto o commit fixado estiver atrás.
-import { conferirPedido, resumoDoPedido, textoDasRespostas, alertasDoPedido, nomeDoAnexo, pastaDoPedido } from "https://raw.githubusercontent.com/macedo-reis-contabilidade/macedo-reis-dashboards/b12c608ca07c43a402009b15435043aa00cc5a69/assets/js/empresa-pedido.js";
+import { conferirPedido, resumoDoPedido, textoDasRespostas, alertasDoPedido, nomeDoAnexo, pastaDoPedido, empresaDoPedido } from "https://raw.githubusercontent.com/macedo-reis-contabilidade/macedo-reis-dashboards/b12c608ca07c43a402009b15435043aa00cc5a69/assets/js/empresa-pedido.js";
 
 const ENVIOS_HORA = 30;                  // trava contra enxurrada (o link é público)
 const TABELA = "pedidos_empresa";
@@ -218,7 +221,7 @@ async function enviar(b: any) {
   const arquivos = (c.arquivos || []).map((a: { nome: string; tamanho: number; tipo: string; grupo: string }) =>
     ({ nome: a.nome, tamanho: a.tamanho, tipo: a.tipo, grupo: a.grupo, status: "pendente" }));
   const { data: res, error } = await supa.from(TABELA).insert({
-    tipo: p.tipo, nome: p.contato.nome, telefone: p.contato.telefone, email: p.contato.email, empresa: p.razao1,
+    tipo: p.tipo, nome: p.contato.nome, telefone: p.contato.telefone, email: p.contato.email, empresa: empresaDoPedido(p),
     resumo: resumoDoPedido(p), pedido: p, alertas: alertasDoPedido(p), arquivos,
     envio_chave: chave, envio_expira: new Date(Date.now() + HORAS_CHAVE * 3600e3).toISOString(),
   }).select("id").single();

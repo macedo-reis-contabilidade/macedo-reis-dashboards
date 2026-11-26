@@ -1,5 +1,6 @@
-"""Teste do formulário da constituição de CNPJ e da transformação do MEI em ME (24/11/2026, pedido do Samuel): o link
-público (empresa.html?t=constituicao ou ?t=transformacao), que só fala com a Edge Function empresa-link — aqui quem
+"""Teste do formulário da constituição de CNPJ e da transformação do MEI em ME (24/11/2026, pedido do Samuel) e da
+alteração de empresa (26/11/2026): o link público (empresa.html?t=constituicao, ?t=transformacao ou ?t=alteracao, com o
+que muda e o que não se pede no endereço), que só fala com a Edge Function empresa-link — aqui quem
 responde é o teste, por window.__mockInvoke — e não tem login. As regras puras e a função têm teste próprio em
 tests/empresa-pedido.test.mjs. Os dados são inventados.
 
@@ -19,7 +20,13 @@ Confere:
      quantos foram, o que não subiu e lembra do gov.br;
   5. a transformação: o título, o CNPJ do MEI (o errado é marcado) e o tipo no pedido;
   6. a função que recusa (a trava de envios por hora): a frase dela aparece e o botão volta;
-  7. a tela do celular (400 px) não rola de lado; o ?t= desconhecido abre a abertura de empresa.
+  7. a tela do celular (400 px) não rola de lado; o ?t= desconhecido abre a abertura de empresa;
+  8. a alteração pelo link da janela (o que muda e o que o escritório já tem): o que muda só pra ler, só as perguntas do
+     que se pede (os sócios sem o documento e o endereço), o que falta, o documento do imóvel e o pedido com o que muda,
+     o que se pediu e só essas respostas; o recebido lembra do gov.br de quem administra;
+  9. a alteração sem a seleção: o cliente marca o que muda (sem marcar, falta), o endereço de outra cidade desmarca o da
+     mesma cidade, o quadro de sócios pede o documento; o pedido só do e-mail e do telefone; o ?m= que não existe abre as
+     caixas; a 400 px não rola de lado.
 Termina com código 1 se alguma checagem falhar.
 Pré-requisito: pip install playwright e python -m playwright install chromium
 """
@@ -230,6 +237,94 @@ def main():
         ok(pior >= 8, f'a 400 px, uma pergunta embaixo da outra, sem encostar (a menor folga: {pior:.0f} px)')
         ok(p.inner_text('.cab h2') == 'Abertura de empresa' and p.locator('#id_cnpjMei').count() == 0, 'o ?t= desconhecido abre a abertura de empresa')
         p.screenshot(path=str(FOTOS / 'empresa-celular.png'), full_page=True)
+        p.close()
+
+        print('8. A alteração de empresa, pelo link da janela')
+        p = pagina(b, base, 'empresa.html?t=alteracao&m=fantasia,natureza,endereco,contato&n=doc,residencia', erros)
+        vis = p.is_visible
+        ok(p.inner_text('.cab h2') == 'Alteração de empresa' and p.title().startswith('Alteração de empresa') and p.inner_text('#topoSub').startswith('Alteração de empresa'),
+           'o título da alteração (na tela, no alto e na aba)')
+        ok(p.inner_text('#muda') == 'O nome fantasia, a natureza jurídica, o endereço (na mesma cidade) e os contatos (e-mail e telefone).' and p.locator('[data-alt]').count() == 0,
+           'o que muda vem do link, só pra ler → ' + p.inner_text('#muda'))
+        ok(vis('#id_razaoAtual') and vis('#id_cnpj') and vis('#id_fantasia') and vis('#id_endereco_cep') and vis('#id_areaTotal') and vis('#id_funcionamento')
+           and vis('.campo[data-id="imovel"]') and vis('#id_empresaTelefone'), 'a empresa e só o que se pede: o nome fantasia, o endereço novo com a área, o horário e o imóvel, e o telefone e o e-mail')
+        ok(not vis('#id_razao1') and not vis('#id_atividades') and not vis('#id_capital'), 'e não o que não muda: o nome empresarial, as atividades e o capital')
+        ok(vis('#cardSocios') and vis('#id_socios_0_estadoCivil') and vis('#id_socios_0_profissao') and vis('.campo[data-id="socios.0.govbr"]')
+           and not vis('.campo[data-id="socios.0.documento"]') and not vis('.socio [data-socio-item="residencia"]'),
+           'os sócios (muda a natureza jurídica), sem o documento e o endereço, que o escritório já tem')
+        ok(vis('#avisoGov') and 'Quem administra a empresa' in p.inner_text('#avisoGov') and p.locator('input[type=password]').count() == 0, 'o aviso do gov.br de quem administra, sem pedir senha')
+        p.click('#btnEnviar'); p.wait_for_timeout(300)
+        f = faltas(p)
+        esperadas = ['contato.nome', 'contato.telefone', 'contato.email', 'razaoAtual', 'cnpj', 'fantasia', 'funcionamento', 'areaTotal', 'areaUtilizada', 'empresaTelefone',
+                     'empresaEmail', 'endereco.cep', 'endereco.logradouro', 'endereco.numero', 'endereco.bairro', 'endereco.cidade', 'socios.0.nome', 'socios.0.cpf',
+                     'socios.0.estadoCivil', 'socios.0.profissao', 'socios.0.govbr', 'imovel']
+        ok(sorted(f) == sorted(esperadas) and not chamadas(p, 'enviar'), f'enviar vazio marca só o que se pede (a mais: {[k for k in f if k not in esperadas]}, a menos: {[k for k in esperadas if k not in f]})')
+        ok('Escreva a razão social, como está no CNPJ.' in p.inner_text('.campo[data-id="razaoAtual"]'), 'a razão social de hoje, com a frase dela')
+        p.fill('#id_contato_nome', 'Ana Teste da Silva'); p.fill('#id_contato_telefone', '(51) 99999-0000'); p.fill('#id_contato_email', 'ana@exemplo.com')
+        p.fill('#id_razaoAtual', 'Empresa Exemplo Inventada'); p.fill('#id_cnpj', '11.222.333/0001-82'); p.fill('#id_fantasia', 'Loja Exemplo')
+        p.fill('#id_endereco_cep', '95660-000')
+        p.wait_for_function("() => document.getElementById('id_endereco_logradouro').value === 'Rua das Flores'", timeout=3000)
+        p.fill('#id_endereco_numero', '300'); p.fill('#id_areaTotal', '90'); p.fill('#id_areaUtilizada', '60'); p.fill('#id_funcionamento', 'Segunda a sexta, das 8h às 18h')
+        p.check('#mesmoContato')
+        ok(p.input_value('#id_empresaTelefone') == '(51) 99999-0000' and p.input_value('#id_empresaEmail') == 'ana@exemplo.com', '"O telefone e o e-mail novos são os meus" copia os dois')
+        p.fill('#id_socios_0_nome', 'Ana Teste da Silva'); p.fill('#id_socios_0_cpf', '529.982.247-25'); p.fill('#id_socios_0_profissao', 'Comerciante')
+        p.select_option('#id_socios_0_estadoCivil', 'solteiro'); p.check('input[name="id_socios_0_govbr"][value="sim"]')
+        p.click('#btnEnviar'); p.wait_for_timeout(200)
+        ok(faltas(p) == ['cnpj', 'imovel'] and 'Confira o CNPJ.' in p.inner_text('.campo[data-id="cnpj"]') and not chamadas(p, 'enviar'),
+           f'o CNPJ errado e o documento do imóvel que falta são marcados ({faltas(p)})')
+        p.fill('#id_cnpj', '11.222.333/0001-81')
+        p.set_input_files('input[data-grupo="imovel"]', [arquivo('iptu.pdf', 1500)])
+        p.click('#btnEnviar'); p.wait_for_selector('.aviso', timeout=8000)
+        env = chamadas(p, 'enviar')
+        e = env[0] if env else {}
+        ok(len(env) == 1 and e.get('tipo') == 'alteracao' and e.get('alteracoes') == ['fantasia', 'natureza', 'endereco', 'contato']
+           and e.get('pedir') == ['fantasia', 'endereco', 'area', 'horario', 'imovel', 'contato', 'civil', 'profissao', 'gov'],
+           f'o pedido vai com o que muda e o que se pediu ({json.dumps({k: e.get(k) for k in ("tipo", "alteracoes", "pedir")}, ensure_ascii=False)})')
+        ok(e.get('razaoAtual') == 'Empresa Exemplo Inventada' and e.get('cnpj') == '11.222.333/0001-81' and e.get('fantasia') == 'Loja Exemplo' and e.get('razao1') == ''
+           and e.get('capital') == '' and e.get('atividades') == '' and (e.get('endereco') or {}).get('numero') == '300' and e.get('empresaEmail') == 'ana@exemplo.com',
+           'só as respostas do que se pede')
+        ss = e.get('socios', [])
+        ok(len(ss) == 1 and ss[0]['nome'] == 'Ana Teste da Silva' and ss[0]['estadoCivil'] == 'solteiro' and ss[0]['govbr'] == 'sim' and ss[0]['endereco'] is None,
+           'o sócio, sem o endereço (o escritório já tem)')
+        ok([(a['nome'], a['grupo']) for a in e.get('arquivos', [])] == [('iptu.pdf', 'imovel')], 'o documento do imóvel, no grupo dele')
+        fim = p.inner_text('.aviso')
+        ok('Recebido!' in fim and '1 documento enviado' in fim and 'quem administra a empresa precisa da conta gov.br' in fim, f'o recebido lembra do gov.br de quem administra ({fim[:200]!r})')
+        p.close()
+
+        print('9. A alteração sem a seleção no link: o cliente marca')
+        p = pagina(b, base, 'empresa.html?t=alteracao', erros)
+        vis = p.is_visible
+        ok(p.locator('[data-alt]').count() == 9 and not vis('#cardSocios') and not vis('#id_fantasia') and not vis('#id_endereco_cep') and not vis('#avisoGov'),
+           'as 9 caixas, e nada perguntado ainda')
+        p.click('#btnEnviar'); p.wait_for_timeout(200)
+        ok('alteracoes' in faltas(p) and 'Marque o que vai mudar.' in p.inner_text('.campo[data-id="alteracoes"]') and not chamadas(p, 'enviar'), 'sem marcar, falta o que muda')
+        p.check('[data-alt="contato"]')
+        ok(vis('#id_empresaTelefone') and not vis('#cardSocios') and not vis('#id_endereco_cep') and vis('#avisoGov'), 'marcar o e-mail e o telefone mostra só eles (e o aviso do gov.br)')
+        p.check('[data-alt="endereco"]'); p.check('[data-alt="cidade"]')
+        ok(not p.is_checked('[data-alt="endereco"]') and p.is_checked('[data-alt="cidade"]') and vis('#id_endereco_cep') and vis('.campo[data-id="imovel"]'),
+           'o endereço de outra cidade desmarca o da mesma cidade, e pede o endereço e o imóvel')
+        p.check('[data-alt="socios"]')
+        ok(vis('#cardSocios') and vis('.campo[data-id="socios.0.documento"]') and vis('.socio [data-socio-item="residencia"]') and vis('[data-mesmo-rotulo]'),
+           'o quadro de sócios pede os sócios, com o documento e o endereço (e "Mora no endereço novo da empresa")')
+        p.uncheck('[data-alt="cidade"]')
+        ok(not vis('[data-mesmo-rotulo]') and vis('.socio [data-socio-item="residencia"]'), 'sem o endereço novo, sai o "Mora no endereço novo da empresa"')
+        p.uncheck('[data-alt="socios"]')
+        ok(not vis('#cardSocios') and not vis('#id_endereco_cep'), 'desmarcar tira as perguntas')
+        p.fill('#id_contato_nome', 'Ana Teste da Silva'); p.fill('#id_contato_telefone', '(51) 99999-0000'); p.fill('#id_contato_email', 'ana@exemplo.com')
+        p.fill('#id_razaoAtual', 'Empresa Exemplo Inventada'); p.fill('#id_cnpj', '11.222.333/0001-81')
+        p.fill('#id_empresaTelefone', '(51) 3333-4444'); p.fill('#id_empresaEmail', 'loja@exemplo.com')
+        p.click('#btnEnviar'); p.wait_for_selector('.aviso', timeout=8000)
+        env = chamadas(p, 'enviar')
+        e = env[0] if env else {}
+        ok(len(env) == 1 and e.get('alteracoes') == ['contato'] and e.get('pedir') == ['contato'] and e.get('socios') == [] and e.get('endereco') is None
+           and e.get('empresaTelefone') == '(51) 3333-4444', 'o pedido só do e-mail e do telefone: sem sócios e sem endereço')
+        p.close()
+        p = pagina(b, base, 'empresa.html?t=alteracao&m=nada-disso', erros, largura=400)
+        ok(p.locator('[data-alt]').count() == 9 and p.locator('#muda').count() == 0, 'o ?m= que não existe abre as caixas pro cliente marcar')
+        p.check('[data-alt="natureza"]'); p.check('[data-alt="endereco"]'); p.wait_for_timeout(100)
+        largo = p.evaluate('() => document.documentElement.scrollWidth')
+        ok(largo <= 400, f'a 400 px a alteração não rola de lado ({largo} px)')
+        p.screenshot(path=str(FOTOS / 'empresa-alteracao-celular.png'), full_page=True)
         p.close()
         b.close()
     srv.shutdown()

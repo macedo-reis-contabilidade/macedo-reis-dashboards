@@ -8,7 +8,8 @@
 import { readFileSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { TIPOS, tipoDe, ESTADOS_CIVIS, REGIMES, GOVBR, MAX_SOCIOS, MAX_ARQ, MAX_QTD, OUTROS, grupoDoSocio, conferirAnexos, conferirPedido, alertasDoPedido,
-  resumoDoPedido, textoDasRespostas, nomeDoAnexo, pastaDoPedido } from '../assets/js/empresa-pedido.js';
+  resumoDoPedido, textoDasRespostas, nomeDoAnexo, pastaDoPedido, empresaDoPedido, ALTERACOES, ITENS, itensDe, selecao, paramsDaSelecao, selecaoDoEndereco,
+  emFrase, oQueMuda, comSocios, IMOVEL, PERGUNTAS_ALT, AVISO_GOV_ALT } from '../assets/js/empresa-pedido.js';
 import { DOCUMENTOS } from '../assets/js/societario-produtos.js';
 
 const raiz = new URL('../', import.meta.url).pathname;
@@ -28,8 +29,8 @@ const base = (o = {}) => ({
   endereco: end, socios: [socio()], obs: '', arquivos: [doc(grupoDoSocio(0))], ...o });
 
 console.log('Os produtos do link');
-chk('a abertura e a transformação, pelo endereço', igual(Object.keys(TIPOS), ['constituicao', 'transformacao']) && tipoDe('transformacao') === 'transformacao'
-  && tipoDe('x') === null && tipoDe('toString') === null);
+chk('a abertura, a transformação e a alteração, pelo endereço', igual(Object.keys(TIPOS), ['constituicao', 'transformacao', 'alteracao']) && tipoDe('transformacao') === 'transformacao'
+  && tipoDe('alteracao') === 'alteracao' && tipoDe('x') === null && tipoDe('toString') === null);
 chk('os títulos: a abertura de empresa (a constituição de CNPJ) e a transformação', TIPOS.constituicao.titulo === 'Abertura de empresa' && TIPOS.constituicao.tarefa === 'Constituição de CNPJ'
   && TIPOS.transformacao.titulo === 'Transformação do MEI em ME');
 chk('as perguntas cobrem a documentação dos produtos (a lista do Samuel: 8 da empresa e 5 de cada sócio)',
@@ -96,6 +97,75 @@ chk('o anexo leva o sócio: "SÓCIO 2 - NOME SEM ACENTO - arquivo"', nomeDoAnexo
   && nomeDoAnexo('outros', [], 'aluguel.pdf') === 'OUTROS - aluguel.pdf' && nomeDoAnexo('socio-0', [], 'a/b.pdf') === 'SÓCIO 1 - a b.pdf');
 chk('a pasta: a 1ª opção de razão social, em maiúsculas', pastaDoPedido(p) === 'LOJA INVENTADA' && pastaDoPedido({}) === 'PEDIDO');
 
+console.log('A alteração de empresa (26/11/2026): o que muda e o que pedir');
+chk('o que pode mudar, na ordem da tela', igual(ALTERACOES.map(a => a.id), ['nome', 'fantasia', 'natureza', 'endereco', 'cidade', 'atividades', 'capital', 'socios', 'contato'])
+  && TIPOS.alteracao.titulo === 'Alteração de empresa' && TIPOS.alteracao.tarefa === 'Alteração de empresa');
+chk('cada coisa pede itens que existem, e todo item é pedido por alguma', ALTERACOES.every(a => a.pedir.length && a.pedir.every(i => ITENS[i]))
+  && Object.keys(ITENS).every(i => ALTERACOES.some(a => a.pedir.includes(i))));
+chk('o endereço na mesma cidade e o de outra cidade não vão juntos, e pedem o mesmo', ALTERACOES.find(a => a.id === 'endereco').sai === 'cidade'
+  && ALTERACOES.find(a => a.id === 'cidade').sai === 'endereco' && igual(ALTERACOES.find(a => a.id === 'endereco').pedir, ALTERACOES.find(a => a.id === 'cidade').pedir));
+chk('os anexos que se pedem: o documento de cada sócio e o do imóvel', igual(Object.keys(ITENS).filter(i => ITENS[i].anexo), ['imovel', 'doc']) && IMOVEL === 'imovel'
+  && /gov\.br/.test(ITENS.gov.t) && /Não pedimos a sua senha/.test(ITENS.gov.nota));
+chk('os itens, na ordem da lista', igual(itensDe(['contato', 'fantasia']), ['fantasia', 'contato']) && igual(itensDe(['natureza', 'socios']), ['doc', 'civil', 'profissao', 'residencia', 'gov'])
+  && igual(itensDe(['nada']), []) && igual(itensDe(null), []));
+const sv = selecao('contato,fantasia,xx,endereco,cidade,fantasia,natureza', null);
+chk('a seleção: na ordem da tela, sem repetir e sem o que não existe; do endereço, fica o primeiro', igual(sv.alteracoes, ['fantasia', 'natureza', 'endereco', 'contato']), sv);
+chk('sem a lista do que pedir, tudo do que muda', igual(sv.pedir, ['fantasia', 'endereco', 'area', 'horario', 'imovel', 'contato', 'doc', 'civil', 'profissao', 'residencia', 'gov']), sv.pedir);
+chk('com a lista, só o dela que é do que muda; a lista vazia, nada', igual(selecao(['contato'], ['contato', 'razao']).pedir, ['contato']) && igual(selecao(['contato'], '').pedir, [])
+  && igual(selecao(['cidade', 'endereco']).alteracoes, ['cidade']));
+const VANIR = { alteracoes: ['fantasia', 'natureza', 'endereco', 'contato'], pedir: ['fantasia', 'endereco', 'area', 'horario', 'imovel', 'contato', 'civil', 'profissao', 'gov'] };
+chk('o endereço do link: o que muda e, quando não se pede tudo, o que o escritório já tem', paramsDaSelecao(VANIR) === 'm=fantasia,natureza,endereco,contato&n=doc,residencia'
+  && paramsDaSelecao({ alteracoes: ['endereco'] }) === 'm=endereco' && paramsDaSelecao({ alteracoes: ['contato'], pedir: [] }) === 'm=contato&n=contato'
+  && paramsDaSelecao({ alteracoes: [] }) === '' && paramsDaSelecao(null) === '', paramsDaSelecao(VANIR));
+chk('e o link lido de volta dá a mesma seleção', igual(selecaoDoEndereco('fantasia,natureza,endereco,contato', 'doc,residencia'), VANIR)
+  && igual(selecaoDoEndereco('endereco', null).pedir, ['endereco', 'area', 'horario', 'imovel']) && igual(selecaoDoEndereco(null, null), { alteracoes: [], pedir: [] }));
+chk('o que muda, numa frase', oQueMuda(VANIR.alteracoes) === 'o nome fantasia, a natureza jurídica, o endereço (na mesma cidade) e os contatos (e-mail e telefone)'
+  && oQueMuda(['capital']) === 'o capital social' && emFrase(['a', 'b']) === 'a e b' && emFrase([]) === '');
+chk('os sócios, só quando muda a natureza jurídica ou o quadro', comSocios(['natureza']) && comSocios(['socios']) && !comSocios(['endereco', 'contato']));
+chk('o aviso do gov.br da alteração e as perguntas dela', /Quem administra/.test(AVISO_GOV_ALT) && /prata ou ouro/.test(AVISO_GOV_ALT) && /como está hoje/.test(PERGUNTAS_ALT.razaoAtual));
+
+const END2 = { cep: '95660-000', logradouro: 'Rua Nova Inventada', numero: '20', complemento: '', bairro: 'Centro', cidade: 'Três Coroas', uf: 'RS' };
+const alt = (o = {}) => ({ tipo: 'alteracao', ...VANIR, contato: { nome: 'Beltrano Pai', telefone: '(51) 99999-0000', email: 'Beltrano@Exemplo.com' },
+  razaoAtual: 'Empresa Inventada', cnpj: CNPJ_MEI, fantasia: 'Loja Inventada', endereco: END2, areaTotal: '100', areaUtilizada: '80', funcionamento: 'Segunda a sexta, das 8h às 18h',
+  empresaTelefone: '5133334444', empresaEmail: 'loja@exemplo.com', socios: [socio({ estadoCivil: 'casado', regime: 'comunhao_parcial', endereco: undefined })],
+  arquivos: [doc(IMOVEL, 'iptu.pdf')], obs: '', ...o });
+const ca = conferirPedido(alt());
+chk('a alteração do caso: o pedido completo passa', !!ca.pedido, ca.faltam);
+const pa = ca.pedido || {};
+chk('limpo: a empresa, o CNPJ, o que muda e o que se pediu', pa.tipo === 'alteracao' && pa.razaoAtual === 'Empresa Inventada' && pa.cnpj === '11222333000181'
+  && igual(pa.alteracoes, VANIR.alteracoes) && igual(pa.pedir, VANIR.pedir) && pa.fantasia === 'Loja Inventada' && pa.areaUtilizada === 80 && pa.empresaEmail === 'loja@exemplo.com');
+chk('o que não se pediu fica vazio, mesmo que venha', !conferirPedido(alt({ razao1: 'Outra', atividades: 'Qualquer coisa a mais', capital: '5000' })).pedido.razao1
+  && conferirPedido(alt({ capital: '5000' })).pedido.capital === null && pa.atividades === '');
+chk('o sócio: o nome, o CPF e o que se pediu (sem o endereço, que o escritório já tem)', pa.socios.length === 1 && pa.socios[0].estadoCivil === 'casado' && pa.socios[0].regime === 'comunhao_parcial'
+  && pa.socios[0].profissao === 'Comerciante' && pa.socios[0].govbr === 'sim' && pa.socios[0].endereco === null);
+chk('sem o documento do sócio, passa: não foi pedido', !conferirPedido(alt()).faltam);
+chk('com o documento pedido, sem ele não passa', conferirPedido(alt({ pedir: [...VANIR.pedir, 'doc'] })).faltam.includes('socios.0.documento')
+  && !!conferirPedido(alt({ pedir: [...VANIR.pedir, 'doc'], arquivos: [doc(IMOVEL, 'iptu.pdf'), doc('socio-0')] })).pedido);
+chk('sem o documento do imóvel, não passa; o outro documento não basta', conferirPedido(alt({ arquivos: [doc(OUTROS)] })).faltam.includes('imovel'));
+const vaziaAlt = conferirPedido({ tipo: 'alteracao' });
+chk('sem nada marcado, falta o que muda (e a empresa e quem preenche)', ['alteracoes', 'contato.nome', 'razaoAtual', 'cnpj'].every(f => vaziaAlt.faltam.includes(f)), vaziaAlt.faltam);
+const so = conferirPedido({ tipo: 'alteracao', alteracoes: ['contato'], contato: { nome: 'Beltrano Pai', telefone: '51999990000', email: 'b@exemplo.com' }, razaoAtual: 'Empresa Inventada', cnpj: CNPJ_MEI });
+chk('só o e-mail e o telefone: falta só o telefone e o e-mail novos, sem sócio nem endereço', igual(so.faltam, ['empresaTelefone', 'empresaEmail']), so.faltam);
+chk('sem o que pedir no corpo, pede tudo do que muda', conferirPedido(alt({ pedir: undefined })).faltam.includes('socios.0.endereco.cep'));
+chk('a 2ª razão social igual à 1ª, a área maior que a total e o CNPJ inválido faltam',
+  conferirPedido(alt({ alteracoes: ['nome'], pedir: null, razao1: 'Nova Inventada', razao2: 'NOVA inventada', arquivos: [] })).faltam.includes('razao2')
+  && conferirPedido(alt({ areaUtilizada: '120' })).faltam.includes('areaUtilizada') && conferirPedido(alt({ cnpj: '11.222.333/0001-82' })).faltam.includes('cnpj'));
+chk('o anexo do imóvel só vale quando o imóvel foi pedido', conferirPedido(alt({ alteracoes: ['contato'], pedir: ['contato'], arquivos: [doc(IMOVEL)] })).erro === 'Arquivo inválido.');
+const ra = resumoDoPedido(pa);
+chk('o resumo da tarefa da alteração', ra.startsWith('Alteração de empresa: o formulário preenchido pelo link.') && ra.includes('Empresa: Empresa Inventada · CNPJ 11.222.333/0001-81')
+  && ra.includes('O que muda: o nome fantasia, a natureza jurídica, o endereço (na mesma cidade) e os contatos (e-mail e telefone)') && ra.includes('Nome fantasia novo: Loja Inventada')
+  && ra.includes('Endereço novo em Três Coroas/RS') && ra.includes('Telefone e e-mail novos: (51) 3333-4444 · loja@exemplo.com') && ra.includes('Sócios (1): Fulana de Tal')
+  && ra.includes('Não pedido no formulário (o escritório já tem): CNH ou identidade (do sócio) · Endereço completo (do sócio)'), ra);
+chk('sem CPF e sem a rua na tarefa', !ra.includes('529') && !ra.includes('Rua Nova'));
+const ta = textoDasRespostas(pa, '26/11/2026 às 15:30');
+chk('as respostas da alteração pro Drive', ta.startsWith('ALTERAÇÃO DE EMPRESA: AS RESPOSTAS DO FORMULÁRIO\nRecebido em 26/11/2026 às 15:30') && ta.includes('A EMPRESA\nNome empresarial (razão social), como está hoje: Empresa Inventada\nCNPJ: 11.222.333/0001-81')
+  && ta.includes('O QUE MUDA\n- Nome fantasia (inclusão ou troca)') && ta.includes('Endereço: Rua Nova Inventada, 20 · Centro · Três Coroas/RS · CEP 95660-000')
+  && ta.includes('SÓCIO 1\nNome: Fulana de Tal\nCPF: 529.982.247-25\nEstado civil: Casado(a), comunhão parcial de bens') && !ta.includes('SÓCIO 1\nNome: Fulana de Tal\nCPF: 529.982.247-25\nEndereço')
+  && ta.includes('NÃO PEDIDO NO FORMULÁRIO (O ESCRITÓRIO JÁ TEM)\n- CNH ou identidade (do sócio)'), ta);
+chk('o anexo do imóvel, a empresa e a pasta da alteração', nomeDoAnexo(IMOVEL, [], 'iptu.pdf') === 'IMÓVEL - iptu.pdf' && empresaDoPedido(pa) === 'Empresa Inventada'
+  && pastaDoPedido(pa) === 'ALTERAÇÃO - EMPRESA INVENTADA' && empresaDoPedido(p) === 'Loja Inventada' && pastaDoPedido({ tipo: 'alteracao' }) === 'PEDIDO');
+chk('os avisos do sócio valem na alteração; o sócio único não é aviso', alertasDoPedido({ ...pa, socios: [{ ...pa.socios[0], govbr: 'bronze' }] }).length === 1 && alertasDoPedido(pa).length === 0);
+
 console.log('A Edge Function empresa-link');
 {
   const fn = readFileSync(raiz + 'supabase/functions/empresa-link/index.ts', 'utf8');
@@ -116,6 +186,7 @@ console.log('A Edge Function empresa-link');
   chk('o pedido conferido pela mesma regra da página, com o resumo e os avisos gravados', /conferirPedido\(b\)/.test(fn) && /resumo: resumoDoPedido\(p\)/.test(fn) && /alertas: alertasDoPedido\(p\)/.test(fn));
   chk('o nome, o tamanho e o tipo do documento vêm da lista gravada, não do que a página manda agora', /nomeDoAnexo\(item\.grupo/.test(fn) && /Number\(item\.tamanho\)/.test(fn) && !/b\.tamanho/.test(fn));
   chk('as respostas inteiras vão pro Drive, num arquivo de texto na pasta do pedido', /textoDasRespostas\(p,/.test(fn) && /uploadType=multipart/.test(fn));
+  chk('a empresa do pedido pela regra da página (na alteração, a razão social de hoje)', /empresa: empresaDoPedido\(p\)/.test(fn) && !/empresa: p\.razao1/.test(fn));
   const login = readFileSync(raiz + 'tests/funcoes-login.test.mjs', 'utf8');
   chk('está na lista das funções abertas de propósito, com a trava', /'empresa-link': \[/.test(login));
 }

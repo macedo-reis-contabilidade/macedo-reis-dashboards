@@ -5,13 +5,16 @@
 // parcela, o à vista não passa dele), o que vai pra imagem do orçamento, a mensagem do WhatsApp, o nome dos arquivos e o
 // texto da apresentação (sem valor nenhum: serve pra qualquer cliente e pro anúncio). A abertura tem a mesma
 // documentação, os mesmos prazos e os mesmos primeiros passos da transformação, sem o desenquadramento (o pedido do
-// Samuel). E a base comum das imagens (assets/js/imagens-whats.js), que os planos do MEI também usam.
+// Samuel). A alteração de empresa (26/11/2026): o que muda decide as etapas, a documentação, o começo dos prazos, o
+// que vai no orçamento e o link do formulário (produtoDaSelecao, linkDoFormulario). E a base comum das imagens
+// (assets/js/imagens-whats.js), que os planos do MEI também usam.
 // Os valores daqui são inventados.
 // Rodar com: node tests/societario-produtos.test.mjs
 import { readFileSync } from 'node:fs';
 import { PRODUTOS, produtoDe, SUBTITULO, PRIMEIROS, DOCUMENTOS, COMECO, CHAVES, DIAS_DA_PARCELA, PAGAMENTO, NOTA_PRAZOS, NAO_INCLUSO,
   NOTA_NAO_INCLUSO, totalDeDias, emPalavras, hojeEmBrasilia, validadeDoOrcamento, porExtenso, lerValor, valoresDosParametros,
-  conferirValores, dadosDoOrcamento, mensagemDoProduto, nomeDoArquivo, resumoDosValores, linkDoFormulario } from '../assets/js/societario-produtos.js';
+  conferirValores, dadosDoOrcamento, mensagemDoProduto, nomeDoArquivo, resumoDosValores, linkDoFormulario, produtoDaSelecao, documentosDaSelecao,
+  ALTERACOES, ITENS } from '../assets/js/societario-produtos.js';
 import { tipoDe } from '../assets/js/empresa-pedido.js';
 import { LARGURA, ALTURA_MAX, ESCRITORIO, COR, FONTES } from '../assets/js/imagens-whats.js';
 import { ESCRITORIO as ESCRITORIO_PLANOS } from '../assets/js/mei-planos.js';
@@ -21,15 +24,15 @@ import { feriado } from '../assets/js/rescisao-datas.js';
 let falhas = 0;
 const chk = (nome, cond, extra) => { if (!cond) falhas++; console.log((cond ? '  ✓ ' : '  ✗ ') + nome + (!cond && extra !== undefined ? ' → ' + JSON.stringify(extra) : '')); };
 const igual = (a, b) => JSON.stringify(a) === JSON.stringify(b);
-const T = PRODUTOS.transformacao, C = PRODUTOS.constituicao;
+const T = PRODUTOS.transformacao, C = PRODUTOS.constituicao, A = PRODUTOS.alteracao;
 
 console.log('Os produtos');
-chk('dois: a transformação e a abertura de empresa, pelo id', igual(Object.keys(PRODUTOS), ['transformacao', 'constituicao']) && produtoDe('constituicao') === C
-  && produtoDe('transformacao') === T && produtoDe('nada') === null && produtoDe('toString') === null);
-chk('o endereço curto de cada um é o do produto na Vitrine', T.slug === 'transformacao-mei' && C.slug === 'constituicao-cnpj');
-chk('os títulos', T.titulo === 'Transformação do MEI em ME' && C.titulo === 'Abertura de empresa');
+chk('três: a transformação, a abertura e a alteração de empresa, pelo id', igual(Object.keys(PRODUTOS), ['transformacao', 'constituicao', 'alteracao'])
+  && produtoDe('constituicao') === C && produtoDe('transformacao') === T && produtoDe('alteracao') === A && produtoDe('nada') === null && produtoDe('toString') === null);
+chk('o endereço curto de cada um é o do produto na Vitrine', T.slug === 'transformacao-mei' && C.slug === 'constituicao-cnpj' && A.slug === 'alteracao-empresa');
+chk('os títulos', T.titulo === 'Transformação do MEI em ME' && C.titulo === 'Abertura de empresa' && A.titulo === 'Alteração de empresa');
 chk('cada um com o grupo dele nos Parâmetros, com as 3 primeiras letras diferentes', T.grupo === 'transformacao_mei' && C.grupo === 'constituicao_cnpj'
-  && T.grupo.slice(0, 3) !== C.grupo.slice(0, 3));
+  && A.grupo === 'alteracao_empresa' && new Set(Object.values(PRODUTOS).map(p => p.grupo.slice(0, 3))).size === 3);
 
 console.log('A abertura: os moldes da transformação, sem o desenquadramento');
 chk('a mesma documentação, os mesmos primeiros passos, o mesmo começo e o mesmo subtítulo',
@@ -44,7 +47,44 @@ chk('a opção pelo Simples, quando for o regime escolhido; a Inscrição Estadu
 chk('o fim e o começo dos prazos', C.pronto === 'Pronto: a empresa está aberta.' && C.inicio === 'Em até 24 horas depois das informações e do acerto, enviamos a viabilidade à Junta Comercial.');
 chk('a transformação segue com o desenquadramento e "passa a ser ME"', T.etapas[0].itens[0] === 'Comunicação do desenquadramento do MEI à Receita Federal'
   && T.pronto === 'Pronto: a empresa passa a ser ME.' && /desenquadramento do MEI/.test(T.inicio));
-chk('o rótulo do cliente na janela', T.cliente === 'Cliente (o titular do MEI)' && C.cliente === 'Cliente');
+chk('o rótulo do cliente na janela', T.cliente === 'Cliente (o titular do MEI)' && C.cliente === 'Cliente' && A.cliente === 'Cliente');
+
+console.log('A alteração: o que muda decide as etapas, a documentação e o começo');
+const VANIR = { alteracoes: ['fantasia', 'natureza', 'endereco', 'contato'], pedir: ['fantasia', 'endereco', 'area', 'horario', 'imovel', 'contato', 'civil', 'profissao', 'gov'] };
+const itensDa = q => q.etapas.map(e => [e.n, e.titulo, e.dias, e.itens]);
+chk('só a alteração se escolhe; os outros produtos voltam como são', A.selecionavel === true && produtoDaSelecao(T, VANIR) === T && produtoDaSelecao(C, null) === C && produtoDaSelecao(null, VANIR) === null);
+const G = produtoDaSelecao(A, null);
+chk('sem nada marcado (a apresentação do anúncio): as 4 etapas, com cada linha dita em geral', igual(itensDa(G), [
+  [1, 'Junta Comercial e Receita Federal', 15, ['Envio da viabilidade à Junta Comercial, quando muda o nome, a natureza jurídica, o endereço ou as atividades',
+    'Cadastro da alteração na Receita Federal (o DBE)', 'Assinatura da alteração pelo gov.br (o Contrato Social, quando muda a natureza jurídica)']],
+  [2, 'Junta Comercial', 5, ['Registro da alteração na Junta Comercial, após a assinatura, com o CNPJ atualizado']],
+  [3, 'Receita Estadual (SEFAZ RS)', 2, ['Atualização da Inscrição Estadual (comércio e indústria)']],
+  [4, 'Prefeitura Municipal', 2, ['Atualização da inscrição municipal (e do Alvará de Localização, quando muda o endereço)']]]), itensDa(G));
+chk('e a documentação de tudo o que a alteração pode pedir, dizendo quando', igual(G.documentos.map(g => [g.grupo, g.itens.length]),
+  [['Da empresa, conforme o que muda', 9], ['De cada sócio, quando muda a natureza jurídica ou o quadro de sócios', 5]])
+  && G.inicio === A.inicio.geral && G.escopo === '' && /Conforme o que muda/.test(G.docSubtitulo));
+const V = produtoDaSelecao(A, VANIR);
+chk('o caso: a viabilidade, o DBE e o Contrato Social (muda a natureza jurídica), e o alvará no endereço novo', igual(itensDa(V), [
+  [1, 'Junta Comercial e Receita Federal', 15, ['Envio da viabilidade à Junta Comercial', 'Cadastro da alteração na Receita Federal (o DBE)', 'Assinatura do Contrato Social pelo gov.br']],
+  [2, 'Junta Comercial', 5, ['Registro da alteração na Junta Comercial, após a assinatura, com o CNPJ atualizado']],
+  [3, 'Receita Estadual (SEFAZ RS)', 2, ['Atualização da Inscrição Estadual (comércio e indústria)']],
+  [4, 'Prefeitura Municipal', 2, ['Atualização da inscrição municipal e do Alvará de Localização no endereço novo']]]), itensDa(V));
+chk('a documentação é só o que se pede (o que o escritório já tem fica fora)', igual(V.documentos.map(g => [g.grupo, g.itens.map(i => i.t)]), [
+  ['Da empresa', ['Nome fantasia novo', 'Endereço novo, completo', 'Área total da edificação e área utilizada, no endereço novo', 'Horários e dias de funcionamento',
+    'Contrato de aluguel, escritura ou IPTU do imóvel novo', 'Telefone e e-mail novos']],
+  ['De cada sócio', ['Estado civil e, se for casado, o regime de bens', 'Profissão', 'Conta gov.br nível prata ou ouro']]]), V.documentos);
+chk('o começo pela viabilidade, o que muda no orçamento e os 24 dias úteis', V.inicio === A.inicio.viabilidade && totalDeDias(V) === 24
+  && V.escopo === 'o nome fantasia, a natureza jurídica, o endereço (na mesma cidade) e os contatos (e-mail e telefone)' && /Só o que precisamos/.test(V.docSubtitulo));
+const SC = produtoDaSelecao(A, { alteracoes: ['contato'] });
+chk('só o e-mail e o telefone: sem a viabilidade, a assinatura da alteração e a inscrição municipal, começando pelo DBE',
+  igual(SC.etapas[0].itens, ['Cadastro da alteração na Receita Federal (o DBE)', 'Assinatura da alteração pelo gov.br']) && igual(SC.etapas[3].itens, ['Atualização da inscrição municipal'])
+  && SC.inicio === A.inicio.dbe && igual(SC.documentos, [{ grupo: 'Da empresa', itens: [{ t: 'Telefone e e-mail novos' }] }]), SC);
+chk('outra cidade: a inscrição na prefeitura nova e a baixa na de antes', igual(produtoDaSelecao(A, { alteracoes: ['cidade'] }).etapas[3].itens,
+  ['Inscrição na prefeitura da cidade nova (Alvará de Localização) e baixa na prefeitura de antes']));
+chk('o escritório que já tem tudo: só confirmar os dados no formulário', igual(produtoDaSelecao(A, { alteracoes: ['contato'], pedir: [] }).documentos,
+  [{ grupo: 'Da empresa', itens: [{ t: 'Só confirmar os dados no formulário: o resto o escritório já tem' }] }]) && documentosDaSelecao(null).length === 2);
+chk('a lista do que muda e do que se pede é a do formulário', ALTERACOES.length === 9 && Object.keys(ITENS).length === 14);
+chk('sem preço de sempre: a janela pede pra digitar o do orçamento', /depende do que muda/.test(A.semValores) && T.semValores === undefined && A.minutos === 5);
 
 console.log('A validade do orçamento: o último dia útil do mês seguinte');
 chk('de 24/11/2026, até 31/12/2026 (uma quinta)', validadeDoOrcamento('2026-11-24') === '2026-12-31', validadeDoOrcamento('2026-11-24'));
@@ -99,8 +139,8 @@ chk('sem linha nenhuma, ou sem produto, nada', igual(valoresDosParametros([], C)
 const fonte = readFileSync(new URL('../assets/js/societario-produtos.js', import.meta.url), 'utf8');
 chk('o código não tem preço: nenhum valor escrito nas chaves do orçamento', !/\b(aVista|entrada|parcela)\s*:\s*\d/.test(fonte));
 const precificacao = readFileSync(new URL('../comercial-precificacao.html', import.meta.url), 'utf8');
-chk('a aba Parâmetros da Precificação dá nome aos dois grupos (pelas 3 primeiras letras, que não batem com as do motor, p01 a p16)',
-  /"tra":\s*"Transformação do MEI em ME/.test(precificacao) && /"con":\s*"Constituição de CNPJ/.test(precificacao)
+chk('a aba Parâmetros da Precificação dá nome aos três grupos (pelas 3 primeiras letras, que não batem com as do motor, p01 a p16)',
+  /"tra":\s*"Transformação do MEI em ME/.test(precificacao) && /"con":\s*"Constituição de CNPJ/.test(precificacao) && /"alt":\s*"Alteração de empresa/.test(precificacao)
   && Object.values(PRODUTOS).every(p => !/^p\d\d$/.test(p.grupo.slice(0, 3))));
 const vitrine = readFileSync(new URL('../comercial-servicos.html', import.meta.url), 'utf8');
 chk('cada produto tem o material na Vitrine, pelo endereço curto', Object.values(PRODUTOS).every(p => vitrine.includes(`'${p.slug}': {`) && vitrine.includes(`produto: '${p.id}'`)));
@@ -128,11 +168,21 @@ chk('a da abertura fala da abertura da empresa, sem MEI', msgC.includes('Segue c
 chk('a Thalia fala com "a", e sem nome a saudação fica sem', mensagemDoProduto(C, { quem: 'Thalia' }).startsWith('Oi! Tudo bem? Aqui é a Thalia, da Macedo & Reis Contabilidade.'));
 chk('sem quem fala, o escritório; sem validade, sem o parêntese', mensagemDoProduto(T, { nome: 'ana' }).startsWith('Oi, Ana! Tudo bem? Aqui é da Macedo & Reis Contabilidade.')
   && mensagemDoProduto(T, { nome: 'ana' }).includes('as formas de pagamento.'));
+const msgA = mensagemDoProduto(V, { nome: 'Fulano', quem: 'Samuel', validade: '2026-12-31' });
+chk('a da alteração diz o que muda, logo depois da abertura', msgA.includes('Segue como funciona, na prática, a alteração da sua empresa:\nO que muda: o nome fantasia, a natureza jurídica, o endereço (na mesma cidade) e os contatos (e-mail e telefone).')
+  && msgA.includes('as 4 etapas'), msgA);
+chk('sem nada marcado, a mensagem não diz o que muda', !mensagemDoProduto(G, { nome: 'Fulano' }).includes('O que muda'));
 
 console.log('O formulário do cliente (empresa.html)');
 const BASE = 'https://exemplo.github.io/sistema/comercial-servicos.html?s=x#y';
 chk('o link do formulário de cada produto, pelo id dele', linkDoFormulario(T, BASE) === 'https://exemplo.github.io/sistema/empresa.html?t=transformacao'
   && linkDoFormulario(C, BASE) === 'https://exemplo.github.io/sistema/empresa.html?t=constituicao' && linkDoFormulario(null, BASE) === '' && linkDoFormulario(C, 'não é endereço') === '');
+chk('na alteração, o link leva o que muda e o que o escritório já tem; sem a seleção, o cliente marca',
+  linkDoFormulario(A, BASE, VANIR) === 'https://exemplo.github.io/sistema/empresa.html?t=alteracao&m=fantasia,natureza,endereco,contato&n=doc,residencia'
+  && linkDoFormulario(A, BASE) === 'https://exemplo.github.io/sistema/empresa.html?t=alteracao' && linkDoFormulario(A, BASE, { alteracoes: [] }) === 'https://exemplo.github.io/sistema/empresa.html?t=alteracao'
+  && linkDoFormulario(T, BASE, VANIR) === 'https://exemplo.github.io/sistema/empresa.html?t=transformacao', linkDoFormulario(A, BASE, VANIR));
+const comFormA = mensagemDoProduto(V, { nome: 'Fulano', quem: 'Samuel', formulario: linkDoFormulario(A, BASE, VANIR) });
+chk('e a mensagem da alteração diz que leva uns 5 minutos', comFormA.includes('(leva uns 5 minutos):\nhttps://exemplo.github.io/sistema/empresa.html?t=alteracao&m='), comFormA);
 chk('todo produto da família tem o formulário (o id é um tipo do formulário)', Object.values(PRODUTOS).every(p => tipoDe(p.id) === p.id), Object.values(PRODUTOS).map(p => p.id));
 const comForm = mensagemDoProduto(C, { nome: 'Fulano', quem: 'Samuel', validade: '2026-12-31', formulario: linkDoFormulario(C, BASE) });
 const linhasForm = comForm.split('\n');
@@ -146,15 +196,17 @@ console.log('O nome dos arquivos');
 chk('as duas da apresentação, sem o cliente', nomeDoArquivo(T, 'Fulano Beltrano da Silva', 0) === 'Transformação do MEI em ME (1 de 2).png'
   && nomeDoArquivo(T, 'Fulano Beltrano da Silva', 1) === 'Transformação do MEI em ME (2 de 2).png' && nomeDoArquivo(C, 'Fulano', 0) === 'Abertura de empresa (1 de 2).png');
 chk('o orçamento, com o primeiro nome', nomeDoArquivo(T, 'Fulano Beltrano da Silva', 2) === 'Orçamento - Transformação do MEI em ME - Fulano.png'
-  && nomeDoArquivo(T, '', 2) === 'Orçamento - Transformação do MEI em ME.png' && nomeDoArquivo(C, 'Fulano Beltrano', 2) === 'Orçamento - Abertura de empresa - Fulano.png');
+  && nomeDoArquivo(T, '', 2) === 'Orçamento - Transformação do MEI em ME.png' && nomeDoArquivo(C, 'Fulano Beltrano', 2) === 'Orçamento - Abertura de empresa - Fulano.png'
+  && nomeDoArquivo(A, 'Fulano', 2) === 'Orçamento - Alteração de empresa - Fulano.png' && nomeDoArquivo(A, 'Fulano', 1) === 'Alteração de empresa (2 de 2).png');
 
 console.log('A apresentação: as etapas, a documentação e nenhum valor');
 chk('as 4 etapas, na ordem, com os prazos de 15, 5, 2 e 2 dias úteis', igual(T.etapas.map(e => [e.n, e.dias]), [[1, 15], [2, 5], [3, 2], [4, 2]]) && T.etapas.every(e => e.itens.length));
-chk('somando, 24 dias úteis: um pouco mais de um mês, nos dois', totalDeDias(T) === 24 && totalDeDias(C) === 24 && emPalavras(24) === 'um pouco mais de um mês');
+chk('somando, 24 dias úteis: um pouco mais de um mês, nos três', totalDeDias(T) === 24 && totalDeDias(C) === 24 && totalDeDias(A) === 24 && emPalavras(24) === 'um pouco mais de um mês');
 chk('as palavras do tempo', emPalavras(10) === 'umas 2 semanas' && emPalavras(20) === 'cerca de um mês' && emPalavras(60) === 'uns 3 meses');
 chk('a documentação do Samuel: 8 itens da empresa e 5 de cada sócio, com o gov.br prata ou ouro', igual(DOCUMENTOS.map(g => [g.grupo, g.itens.length]), [['Da empresa', 8], ['De cada sócio', 5]])
   && DOCUMENTOS[1].itens.some(i => /gov\.br nível prata ou ouro/.test(i.t) && /Não pedimos a sua senha/.test(i.nota || '')));
-for (const p of Object.values(PRODUTOS)) {
+// a alteração vai pra imagem pelo produto da seleção (sem nada marcado, o do anúncio)
+for (const p of Object.values(PRODUTOS).map(q => produtoDaSelecao(q, null))) {
   const apresentacao = [p.titulo, p.subtitulo, p.obrigatorio, p.pronto, p.comeco, ...p.primeiros.flatMap(x => [x.titulo, x.texto]), ...p.etapas.flatMap(e => [e.titulo, ...e.itens]),
     ...p.documentos.flatMap(g => [g.grupo, ...g.itens.flatMap(i => [i.t, i.nota || ''])])].join(' | ');
   chk(`nada de valor nas duas primeiras imagens (vão pro anúncio): ${p.titulo}`, !/R\$|\d+[.,]\d{2}\b/.test(apresentacao), apresentacao.match(/R\$.{0,20}/));

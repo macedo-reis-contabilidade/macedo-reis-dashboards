@@ -1,5 +1,5 @@
-"""Os produtos do societário pro WhatsApp (24/11/2026): a "Transformação do MEI em ME" e a "Constituição de CNPJ" (a
-abertura de empresa) da Vitrine de serviços (comercial-servicos.html) abrem a mesma janela
+"""Os produtos do societário pro WhatsApp (24/11/2026): a "Transformação do MEI em ME", a "Constituição de CNPJ" (a
+abertura de empresa) e, desde 26/11/2026, a "Alteração de empresa" da Vitrine de serviços (comercial-servicos.html) abrem a mesma janela
 (assets/js/societario-produtos-janela.js), com o título e o rótulo do produto, as três imagens (o passo a passo e a
 documentação, sem valores, e o orçamento à parte) e a mensagem pronta. A janela é a mesma base da dos planos do MEI
 (assets/js/janela-whats.js). Os valores de sempre do orçamento vêm do banco (a aba Parâmetros da Precificação,
@@ -22,6 +22,9 @@ Confere:
      libera o orçamento;
  10. a constituição de CNPJ: o botão dela, o título "Abertura de empresa", os valores do grupo dela, a mensagem sem MEI e
      o nome dos arquivos;
+ 11. a alteração de empresa: o que muda e o que pedir (nada marcado, a janela pede pra marcar; o endereço na mesma cidade
+     e o de outra cidade não vão juntos; desmarcar o que o escritório já tem), o link com a seleção, a mensagem com o que
+     muda, o preço digitado (não há valor de sempre), o nome dos arquivos e o formulário na ficha;
 e nenhum erro de JavaScript. Termina com código 1 se alguma checagem falhar.
 Pré-requisito: pip install playwright e python -m playwright install chromium
 """
@@ -45,6 +48,7 @@ def V(id, slug, nome, **o):
     base.update(o); return base
 VITRINE = [V('sMei', 'planos-mei', 'Planos do MEI'), V('sTransf', 'transformacao-mei', 'Transformação do MEI em ME', preco=1000, ordem=1),
            V('sConst', 'constituicao-cnpj', 'Constituição de CNPJ', preco=1100, ordem=2),
+           V('sAlt', 'alteracao-empresa', 'Alteração de empresa', preco=None, ordem=3),
            V('sOutro', 'outro-servico', 'Outro serviço inventado', situacao='ideia')]
 # os valores de sempre do orçamento (inventados), como a aba Parâmetros da Precificação grava; a linha de outro grupo fica fora
 PARAMETROS = [{'id': 901, 'grupo': 'transformacao_mei', 'chave': 'Valor à vista', 'valor': 1000, 'limite_inferior': None, 'ordem': 1},
@@ -110,9 +114,9 @@ def main():
 
         print('1. O botão no cartão do produto')
         p.goto(base + 'comercial-servicos.html')
-        ok(espera(p, "() => document.querySelectorAll('#vitrine .sv-card').length === 4"), 'a vitrine com os quatro serviços')
-        ok(p.evaluate("() => [...document.querySelectorAll('[data-material]')].map(b => b.closest('.sv-card').dataset.slug).sort().join(',')") == 'constituicao-cnpj,planos-mei,transformacao-mei',
-           'o botão do material nos três produtos que têm, e só neles')
+        ok(espera(p, "() => document.querySelectorAll('#vitrine .sv-card').length === 5"), 'a vitrine com os cinco serviços')
+        ok(p.evaluate("() => [...document.querySelectorAll('[data-material]')].map(b => b.closest('.sv-card').dataset.slug).sort().join(',')") == 'alteracao-empresa,constituicao-cnpj,planos-mei,transformacao-mei',
+           'o botão do material nos quatro produtos que têm, e só neles')
         ok(txt('[data-material="transformacao-mei"]') == '📲 Transformação pro WhatsApp', 'o botão: "Transformação pro WhatsApp"')
         p.click('[data-material="transformacao-mei"]')
         ok(espera(p, ABERTA), 'o botão abre a janela')
@@ -213,7 +217,7 @@ def main():
         ok(p.evaluate(FECHADA), 'a da transformação segue fechada')
         p.keyboard.press('Escape')
         ok(espera(p, "() => getComputedStyle(document.getElementById('ovPlanosMei')).display === 'none'"), 'Esc fecha')
-        ok(p.evaluate('() => window.__mockDb.servicos_vendas.length') == 0 and p.evaluate('() => window.__mockDb.servicos_digitais.length') == 4, 'nada gravado')
+        ok(p.evaluate('() => window.__mockDb.servicos_vendas.length') == 0 and p.evaluate('() => window.__mockDb.servicos_digitais.length') == 5, 'nada gravado')
         p.click('#vitrine .sv-card[data-slug="planos-mei"] .sv-nome')
         ok(espera(p, FICHA_ABERTA) and p.is_visible('#sMaterial') and not p.is_visible('#sMaterialForm'), 'a ficha dos planos do MEI não tem o formulário')
         p.keyboard.press('Escape')
@@ -262,8 +266,68 @@ def main():
         p.click('[data-material="transformacao-mei"]')
         ok(espera(p, ABERTA) and espera(p, PRONTAS, 12000) and txt('#spTitulo') == 'Transformação do MEI em ME pro WhatsApp' and val('#spAVista') == '1.000,00'
            and p.input_value('#spCliente') == '', 'a transformação de novo: o título, os valores e o cliente dela, sem sobra da abertura')
+        ok(not p.is_visible('#spAlt'), 'e sem as listas da alteração')
         p.keyboard.press('Escape')
         ok(espera(p, FECHADA), 'Esc fecha')
+
+        print('11. A alteração de empresa: o que muda e o que pedir')
+        PRONTAS_ALT = "() => { const i = [...document.querySelectorAll('#spImagens img')]; return i.length === 3 && i.every(x => x.complete && x.naturalWidth > 0) && /^(Pronto|As imagens|Marque o que muda)/.test(document.getElementById('spStatus').textContent); }"
+        MARCADAS = "() => [...document.querySelectorAll('#spMuda [data-sp-alt]:checked')].map(c => c.dataset.spAlt).join(',')"
+        ITENS = "() => [...document.querySelectorAll('#spPedir [data-sp-item]')].map(c => c.dataset.spItem + (c.checked ? '' : '-')).join(',')"
+        ok(txt('[data-material="alteracao-empresa"]') == '📲 Alteração pro WhatsApp', 'o botão: "Alteração pro WhatsApp"')
+        p.click('[data-material="alteracao-empresa"]')
+        ok(espera(p, ABERTA) and espera(p, PRONTAS_ALT, 12000), 'abre a mesma janela, com as três imagens')
+        ok(txt('#spTitulo') == 'Alteração de empresa pro WhatsApp' and txt('#spClienteRotulo') == 'Cliente', 'o título e o rótulo da alteração')
+        ok(p.is_visible('#spAlt') and p.evaluate("() => document.querySelectorAll('#spMuda [data-sp-alt]').length") == 9 and p.evaluate(MARCADAS) == '',
+           'as 9 coisas que podem mudar, nenhuma marcada')
+        ok('Marque o que muda' in txt('#spPedir') and txt('#spStatus').startswith('Marque o que muda'), 'sem nada marcado, a janela pede pra marcar → ' + txt('#spStatus'))
+        ok(val('#spAVista') == '' and val('#spEntrada') == '' and val('#spParcela') == '', 'sem valor de sempre: os campos vazios')
+        ok(txt('#spResumo').startswith('O preço da alteração depende do que muda: digite os valores deste orçamento.'), 'o resumo diz por quê → ' + txt('#spResumo'))
+        msg = p.input_value('#spMsg')
+        ok(base + 'empresa.html?t=alteracao' in msg.split('\n') and 'O que muda' not in msg, 'sem nada marcado, o link sem a seleção: o cliente marca')
+        # o caso: o nome fantasia, a natureza jurídica, o endereço na mesma cidade e o e-mail e o telefone
+        for a in ['fantasia', 'natureza', 'endereco', 'contato']:
+            p.check(f'#spMuda [data-sp-alt="{a}"]')
+        ok(p.evaluate(MARCADAS) == 'fantasia,natureza,endereco,contato', 'as quatro marcadas → ' + p.evaluate(MARCADAS))
+        ok(p.evaluate(ITENS) == 'fantasia,endereco,area,horario,imovel,contato,doc,civil,profissao,residencia,gov', 'o que pedir: os itens do que muda, todos marcados → ' + p.evaluate(ITENS))
+        p.check('#spMuda [data-sp-alt="cidade"]')
+        ok(p.evaluate(MARCADAS) == 'fantasia,natureza,cidade,contato', 'outra cidade tira o endereço na mesma cidade')
+        p.check('#spMuda [data-sp-alt="endereco"]')
+        ok(p.evaluate(MARCADAS) == 'fantasia,natureza,endereco,contato', 'e o contrário')
+        p.uncheck('#spPedir [data-sp-item="doc"]'); p.uncheck('#spPedir [data-sp-item="residencia"]')
+        ok(p.evaluate(ITENS) == 'fantasia,endereco,area,horario,imovel,contato,doc-,civil,profissao,residencia-,gov', 'desmarcar o que o escritório já tem')
+        link = base + 'empresa.html?t=alteracao&m=fantasia,natureza,endereco,contato&n=doc,residencia'
+        ok(espera(p, "() => document.getElementById('spMsg').value.split('\\n').includes(%s)" % json.dumps(link)), 'o link leva o que muda e o que o escritório já tem')
+        msg = p.input_value('#spMsg')
+        ok('Segue como funciona, na prática, a alteração da sua empresa:\nO que muda: o nome fantasia, a natureza jurídica, o endereço (na mesma cidade) e os contatos (e-mail e telefone).' in msg
+           and '(leva uns 5 minutos)' in msg, 'a mensagem diz o que muda e que leva uns 5 minutos')
+        ok(espera(p, "() => document.getElementById('spStatus').textContent.startsWith('As imagens estão prontas, mas confira os valores')", 12000), 'sem os valores, as imagens saem e o aviso pede pra conferir')
+        p.fill('#spCliente', 'Beltrano Fulano'); p.fill('#spAVista', '900,00'); p.fill('#spEntrada', '500'); p.fill('#spParcela', '500,00')
+        ok(espera(p, "() => document.getElementById('spResumo').textContent.replace(/\\u00a0/g, ' ').startsWith('A prazo: R$ 1.000,00 (entrada de R$ 500,00 + R$ 500,00 em 30 dias). À vista: R$ 900,00')")
+           and espera(p, "() => /^Pronto/.test(document.getElementById('spStatus').textContent)", 12000), 'com o preço digitado, o resumo e o pronto → ' + txt('#spStatus'))
+        tam = p.evaluate(TAMANHOS)
+        ok(len(tam) == 3 and all(850 <= w <= 1080 and 400 < h <= 1600 for w, h in tam), 'as três com até 1080 px de largura e no máximo 1600 de altura → ' + str(tam))
+        del baixados[:]
+        p.click('#spBaixarTodas')
+        espera(p, "() => document.getElementById('spStatus').textContent.includes('baixadas')", 5000)
+        p.wait_for_timeout(800)
+        ok(baixados == ['Alteração de empresa (1 de 2).png', 'Alteração de empresa (2 de 2).png', 'Orçamento - Alteração de empresa - Beltrano.png'],
+           'os nomes dos arquivos da alteração → ' + str(baixados))
+        p.uncheck('#spMuda [data-sp-alt="natureza"]')
+        ok(p.evaluate(ITENS) == 'fantasia,endereco,area,horario,imovel,contato', 'sem a natureza jurídica, saem os itens dos sócios')
+        link2 = base + 'empresa.html?t=alteracao&m=fantasia,endereco,contato'
+        ok(espera(p, "() => document.getElementById('spMsg').value.split('\\n').includes(%s)" % json.dumps(link2)), 'e o link muda junto → ' + p.input_value('#spMsg').split('\n')[-3])
+        p.keyboard.press('Escape')
+        ok(espera(p, FECHADA), 'Esc fecha')
+        p.click('[data-material="alteracao-empresa"]')
+        ok(espera(p, ABERTA) and espera(p, PRONTAS_ALT, 12000) and p.evaluate(MARCADAS) == '' and p.input_value('#spCliente') == '', 'abre de novo limpa, sem nada marcado')
+        p.keyboard.press('Escape')
+        ok(espera(p, FECHADA), 'Esc fecha')
+        p.click('#vitrine .sv-card[data-slug="alteracao-empresa"] .sv-nome')
+        ok(espera(p, FICHA_ABERTA) and txt('#sMaterialBtn') == '📲 Alteração pro WhatsApp' and txt('#sFormLink') == base + 'empresa.html?t=alteracao'
+           and 'pergunta ao cliente o que muda' in txt('#sFormTexto'), 'na ficha, o material e o formulário de quem marca o que muda')
+        p.keyboard.press('Escape')
+        ok(espera(p, "() => !document.getElementById('ovServico').classList.contains('is-open')"), 'Esc fecha a ficha')
 
         ok(not erros, 'nenhum erro de JavaScript' + ('' if not erros else ' → ' + ' | '.join(erros[:3])))
         b.close()
