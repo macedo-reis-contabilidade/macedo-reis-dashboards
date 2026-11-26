@@ -232,9 +232,11 @@ export function limitesDoMes(comp) {
 }
 export const rotuloDoMes = comp => /^\d{4}-\d{2}$/.test(String(comp || '')) ? comp.slice(5, 7) + '/' + comp.slice(0, 4) : '';
 
-// a situação da empresa no mês, pra ordenar e agrupar a tela: o que tem a recolher primeiro
-export function situacaoDaEmpresa(conf, temNotas) {
-  if (!temNotas) return 'sem_notas';
+// a situação da empresa no mês, pra ordenar e agrupar a tela: o que tem a recolher primeiro. A empresa sem nota de
+// entrada do mês na base falta importar, salvo quando alguém marcou que ela não teve notas de entrada no mês (26/11/2026,
+// pedido da Thalia: destda_sem_notas): aí não tem nada a recolher. Com nota de entrada do mês na base, a marca não vale
+export function situacaoDaEmpresa(conf, temNotas, marcadaSemNotas = false) {
+  if (!temNotas) return marcadaSemNotas ? 'nada' : 'sem_notas';
   if (conf.diferencial.length || conf.st.length || (conf.conferir || []).length || conf.semAliquota.length) return 'a_conferir';
   return 'nada';
 }

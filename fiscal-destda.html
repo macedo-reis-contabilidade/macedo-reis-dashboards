@@ -140,6 +140,11 @@
     ul.ds-nomes { columns:280px; column-gap:28px; margin:2px 0 6px; padding-left:18px; }
     ul.ds-nomes li { break-inside:avoid; }
     ul.ds-nomes small { display:block; color:var(--text-muted); font-size:12px; line-height:1.4; margin-bottom:4px; }
+    /* a marca "sem notas de entrada no mês" (26/11/2026): o botão discreto embaixo do nome */
+    ul.ds-nomes .ds-marcar { display:inline-block; margin:0 0 4px; padding:0; background:none; border:0; font:inherit; font-size:12px; line-height:1.4;
+      color:var(--accent); text-decoration:underline; text-underline-offset:2px; cursor:pointer; }
+    ul.ds-nomes .ds-marcar:disabled { color:var(--text-muted); cursor:default; }
+    ul.ds-nomes .ds-marcar:focus-visible { outline:2px solid var(--accent); outline-offset:2px; border-radius:3px; }
     .ds-vazio { color:var(--text-muted); font-size:13px; padding:6px 0; }
     details.ds-sec > summary { cursor:pointer; list-style:none; }
     details.ds-sec > summary::-webkit-details-marker { display:none; }
@@ -243,7 +248,7 @@
           <div class="fa-focus" id="abas" role="group" aria-label="Separar as empresas">
             <button type="button" class="fa-focus-card" data-aba="difal" aria-pressed="false" title="Nota de fora do RS com ICMS destacado a 4%"><span class="fc-num">—</span><span class="fc-lbl">Com DIFAL</span></button>
             <button type="button" class="fa-focus-card" data-aba="st" aria-pressed="false" title="Item das regras de ICMS-ST na entrada"><span class="fc-num">—</span><span class="fc-lbl">Com ICMS-ST</span></button>
-            <button type="button" class="fa-focus-card" data-aba="nada" aria-pressed="false" title="Com notas de entrada do mês, nenhuma de fora do RS a 4% nem das regras de ICMS-ST"><span class="fc-num">—</span><span class="fc-lbl">Sem nada a recolher</span></button>
+            <button type="button" class="fa-focus-card" data-aba="nada" aria-pressed="false" title="Com notas de entrada do mês, nenhuma de fora do RS a 4% nem das regras de ICMS-ST, ou marcadas sem notas de entrada no mês"><span class="fc-num">—</span><span class="fc-lbl">Sem nada a recolher</span></button>
             <button type="button" class="fa-focus-card" data-aba="importar" aria-pressed="false" title="Sem notas de entrada do mês na base, ou com nota importada antes de 27/10/2026, sem a alíquota"><span class="fc-num">—</span><span class="fc-lbl">Falta importar</span></button>
             <button type="button" class="fa-focus-card is-active" data-aba="todas" aria-pressed="true" title="Todas as empresas da obrigação SEDIF/DeSTDA"><span class="fc-num">—</span><span class="fc-lbl">Todas</span></button>
           </div>
@@ -321,7 +326,8 @@ let clientes = [];            // todas as empresas do cadastro (a importação a
 let empresas = [];            // as da obrigação SEDIF/DeSTDA (a conferência)
 let regras = [];              // destda_regras_st
 let comp = null;              // 'AAAA-MM' na tela
-let doMes = null;             // { comp, comNotas: Set(cliente_id), docs: [], itens: Map(id → itens), virada: { comp, de, ate, docs }, sairam: [] }
+let doMes = null;             // { comp, comNotas: Set(cliente_id), docs: [], itens: Map(id → itens), virada: { comp, de, ate, docs }, sairam: [],
+                              //   marcadas: Map(cliente_id → { marcado_por, marcado_em }) — as sem notas de entrada no mês }
                               // — refaz a conferência sem ler de novo
 let aba = 'todas';            // difal | st | nada | importar | todas — fica ao trocar o mês e ao importar
 let arquivos = [];
@@ -401,9 +407,13 @@ async function carregarMes(quieto = false){
     // as do fim do mês anterior sem a data de entrada (podem ter entrado neste mês) e as emitidas neste mês com ela (as
     // que entraram noutro mês saem da conta daqui)
     supabase.todasLinhas(() => deFora().is('data_entrada', null).gte('data_emissao', vir.de).lte('data_emissao', vir.ate).order('data_emissao').order('id')),
-    supabase.todasLinhas(() => deFora().not('data_entrada', 'is', null).gte('data_emissao', lim.de).lte('data_emissao', lim.ate).order('data_emissao').order('id'))
+    supabase.todasLinhas(() => deFora().not('data_entrada', 'is', null).gte('data_emissao', lim.de).lte('data_emissao', lim.ate).order('data_emissao').order('id')),
+    // as marcadas sem notas de entrada no mês (26/11/2026, pedido da Thalia)
+    supabase.todasLinhas(() => supabase.from('destda_sem_notas').select('cliente_id, marcado_por, marcado_em').eq('competencia', alvo).in('cliente_id', ids).order('cliente_id'))
   ]);
   if (alvo !== comp) return;                      // trocou de mês no meio
+  // as marcas que não se leem não param a conferência: sem elas, quem não tem nota fica em "Falta importar", sem o botão
+  const lidaMarcas = leituras.pop();
   const erro = (leituras.find(r => r.error) || {}).error;
   if (erro) { $('lista').innerHTML = '<div class="ds-vazio ds-err">Não consegui ler as notas: ' + esc(erro.message) + '</div>'; return; }
   const [cobE, cobN, entE, entN, vira, emitidas] = leituras.map(r => r.data || []);
@@ -420,7 +430,8 @@ async function carregarMes(quieto = false){
     (data || []).forEach(i => { if (!itens.has(i.documento_id)) itens.set(i.documento_id, []); itens.get(i.documento_id).push(i); });
   }
   if (alvo !== comp) return;
-  doMes = { comp: alvo, comNotas: new Set([...cobE, ...cobN].map(d => d.cliente_id)), docs, itens, virada: { ...vir, docs: vira }, sairam };
+  doMes = { comp: alvo, comNotas: new Set([...cobE, ...cobN].map(d => d.cliente_id)), docs, itens, virada: { ...vir, docs: vira }, sairam,
+    marcadas: new Map((lidaMarcas.data || []).map(m => [m.cliente_id, m])), semMarcas: !!lidaMarcas.error };
   desenharConferencia();
 }
 
@@ -444,7 +455,8 @@ function desenharConferencia(){
   doMes.docs.forEach(d => { if (!porEmpresa.has(d.cliente_id)) porEmpresa.set(d.cliente_id, []); porEmpresa.get(d.cliente_id).push(d); });
   const linhas = empresas.map(e => {
     const conf = conferirEmpresa(porEmpresa.get(e.id) || [], doMes.itens, regras, normalizarDocumento(e.documento));
-    return { e, conf, situacao: situacaoDaEmpresa(conf, doMes.comNotas.has(e.id)) };
+    const temNotas = doMes.comNotas.has(e.id);
+    return { e, conf, situacao: situacaoDaEmpresa(conf, temNotas, doMes.marcadas.has(e.id)), marca: temNotas ? null : doMes.marcadas.get(e.id) || null };
   });
   const aConferir = linhas.filter(l => l.situacao === 'a_conferir');
   // as abas (27/10/2026, pedido da Thalia): a empresa com DIFAL e ICMS-ST fica nas duas; a da nota importada antes de
@@ -479,8 +491,11 @@ function desenharConferencia(){
     lista = g.nada.length ? soNomes(aberta(blocoNada(g.nada, mes))) : nenhuma ? semImportar
       : vazio('Nenhuma empresa ficou sem nada a recolher em ' + esc(mes) + entreAsImportadas + '.');
   } else {
+    const marcadas = g.nada.filter(l => l.marca).length;
     lista = g.semNotas.length || g.deNovo.length ? soNomes(aberta(blocoSemNotas(g.semNotas, mes)) + aberta(blocoDeNovo(g.deNovo)))
-      : vazio('Todas as empresas têm notas de entrada de ' + esc(mes) + ' importadas.');
+      : vazio(marcadas ? 'Nada falta importar de ' + esc(mes) + ': ' + (marcadas === 1 ? 'a empresa marcada sem notas de entrada no mês está'
+        : 'as ' + marcadas + ' empresas marcadas sem notas de entrada no mês estão') + ' em "Sem nada a recolher".'
+        : 'Todas as empresas têm notas de entrada de ' + esc(mes) + ' importadas.');
   }
   $('ferr').hidden = !comEmpresas;
   $('lista').innerHTML = lista;
@@ -524,6 +539,10 @@ $('btnFecharTudo').addEventListener('click', () => { aberto.clear(); tudoAberto 
 $('secConf').addEventListener('click', ev => {
   const ent = ev.target.closest('[data-entrada]');
   if (ent) { abrirEntrada(ent.dataset.entrada, ent); return; }
+  const semNotas = ev.target.closest('[data-sem-notas]');
+  if (semNotas) { marcarSemNotas(semNotas.dataset.semNotas, semNotas); return; }
+  const desmarcar = ev.target.closest('[data-desmarcar]');
+  if (desmarcar) { desmarcarSemNotas(desmarcar.dataset.desmarcar, desmarcar); return; }
   const regra = ev.target.closest('[data-abrir-regras]');
   if (regra) { abrirRegras(regra.dataset.abrirRegras); return; }
   const alvo = ev.target.closest('[data-alterna]');
@@ -556,13 +575,52 @@ function mostrar(alvo, k){
 // nas abas delas, recolhíveis em "Todas"
 const nomeDaEmpresa = e => esc(nomeDe(e)) + (e.nome_fantasia && e.nome_fantasia !== e.nome_principal ? ' <span class="ds-fant">(' + esc(e.nome_fantasia) + ')</span>' : '');
 const listaDeNomes = (l, extra) => '<ul class="ds-nomes">' + l.map(x => '<li>' + nomeDaEmpresa(x.e) + (extra ? extra(x) : '') + '</li>').join('') + '</ul>';
+// a marca "sem notas de entrada no mês" (26/11/2026, pedido da Thalia): quem e quando, e o Desmarcar
+const quemMarcou = m => (nomePorEmail(m.marcado_por) || (m.marcado_por ? String(m.marcado_por).split('@')[0] : 'alguém')) + (m.marcado_em ? ' em ' + diaMes(m.marcado_em) : '');
 function blocoNada(l, mes){
+  const marcadas = l.filter(x => x.marca).length;
   return l.length ? { titulo: 'Sem nada a recolher em ' + esc(mes) + ' (' + l.length + ')', classe: '',
-    corpo: listaDeNomes(l) + '<p class="ds-vazio">Têm notas de entrada do mês na base, e nenhuma de fora do RS a 4% nem das regras de ICMS-ST.</p>' } : null;
+    corpo: listaDeNomes(l, x => x.marca ? '<small>sem notas de entrada no mês · marcado por ' + esc(quemMarcou(x.marca)) + '</small>'
+      + '<button type="button" class="ds-marcar" data-desmarcar="' + esc(x.e.id) + '">Desmarcar</button>' : '')
+      + '<p class="ds-vazio">' + (marcadas < l.length ? 'Têm notas de entrada do mês na base, e nenhuma de fora do RS a 4% nem das regras de ICMS-ST. ' : '')
+      + (marcadas ? 'As marcadas sem notas de entrada no mês ficam aqui até chegar alguma nota de entrada do mês na base: aí vale a nota.' : '') + '</p>' } : null;
 }
 function blocoSemNotas(l, mes){
+  const marca = !doMes.semMarcas;
   return l.length ? { titulo: 'Sem notas de entrada importadas de ' + esc(mes) + ' (' + l.length + ')', classe: 'ds-warn',
-    corpo: listaDeNomes(l) + '<p class="ds-vazio">Sem as notas de entrada a conferência não diz nada sobre elas: importe os XMLs do mês dessas empresas (a que não comprou nada no mês fica aqui mesmo).</p>' } : null;
+    corpo: listaDeNomes(l, x => marca ? '<button type="button" class="ds-marcar" data-sem-notas="' + esc(x.e.id) + '">Não teve notas de entrada no mês</button>' : '')
+      + '<p class="ds-vazio">Sem as notas de entrada a conferência não diz nada sobre elas: importe os XMLs do mês dessas empresas. '
+      + (marca ? 'A que não teve nota de entrada no mês, marque em "Não teve notas de entrada no mês": ela vai pra "Sem nada a recolher".'
+        : 'Não consegui ler agora quais foram marcadas sem notas de entrada no mês: recarregue a tela pra marcar.') + '</p>' } : null;
+}
+// marca e desmarca (destda_sem_notas: quem e quando, o banco grava); a tela redesenha sem ler o mês de novo, e o aviso
+// diz o que mudou (o foco vai pra ele: o botão sumiu com a lista)
+async function marcarSemNotas(id, botao){
+  if (!doMes) return;
+  const alvo = doMes.comp, e = empresas.find(x => x.id === id);
+  botao.disabled = true;
+  const cols = 'cliente_id, marcado_por, marcado_em';
+  let { data, error } = await supabase.from('destda_sem_notas').insert({ cliente_id: id, competencia: alvo }).select(cols).single();
+  // 23505: alguém marcou no mesmo instante; vale a marca dele
+  if (error && error.code === '23505') ({ data, error } = await supabase.from('destda_sem_notas').select(cols).eq('cliente_id', id).eq('competencia', alvo).maybeSingle());
+  if (error || !data) { botao.disabled = false; msgEnt('Não consegui marcar' + (error ? ': ' + error.message : '.'), 'err'); return; }
+  if (!doMes || doMes.comp !== alvo) return;
+  doMes.marcadas.set(id, data);
+  desenharConferencia();
+  msgEnt(nomeDe(e) + ': sem notas de entrada em ' + rotuloDoMes(alvo) + '. Foi pra "Sem nada a recolher", onde dá pra desmarcar.', 'ok');
+  $('msgEnt').focus();
+}
+async function desmarcarSemNotas(id, botao){
+  if (!doMes) return;
+  const alvo = doMes.comp, e = empresas.find(x => x.id === id);
+  botao.disabled = true;
+  const { error } = await supabase.from('destda_sem_notas').delete().eq('cliente_id', id).eq('competencia', alvo);
+  if (error) { botao.disabled = false; msgEnt('Não consegui desmarcar: ' + error.message, 'err'); return; }
+  if (!doMes || doMes.comp !== alvo) return;
+  doMes.marcadas.delete(id);
+  desenharConferencia();
+  msgEnt(nomeDe(e) + ': a marca saiu. Sem as notas de entrada de ' + rotuloDoMes(alvo) + ', volta pra "Falta importar".', 'ok');
+  $('msgEnt').focus();
 }
 function blocoDeNovo(l){
   const notas = docs => (docs.length === 1 ? 'nota ' : 'notas ') + docs.slice(0, 6).map(d => esc(d.numero || '?')).join(', ') + (docs.length > 6 ? ' e mais ' + (docs.length - 6) : '');

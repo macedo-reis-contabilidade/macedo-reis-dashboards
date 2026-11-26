@@ -192,6 +192,12 @@ chk('as três notas da Thalia, com a bonificação: 88,16 + 87,71 + 7,38 = 183,2
 console.log('A situação e o mês:');
 chk('sem notas no mês, com algo a conferir, nada', situacaoDaEmpresa(c, false) === 'sem_notas' && situacaoDaEmpresa(c, true) === 'a_conferir'
   && situacaoDaEmpresa(conferirEmpresa([], new Map(), [], EMPRESA), true) === 'nada');
+// 26/11/2026, pedido da Thalia: a empresa marcada sem notas de entrada no mês não tem nada a recolher; com nota de entrada
+// do mês na base, a marca não vale (a nota decide)
+const vazia = conferirEmpresa([], new Map(), [], EMPRESA);
+chk('marcada sem notas de entrada no mês: nada a recolher; com nota na base, vale a nota', situacaoDaEmpresa(vazia, false, true) === 'nada'
+  && situacaoDaEmpresa(vazia, false, false) === 'sem_notas' && situacaoDaEmpresa(vazia, false) === 'sem_notas'
+  && situacaoDaEmpresa(c, true, true) === 'a_conferir' && situacaoDaEmpresa(vazia, true, true) === 'nada');
 chk('o mês anterior (em janeiro, dezembro do ano anterior)', mesAnterior('2026-10-27') === '2026-09' && mesAnterior('2027-01-05') === '2026-12' && mesAnterior('') === null);
 chk('os limites do mês, com o fevereiro bissexto', JSON.stringify(limitesDoMes('2028-02')) === JSON.stringify({ de: '2028-02-01', ate: '2028-02-29' })
   && limitesDoMes('2026-09').ate === '2026-09-30' && limitesDoMes('2026-13') === null);

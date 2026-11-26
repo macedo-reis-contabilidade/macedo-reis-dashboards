@@ -126,7 +126,7 @@ const copia = v => (v == null ? v : structuredClone(v));
 // atraso opcional por consulta (o lote-setores.py usa pra ver o progresso e as travas no meio de um lote)
 const responder = out => (window.__mockDelay ? new Promise(r => setTimeout(() => r(out), window.__mockDelay)) : Promise.resolve(out));
 // chaves únicas do banco de verdade que as telas tratam (erro 23505 = "duplicate key")
-const UNICOS = { rotinas_modelo: [['setor', 'nome']] };
+const UNICOS = { rotinas_modelo: [['setor', 'nome']], destda_sem_notas: [['cliente_id', 'competencia']] };
 function q(table){
   const rows = DATA[table] || (DATA[table] = []);
   const self = { _head:false };

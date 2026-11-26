@@ -29,6 +29,10 @@ Confere, nos temas escuro e claro:
      não gravam, o Esc, o Enter); marcada, a nota entra no mês da entrada, com quem marcou na linha dela, e sai da lista
      do mês da emissão, onde aparece entre as que entraram noutro mês; "Voltar à data de emissão"; a data que a Domínio
      manda com a janela aberta fica (a tela não grava por cima), e a da Domínio não tem o botão de mudar;
+  3e. a empresa sem notas de entrada no mês (26/11/2026, pedido da Thalia): o "Não teve notas de entrada no mês" em
+     "Falta importar" grava a marca (só a empresa e o mês) e leva a empresa pra "Sem nada a recolher", com quem marcou e o
+     "Desmarcar"; a marca fica ao ler o mês de novo; a nota de entrada que chega vale mais que a marca; a marca que outra
+     pessoa gravou no mesmo instante vale; desmarcar volta; a marca que não se lê não para a conferência;
   4. trocar o mês na aba "Com DIFAL": 08/2026 mostra só a nota de GO, com o DIFAL dela, e a aba fica; o item a 4% que o
      nome não decide fica fora do DIFAL, com o aviso;
   4b. a ração pet de outro NCM (28/10/2026, as notas da Thalia com 2309.90.10): a de gato entra no ST pelo nome, com a
@@ -518,6 +522,85 @@ def fluxo(b, base, tema, erros):
     trocar_mes(p, '2026-09')
     abrir_aba(p, 'todas')
     ok(cards(p) == ['d1', 'd2'] and abertas(p) == 0 and p.inner_text('#msgEnt') == '', 'de volta a setembro, sem o aviso')
+
+    print(f'[{tema}] 3e. A empresa sem notas de entrada no mês (26/11/2026, pedido da Thalia)')
+    # o banco grava quem e quando (o gatilho destda_sem_notas_quem); o teste guarda o que a tela mandou
+    p.evaluate("""() => { window.__mockAntesDeInserir = (t, r) => { if (t !== 'destda_sem_notas') return;
+      window.__veio = Object.keys(r).filter(k => k !== 'id').sort().join(',');
+      r.marcado_por = 'fiscal@macedoereis.com.br'; r.marcado_em = '2026-10-27T15:00:00Z'; }; }""")
+    ok(abas(p)['importar'] == '1' and abas(p)['nada'] == '1', f'antes: a sem notas em "Falta importar" e a padaria em "Sem nada a recolher" ({abas(p)})')
+    abrir_aba(p, 'importar')
+    BTN = '#lista [data-sem-notas="d3"]'
+    imp = p.inner_text('#lista')
+    ok(p.is_visible(BTN) and texto(p, BTN) == 'Não teve notas de entrada no mês' and 'marque em "Não teve notas de entrada no mês"' in imp,
+       'em "Falta importar", o botão embaixo da empresa sem notas, com a explicação')
+    p.screenshot(path=str(FOTOS / f'{tema}-destda-marcar.png'), full_page=True)
+    p.click(BTN)
+    esperar(p, "() => /sem notas de entrada em 09\\/2026/.test(document.getElementById('msgEnt').textContent)")
+    marcas = db(p, 'window.__mockDb.destda_sem_notas')
+    ok(len(marcas) == 1 and marcas[0]['cliente_id'] == 'd3' and marcas[0]['competencia'] == '2026-09' and p.evaluate('() => window.__veio') == 'cliente_id,competencia',
+       f'grava a marca: só a empresa e o mês (quem e quando, o banco) ({p.evaluate("() => window.__veio")})')
+    ok(abas(p)['importar'] == '0' and abas(p)['nada'] == '2' and 'fc-warn' not in p.get_attribute('#abas [data-aba="importar"]', 'class'),
+       f'sai de "Falta importar" e entra em "Sem nada a recolher" ({abas(p)})')
+    ok(p.inner_text('#msgEnt') == 'MERCADO SEM NOTAS LTDA: sem notas de entrada em 09/2026. Foi pra "Sem nada a recolher", onde dá pra desmarcar.'
+       and 'ds-ok' in p.get_attribute('#msgEnt', 'class') and p.evaluate("() => document.activeElement.id") == 'msgEnt',
+       'o aviso diz o que mudou, com o foco nele')
+    ok(p.inner_text('#lista').strip() == 'Nada falta importar de 09/2026: a empresa marcada sem notas de entrada no mês está em "Sem nada a recolher".',
+       f'a aba fica vazia, dizendo onde a marcada está ({p.inner_text("#lista").strip()!r})')
+    abrir_aba(p, 'nada')
+    nada = p.inner_text('#lista')
+    ok('Sem nada a recolher em 09/2026 (2)' in nada and 'MERCADO SEM NOTAS LTDA\nsem notas de entrada no mês · marcado por Thalia em 27/10\nDesmarcar' in nada
+       and 'PADARIA NADA A RECOLHER LTDA' in nada and 'Têm notas de entrada do mês na base' in nada and 'As marcadas sem notas de entrada no mês ficam aqui' in nada,
+       f'em "Sem nada a recolher", com quem marcou e o "Desmarcar" ({nada!r})')
+    p.screenshot(path=str(FOTOS / f'{tema}-destda-sem-notas.png'), full_page=True)
+    abrir_aba(p, 'todas')
+    p.click('#curtas h3[data-alterna="l:nada"] button')
+    curtas = p.inner_text('#curtas')
+    ok('Sem nada a recolher em 09/2026 (2)' in curtas and 'marcado por Thalia' in curtas and 'Sem notas de entrada importadas' not in curtas,
+       'em "Todas", a lista de baixo também')
+    p.click('#curtas h3[data-alterna="l:nada"] button')
+    trocar_mes(p, '2026-08')
+    ok(abas(p)['importar'] == '3', f'a marca é do mês: em agosto, a empresa segue faltando importar ({abas(p)})')
+    trocar_mes(p, '2026-09')
+    ok(abas(p)['importar'] == '0' and abas(p)['nada'] == '2', f'de volta a setembro, a marca segue (lida do banco) ({abas(p)})')
+    # a nota de entrada que chega vale mais que a marca
+    p.evaluate("""() => { window.__mockDb.nf_documentos.push({ id: 'ndM', cliente_id: 'd3', tipo: 'entrada', status: 'autorizada', emit_uf: 'RS',
+      emit_doc: '91000000000100', emit_nome: 'FORNECEDOR RS TESTE', dest_doc: '40000000000100', data_emissao: '2026-09-15', numero: '777' }); }""")
+    trocar_mes(p, '2026-08'); trocar_mes(p, '2026-09')
+    abrir_aba(p, 'nada')
+    nada = p.inner_text('#lista')
+    ok('MERCADO SEM NOTAS LTDA' in nada and 'marcado por' not in nada and 'Desmarcar' not in nada and 'Têm notas de entrada do mês na base' in nada,
+       'com nota de entrada do mês na base, vale a nota: a marca nem aparece')
+    p.evaluate("() => { const l = window.__mockDb.nf_documentos; l.splice(l.findIndex(d => d.id === 'ndM'), 1); }")
+    # desmarcar
+    trocar_mes(p, '2026-08'); trocar_mes(p, '2026-09')
+    p.click('#lista [data-desmarcar="d3"]')
+    esperar(p, "() => /a marca saiu/.test(document.getElementById('msgEnt').textContent)")
+    ok(db(p, 'window.__mockDb.destda_sem_notas') == [] and abas(p)['importar'] == '1' and abas(p)['nada'] == '1'
+       and p.inner_text('#msgEnt') == 'MERCADO SEM NOTAS LTDA: a marca saiu. Sem as notas de entrada de 09/2026, volta pra "Falta importar".',
+       f'"Desmarcar" tira a marca, e ela volta pra "Falta importar" ({abas(p)})')
+    # a marca que outra pessoa gravou no mesmo instante: vale a dela
+    abrir_aba(p, 'importar')
+    p.evaluate("() => { window.__mockDb.destda_sem_notas.push({ cliente_id: 'd3', competencia: '2026-09', marcado_por: 'diego@macedoereis.com.br', marcado_em: '2026-10-27T14:00:00Z' }); }")
+    p.click(BTN)
+    esperar(p, "() => /sem notas de entrada em 09\\/2026/.test(document.getElementById('msgEnt').textContent)")
+    abrir_aba(p, 'nada')
+    ok(len(db(p, 'window.__mockDb.destda_sem_notas')) == 1 and 'marcado por Diego em 27/10' in p.inner_text('#lista'), 'quem marcou antes fica: a marca não duplica')
+    p.click('#lista [data-desmarcar="d3"]')
+    esperar(p, "() => /a marca saiu/.test(document.getElementById('msgEnt').textContent)")
+    # a marca que não se lê não para a conferência
+    p.evaluate("() => { window.__mockErroTabela = { destda_sem_notas: 'permission denied for table destda_sem_notas' }; }")
+    trocar_mes(p, '2026-08'); trocar_mes(p, '2026-09')
+    abrir_aba(p, 'importar')
+    imp = p.inner_text('#lista')
+    ok(abas(p)['importar'] == '1' and 'MERCADO SEM NOTAS LTDA' in imp and p.locator('#lista [data-sem-notas]').count() == 0
+       and 'recarregue a tela pra marcar' in imp and 'permission denied' not in imp,
+       'sem ler as marcas, a conferência segue: quem não tem nota fica em "Falta importar", sem o botão, com o porquê')
+    p.evaluate("() => { window.__mockErroTabela = null; window.__mockAntesDeInserir = null; }")
+    trocar_mes(p, '2026-08'); trocar_mes(p, '2026-09')
+    abrir_aba(p, 'todas')
+    p.evaluate("() => { document.getElementById('msgEnt').textContent = ''; }")
+    ok(cards(p) == ['d1', 'd2'] and abas(p)['importar'] == '1', 'de volta a setembro, como estava')
 
     print(f'[{tema}] 4. Trocar o mês (na aba "Com DIFAL")')
     abrir_aba(p, 'difal')
