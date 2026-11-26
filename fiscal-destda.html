@@ -217,7 +217,7 @@
         </div>
         <div class="eyebrow">Fiscal</div>
         <h1>Conferência SEDIF/DeSTDA</h1>
-        <p>As notas de entrada do mês das empresas da SEDIF/DeSTDA: o que veio de fora do RS com ICMS destacado a 4%, com o diferencial de alíquota (DIFAL) de cada nota já calculado, e o que está nas regras de ICMS-ST na entrada, como a ração pet dos estados da lista, com o ST a recolher. Exporte os XMLs do mês na Domínio e solte aqui uma vez só: cada nota vai pra empresa certa pelo CNPJ. Como na Domínio, a nota conta no mês em que entrou na empresa.</p>
+        <p>As notas de entrada do mês das empresas da SEDIF/DeSTDA: o que veio de fora do RS com ICMS destacado a 4%, com o diferencial de alíquota (DIFAL) de cada nota já calculado, e o que está nas regras de ICMS-ST na entrada, como a ração pet dos estados da lista, com o ST a recolher. As notas chegam da Domínio sozinhas, todo dia às 7h, depois de lançadas lá. As que não vêm (sem o XML no Catálogo de Notas da Domínio, ou de fornecedor pessoa física), exporte na Domínio e solte aqui: cada nota vai pra empresa certa pelo CNPJ. Como na Domínio, a nota conta no mês em que entrou na empresa.</p>
       </div>
 
       <!-- o alto: a importação e o mês, com as abas, lado a lado (27/10/2026, pedido do Samuel); a lista das empresas embaixo -->
@@ -472,7 +472,7 @@ function desenharConferencia(){
   const entreAsImportadas = g.semNotas.length ? ' — entre as que têm notas de entrada importadas' : '';
   const vazio = t => '<div class="ds-vazio">' + t + '</div>';
   // o mês sem nenhuma nota de entrada na base: o recado é importar, não "nenhuma empresa"
-  const semImportar = vazio('Nenhuma nota de entrada de ' + esc(mes) + ' importada ainda: exporte os XMLs do mês na Domínio e solte em "Importar as notas do mês", aqui em cima.');
+  const semImportar = vazio('Nenhuma nota de entrada de ' + esc(mes) + ' na base ainda. As da Domínio chegam todo dia às 7h, depois de lançadas lá; as que não vêm, exporte os XMLs na Domínio e solte em "Importar as notas do mês", aqui em cima.');
   const nenhuma = !doMes.comNotas.size;
   const soNomes = h => '<div class="ds-lista-curta ds-aba-nomes">' + h + '</div>';
   montadas.clear();
@@ -589,7 +589,7 @@ function blocoSemNotas(l, mes){
   const marca = !doMes.semMarcas;
   return l.length ? { titulo: 'Sem notas de entrada importadas de ' + esc(mes) + ' (' + l.length + ')', classe: 'ds-warn',
     corpo: listaDeNomes(l, x => marca ? '<button type="button" class="ds-marcar" data-sem-notas="' + esc(x.e.id) + '">Não teve notas de entrada no mês</button>' : '')
-      + '<p class="ds-vazio">Sem as notas de entrada a conferência não diz nada sobre elas: importe os XMLs do mês dessas empresas. '
+      + '<p class="ds-vazio">Sem as notas de entrada a conferência não diz nada sobre elas. As da Domínio chegam todo dia às 7h, depois de lançadas lá: se a empresa teve nota no mês e ela não chegou, importe os XMLs. '
       + (marca ? 'A que não teve nota de entrada no mês, marque em "Não teve notas de entrada no mês": ela vai pra "Sem nada a recolher".'
         : 'Não consegui ler agora quais foram marcadas sem notas de entrada no mês: recarregue a tela pra marcar.') + '</p>' } : null;
 }

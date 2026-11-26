@@ -77,6 +77,10 @@ const primeiroDia = (hoje, meses) => {
   return new Date(Date.UTC(a, m - 1 - meses, 1)).toISOString().slice(0, 10);
 };
 
+/** A NF-e avulsa, a que o Fisco emite pro vendedor sem emissor próprio: a série da chave (as posições 23 a 25) de 890 a
+ *  899. Na chave vai o CNPJ do Fisco; o vendedor está no XML. */
+export const avulsa = chave => /^89\d$/.test(String(chave || '').slice(22, 25));
+
 /** O documento como o sistema guarda (o normalizarDocumento de assets/js/utils.js): o CNPJ com letras fica com elas. */
 export function docNorm(doc) {
   const s = String(doc ?? '').toUpperCase().replace(/[\s.\-\/]/g, '');
@@ -91,12 +95,14 @@ function docDaNota(d, onde, chave) {
   if (!diaValido(d.data_emissao)) recusar(onde + '.data_emissao', 'data fora do formato AAAA-MM-DD, ou que não existe');
   out.data_emissao = d.data_emissao;
   out.tp_nf = inteiro(d.tp_nf, onde + '.tp_nf', [0, 1]);
-  out.finalidade = inteiro(d.finalidade, onde + '.finalidade', [1, 2, 3, 4]);
+  // 5 = nota de crédito e 6 = nota de débito, da Reforma (NT 2025.002): o importador guarda como vem, e a base já tem
+  out.finalidade = inteiro(d.finalidade, onde + '.finalidade', [1, 2, 3, 4, 5, 6]);
   out.emit_crt = inteiro(d.emit_crt, onde + '.emit_crt', [1, 2, 3, 4]);
   out.dest_ind_ie = inteiro(d.dest_ind_ie, onde + '.dest_ind_ie', [1, 2, 9]);
   const emit = docNorm(d.emit_doc);
   if (emit.length === 11) recusar(onde + '.emit_doc', 'emitente pessoa física (CPF): a nota não vai');
-  if (emit !== chave.slice(6, 20)) recusar(onde + '.emit_doc', 'o emitente do XML não é o da chave');
+  // a NF-e avulsa (série 890 a 899) leva na chave o CNPJ do Fisco que a emitiu (a Sefaz), e no XML o vendedor
+  if (!avulsa(chave) && emit !== chave.slice(6, 20)) recusar(onde + '.emit_doc', 'o emitente do XML não é o da chave');
   out.emit_doc = emit;
   const uf = d.emit_uf == null ? null : String(d.emit_uf).toUpperCase();
   if (uf != null && !UFS.has(uf)) recusar(onde + '.emit_uf', 'UF que não existe');

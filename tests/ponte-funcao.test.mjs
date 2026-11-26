@@ -12,7 +12,7 @@ import { criarServidor } from '../supabase/functions/ponte/servidor.js';
 import { validarPacoteDominio, LIMITES_DOMINIO, BLOCOS_DA_VERSAO, BLOCOS_DOMINIO, BLOCOS_DA_5 } from '../supabase/functions/ponte/dominio.js';
 import { validarPacoteNotas, empresasAutorizadas, destinosDaConfig, dvDaChave, pareceCpf, semCpf, LIMITES_NOTAS, SEM_DESTINO, SEM_AUTORIZACAO, DESTINO_FORA } from '../supabase/functions/ponte/notas.js';
 import { validarPacoteEntradas, janelaDasEntradas, empresasDasEntradas, notasParaGravar, LIMITES_ENTRADAS, SEM_SEDIF } from '../supabase/functions/ponte/entradas.js';
-import { validarPacoteSedif, notasDaEmpresa, docNorm, LIMITES_SEDIF, NAO_E_DA_EMPRESA } from '../supabase/functions/ponte/sedif.js';
+import { validarPacoteSedif, notasDaEmpresa, docNorm, avulsa, LIMITES_SEDIF, NAO_E_DA_EMPRESA } from '../supabase/functions/ponte/sedif.js';
 
 let falhas = 0;
 const chk = (nome, cond, extra) => { if (!cond) falhas++; console.log((cond ? '  ✓ ' : '  ✗ ') + nome + (!cond && extra !== undefined ? ' → ' + JSON.stringify(extra) : '')); };
@@ -1322,11 +1322,12 @@ console.log('As notas de entrada das empresas da SEDIF/DeSTDA, do XML que a Dom�
 {
   const FORN = '44555666000100';   // inventado, com o dígito verificador errado de propósito
   const EMPRESA = '22333444000100';
-  const chaveDe = (numero, { uf = '42', aamm = '2610', cnpj = FORN, modelo = '55' } = {}) => {
-    const base = uf + aamm + cnpj + modelo + '001' + String(numero).padStart(9, '0') + '1' + '00004321';
+  const chaveDe = (numero, { uf = '42', aamm = '2610', cnpj = FORN, modelo = '55', serie = '001' } = {}) => {
+    const base = uf + aamm + cnpj + modelo + serie + String(numero).padStart(9, '0') + '1' + '00004321';
     return base + dvDaChave(base);
   };
   const HOJE = '2026-11-26';
+  const FISCO = '99888777000100';   // inventado: o CNPJ do Fisco que vai na chave da NF-e avulsa
   const ITEM = (n, mudar) => {
     const i = { n_item: n, codigo: 'A' + n, descricao: '  SECADOR  ', ncm: '85163100', cest: null, cfop: '6102', unidade: 'UN',
       quantidade: 10, valor_unitario: 100, valor_total: 1000, desconto: 0, icms_origem: '1', icms_cst: '00', csosn: null,
@@ -1376,6 +1377,15 @@ console.log('As notas de entrada das empresas da SEDIF/DeSTDA, do XML que a Dom�
   chk('a nota de emitente pessoa física (o CPF na chave) não vai', !!naNota(n => { n.chave = chaveDe(1, { aamm: '2609', cnpj: '000' + '52998224725' }); }, 'notas[0].chave', /pessoa física/));
   chk('o emitente com CPF no XML não vai', !!naNota(n => { n.doc.emit_doc = '529.982.247-25'; }, 'notas[0].doc.emit_doc', /pessoa física/));
   chk('o emitente do XML que não é o da chave fica de fora', !!naNota(n => { n.doc.emit_doc = '11222333000181'; }, 'notas[0].doc.emit_doc', /não é o da chave/));
+  chk('a NF-e avulsa (série 890 a 899) vai: a chave leva o CNPJ do Fisco e o XML, o vendedor',
+    !!(() => { const r = validarPacoteSedif(PAC(p => { p.notas[0].chave = chaveDe(1, { aamm: '2609', cnpj: FISCO, serie: '890' }); p.notas[0].doc.serie = '890'; }), HOJE);
+      return r.ok && r.recusadas.length === 0 && r.pacote.notas[0].doc.emit_doc === FORN ? r : null; })()
+      && avulsa(chaveDe(1, { serie: '899' })) && !avulsa(chaveDe(1, { serie: '889' })) && !avulsa(chaveDe(1, { serie: '900' })) && !avulsa(null));
+  chk('a avulsa de vendedor pessoa física (o CPF no XML) não vai', !!naNota(n => { n.chave = chaveDe(1, { aamm: '2609', cnpj: FISCO, serie: '891' }); n.doc.emit_doc = '529.982.247-25'; }, 'notas[0].doc.emit_doc', /pessoa física/));
+  chk('a nota de crédito e a de débito da Reforma (finalidade 5 e 6) vão; a 7 fica de fora',
+    !!(() => { const r = validarPacoteSedif(PAC(p => { p.notas[0].doc.finalidade = 6; p.notas[1].doc.finalidade = 5; }), HOJE);
+      return r.ok && r.recusadas.length === 0 && r.pacote.notas[0].doc.finalidade === 6 ? r : null; })()
+      && !!naNota(n => { n.doc.finalidade = 7; }, 'notas[0].doc.finalidade', /fora dos valores/));
   chk('a nota do RS também vai (a conferência sabe por ela quem teve nota no mês)',
     !!(() => { const r = validarPacoteSedif(PAC(p => { p.notas[0].chave = chaveDe(1, { uf: '43', aamm: '2609' }); p.notas[0].doc.emit_uf = 'RS'; }), HOJE); return r.ok && r.recusadas.length === 0 ? r : null; })());
   chk('a entrada antes do mês da emissão fica de fora', !!naNota(n => { n.entrada = '2026-08-31'; }, 'notas[0].entrada', /antes do mês da emissão/));
