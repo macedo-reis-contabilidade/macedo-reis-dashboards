@@ -64,7 +64,7 @@ Commit deste arquivo (o registro preenchido) e `git push origin fila-19-11-procu
 ## Registro de progresso
 | Data | Item | O que aconteceu |
 |---|---|---|
-| | 1 | |
-| | 2 | |
-| | 3 | |
-| | 4 | |
+| 26/11/2026 | 1 | Feito às 14h31 (a fila ficou parada de 19 a 26/11: o plantão contava como preenchidas as linhas que só têm o número do item, e não a viu): `git fetch --prune`, `main` atualizada (em `c697ee3`), a branch `fila-19-11-procuracao`. `py -3 tests/ponte-receita.test.py`: "Tudo certo." (239 s); `py -3 tests/ponte.test.py`: "Tudo certo." (57 s), às 14h36. A `VERSAO` da ponte da Receita instalada: `0.4.3`; a da `main`: `0.4.4`. A `main` de agora leva também a ponte do Domínio `0.6.0` (a instalada era a `0.5.0`), da fila de 26/11. |
+| 26/11/2026 | 2 | Feito às 14h36: `powershell -NoProfile -ExecutionPolicy Bypass -File ponte\instalar.ps1 -Hora 07:00`, código 0, sem pedir o administrador. A última linha: `py -3 -m ponte rodar --sem-enviar` (do aviso padrão "Antes da primeira rodada: …"; antes dele, "Tarefa 'Ponte Domínio' registrada: todo dia às 07:00 (os últimos 14 meses), como DESKTOP-OB3NBFV\PC (sem guardar senha)."). Conferido: `VERSAO = '0.4.4'` na Receita instalada e `VERSAO = '0.6.0'` na ponte instalada; a "Ponte Domínio", `Ready`, todo dia às 07:00; a "Ponte Receita", `Ready`, de segunda a sexta (`DaysOfWeek` 62) às 08:30; as duas com o `StartWhenAvailable` ligado. A ponte não foi rodada e não houve nenhuma consulta ao Serpro. |
+| 26/11/2026 | 3 | O comando da fila, código 0: `{'ativa pelo procurador': 59, 'ativa': 25, 'sem': 21}`. |
+| 26/11/2026 | 4 | Feito: este registro, o commit (só este arquivo) e `git push origin fila-19-11-procuracao`, às 14h38. |
