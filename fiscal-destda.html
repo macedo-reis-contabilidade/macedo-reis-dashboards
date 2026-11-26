@@ -159,6 +159,33 @@
     .ds-regra-nomes .textarea { width:100%; min-height:62px; font-size:12.5px; }
     .ds-regra-cab { font-size:11px; color:var(--brand-light); font-weight:600; border-bottom:1px solid var(--line); padding-bottom:6px; }
     @media (max-width:760px){ .ds-regra { grid-template-columns:1fr; } .ds-regra-cab { display:none; } .ds-regra-nomes { grid-template-columns:1fr; } }
+    /* a data de entrada (26/11/2026): a nota conta no mês em que entrou na empresa, como na Domínio — a marca na linha da
+       nota que mudou de mês, a linha da entrada embaixo dos itens, as listas do fim do mês anterior e das que saíram */
+    table.ds td small.ds-entrada { color:var(--brand-light); }
+    table.ds tr.ds-ent td { font-size:12px; color:var(--text-muted); }
+    table.ds tr.ds-ent .btn { margin-left:8px; vertical-align:baseline; }
+    table.ds.ds-vir { min-width:820px; }
+    table.ds.ds-vir td .btn { white-space:nowrap; }
+    .ds-bloco .ds-tab { margin:4px 0 6px; }
+    #msgEnt { margin:0 0 10px; }
+    #msgEnt:empty { display:none; }
+    .fa-modal-overlay { position:fixed; inset:0; background:var(--overlay); display:none; align-items:center; justify-content:center; padding:20px; z-index:100; }
+    .fa-modal-overlay.is-open { display:flex; }
+    .fa-modal { width:100%; max-width:480px; background:var(--surface); border:1px solid var(--fill-3); border-radius:16px; overflow:hidden; max-height:92vh; display:flex; flex-direction:column; }
+    .fa-modal-head { display:flex; align-items:center; justify-content:space-between; padding:18px 22px; border-bottom:1px solid var(--line); }
+    .fa-modal-head h3 { margin:0; color:var(--text); font-size:18px; }
+    .fa-modal-close { background:none; border:none; color:var(--text-muted); font-size:26px; line-height:1; cursor:pointer; padding:0 4px; }
+    .fa-modal-close:hover { color:var(--text); }
+    .fa-modal-body { padding:20px 22px; display:flex; flex-direction:column; gap:12px; overflow:auto; font-size:13.5px; color:var(--brand-pale); line-height:1.5; }
+    .fa-modal-body p { margin:0; }
+    .fa-field { display:flex; flex-direction:column; gap:6px; }
+    .fa-field > span { font-size:13px; color:var(--brand-light); }
+    .fa-field .input { max-width:200px; }
+    .fa-modal-foot { display:flex; justify-content:flex-end; gap:10px; padding:16px 22px; border-top:1px solid var(--line); flex-wrap:wrap; }
+    .fa-modal-foot .btn[hidden] { display:none !important; }
+    .ds-ent-dica { font-size:12.5px; color:var(--text-muted); min-height:18px; }
+    .ds-ent-erro { font-size:12.5px; color:var(--err); }
+    .ds-ent-erro:empty { display:none; }
   </style>
 </head>
 <body>
@@ -185,7 +212,7 @@
         </div>
         <div class="eyebrow">Fiscal</div>
         <h1>Conferência SEDIF/DeSTDA</h1>
-        <p>As notas de entrada do mês das empresas da SEDIF/DeSTDA: o que veio de fora do RS com ICMS destacado a 4%, com o diferencial de alíquota (DIFAL) de cada nota já calculado, e o que está nas regras de ICMS-ST na entrada, como a ração pet dos estados da lista, com o ST a recolher. Exporte os XMLs do mês na Domínio e solte aqui uma vez só: cada nota vai pra empresa certa pelo CNPJ.</p>
+        <p>As notas de entrada do mês das empresas da SEDIF/DeSTDA: o que veio de fora do RS com ICMS destacado a 4%, com o diferencial de alíquota (DIFAL) de cada nota já calculado, e o que está nas regras de ICMS-ST na entrada, como a ração pet dos estados da lista, com o ST a recolher. Exporte os XMLs do mês na Domínio e solte aqui uma vez só: cada nota vai pra empresa certa pelo CNPJ. Como na Domínio, a nota conta no mês em que entrou na empresa.</p>
       </div>
 
       <!-- o alto: a importação e o mês, com as abas, lado a lado (27/10/2026, pedido do Samuel); a lista das empresas embaixo -->
@@ -237,6 +264,7 @@
             <button type="button" class="btn btn-ghost btn-sm" id="btnFecharTudo">Recolher tudo</button>
           </div>
         </div>
+        <p class="ds-msg" id="msgEnt" role="status" tabindex="-1"></p>
         <div id="lista"><div class="ds-vazio"><span class="spinner spinner-sm"></span> Carregando…</div></div>
         <p class="ds-conta" id="conta"></p>
         <div class="ds-lista-curta" id="curtas"></div>
@@ -252,12 +280,32 @@
     </main>
   </div>
 
+  <!-- a data de entrada de uma nota (26/11/2026): a que a Domínio usa, até a ponte trazer a de lá -->
+  <div class="fa-modal-overlay" id="ovEnt">
+    <div class="fa-modal" role="dialog" aria-modal="true" aria-labelledby="eTitulo">
+      <div class="fa-modal-head"><h3 id="eTitulo">Data de entrada</h3><button class="fa-modal-close" id="eClose" aria-label="Fechar">&times;</button></div>
+      <div class="fa-modal-body">
+        <p id="eNota"></p>
+        <p>A Domínio põe a nota no mês em que a mercadoria entrou na empresa. Ponha aqui a data de entrada que está nela.</p>
+        <label class="fa-field"><span>Entrou na empresa em</span><input type="date" id="eData" class="input"></label>
+        <p class="ds-ent-dica" id="eDica" aria-live="polite"></p>
+        <p class="ds-ent-erro" id="eErro" role="alert"></p>
+      </div>
+      <div class="fa-modal-foot">
+        <button class="btn btn-ghost" id="eVoltar" hidden>Voltar à data de emissão</button>
+        <button class="btn btn-ghost" id="eCancelar">Cancelar</button>
+        <button class="btn btn-primary" id="eSalvar">Salvar</button>
+      </div>
+    </div>
+  </div>
+
 <script type="module">
 import { supabase, getCurrentUser, signOut } from './assets/js/supabase.js';
 import { normalizarDocumento, hojeLocal } from './assets/js/utils.js';
 import { nomePorEmail } from './assets/js/equipe.js';
 import { importarLote } from './assets/js/importar-xml.js';
-import { conferirEmpresa, situacaoDaEmpresa, agruparNotas, mesAnterior, limitesDoMes, rotuloDoMes, lerUfs, ncmDaRegra, ncmFormatado, lerNomes, palavrasDoNome, ehQuatro, ALIQUOTA_INTERNA_RS, stRetido, stSemBase } from './assets/js/destda.js';
+import { conferirEmpresa, situacaoDaEmpresa, agruparNotas, mesAnterior, limitesDoMes, rotuloDoMes, lerUfs, ncmDaRegra, ncmFormatado, lerNomes, palavrasDoNome, ehQuatro, ALIQUOTA_INTERNA_RS, stRetido, stSemBase,
+  entrouNoutroMes, saiuDoMes, viradaDoMes, problemaDaEntrada, entradaSugerida } from './assets/js/destda.js';
 
 const $ = id => document.getElementById(id);
 const esc = s => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
@@ -268,11 +316,13 @@ const qtd = (n, um, varios) => n + ' ' + (n === 1 ? um : varios);
 const fatias = (lista, t) => { const out = []; for (let i = 0; i < lista.length; i += t) out.push(lista.slice(i, i + t)); return out; };
 
 let usuario = null;
+let emailUsuario = null;      // quem marca a data de entrada de uma nota
 let clientes = [];            // todas as empresas do cadastro (a importação acha a dona de cada nota pelo CNPJ)
 let empresas = [];            // as da obrigação SEDIF/DeSTDA (a conferência)
 let regras = [];              // destda_regras_st
 let comp = null;              // 'AAAA-MM' na tela
-let doMes = null;             // { comp, comNotas: Set(cliente_id), docs: [], itens: Map(id → itens) } — refaz a conferência sem ler de novo
+let doMes = null;             // { comp, comNotas: Set(cliente_id), docs: [], itens: Map(id → itens), virada: { comp, de, ate, docs }, sairam: [] }
+                              // — refaz a conferência sem ler de novo
 let aba = 'todas';            // difal | st | nada | importar | todas — fica ao trocar o mês e ao importar
 let arquivos = [];
 let rodando = false;
@@ -284,6 +334,7 @@ let rodando = false;
     if (u) {
       const nome = u.user_metadata?.full_name || u.email?.split('@')[0] || 'Usuário';
       usuario = nomePorEmail(u.email) || nome;
+      emailUsuario = u.email || null;
       $('userName').textContent = nome; $('userAvatar').textContent = nome.charAt(0).toUpperCase();
     }
   } catch (e) {}
@@ -291,7 +342,7 @@ let rodando = false;
   const pedido = new URLSearchParams(location.search).get('mes');
   comp = /^\d{4}-(0[1-9]|1[0-2])$/.test(pedido || '') ? pedido : mesAnterior(hojeLocal());
   $('mes').value = comp;
-  $('mes').addEventListener('change', () => { if (/^\d{4}-\d{2}$/.test($('mes').value)) { comp = $('mes').value; carregarMes(); } });
+  $('mes').addEventListener('change', () => { if (/^\d{4}-\d{2}$/.test($('mes').value)) { comp = $('mes').value; msgEnt(''); carregarMes(); } });
   const ok = await carregarBase();
   if (ok) await carregarMes();
 })();
@@ -321,32 +372,47 @@ async function carregarBase(){
 const nomeDe = c => (c && (c.nome_principal || c.nome_fantasia)) || 'Empresa sem nome';
 
 // ---------- o mês ----------
-async function carregarMes(){
-  const alvo = comp, lim = limitesDoMes(alvo);
+// a nota conta no mês em que entrou na empresa (26/11/2026, o caso da Thalia: a de 30/09 que entrou em 01/10 a Domínio
+// apura em outubro): pela data de entrada, quando a nota tem (a da Domínio, pela ponte, ou a marcada aqui); sem ela, pela
+// emissão. Duas leituras pra cada lista — a do mês pela entrada e a sem a entrada pela emissão.
+const COLS_NOTA = 'id, cliente_id, tipo, status, emit_uf, emit_doc, emit_nome, dest_doc, data_emissao, numero, data_entrada, entrada_origem, entrada_por, entrada_em';
+// quieto: lê de novo sem trocar a tela pelo "Carregando…" (depois de gravar uma data de entrada: a página não pula)
+async function carregarMes(quieto = false){
+  const alvo = comp, lim = limitesDoMes(alvo), vir = viradaDoMes(alvo);
   doMes = null;                                   // clicar numa aba enquanto carrega não desenha o mês de antes
   $('tMes').textContent = 'de ' + rotuloDoMes(alvo);
-  marcarAbas(null);
-  $('curtas').innerHTML = '';
-  $('conta').textContent = '';
   $('abas').hidden = !empresas.length;
+  if (!quieto || !empresas.length) { marcarAbas(null); $('curtas').innerHTML = ''; $('conta').textContent = ''; }
   if (!empresas.length) {
     $('lista').innerHTML = '<div class="ds-vazio">Nenhuma empresa ligada à obrigação SEDIF/DeSTDA em Obrigações fiscais.</div>';
     return;
   }
-  $('lista').innerHTML = '<div class="ds-vazio"><span class="spinner spinner-sm"></span> Carregando as notas de ' + esc(rotuloDoMes(alvo)) + '…</div>';
+  if (!quieto) $('lista').innerHTML = '<div class="ds-vazio"><span class="spinner spinner-sm"></span> Carregando as notas de ' + esc(rotuloDoMes(alvo)) + '…</div>';
   const ids = empresas.map(e => e.id);
-  // quais têm nota de entrada do mês na base (só a venda importada não diz nada sobre as compras)
-  const [cob, ent] = await Promise.all([
-    supabase.todasLinhas(() => supabase.from('nf_documentos').select('cliente_id').in('cliente_id', ids).eq('tipo', 'entrada').gte('data_emissao', lim.de).lte('data_emissao', lim.ate).order('id')),
-    supabase.todasLinhas(() => supabase.from('nf_documentos').select('id, cliente_id, tipo, status, emit_uf, emit_doc, emit_nome, dest_doc, data_emissao, numero')
-      .in('cliente_id', ids).eq('tipo', 'entrada').neq('emit_uf', 'RS').gte('data_emissao', lim.de).lte('data_emissao', lim.ate).order('data_emissao').order('id'))
+  const entradas = c => supabase.from('nf_documentos').select(c).in('cliente_id', ids).eq('tipo', 'entrada');
+  const deFora = () => entradas(COLS_NOTA).neq('emit_uf', 'RS');
+  const leituras = await Promise.all([
+    // quais têm nota de entrada do mês na base (só a venda importada não diz nada sobre as compras)
+    supabase.todasLinhas(() => entradas('cliente_id').gte('data_entrada', lim.de).lte('data_entrada', lim.ate).order('id')),
+    supabase.todasLinhas(() => entradas('cliente_id').is('data_entrada', null).gte('data_emissao', lim.de).lte('data_emissao', lim.ate).order('id')),
+    // as de fora do RS do mês: as que entraram nele e as sem a data de entrada emitidas nele
+    supabase.todasLinhas(() => deFora().gte('data_entrada', lim.de).lte('data_entrada', lim.ate).order('data_emissao').order('id')),
+    supabase.todasLinhas(() => deFora().is('data_entrada', null).gte('data_emissao', lim.de).lte('data_emissao', lim.ate).order('data_emissao').order('id')),
+    // as do fim do mês anterior sem a data de entrada (podem ter entrado neste mês) e as emitidas neste mês com ela (as
+    // que entraram noutro mês saem da conta daqui)
+    supabase.todasLinhas(() => deFora().is('data_entrada', null).gte('data_emissao', vir.de).lte('data_emissao', vir.ate).order('data_emissao').order('id')),
+    supabase.todasLinhas(() => deFora().not('data_entrada', 'is', null).gte('data_emissao', lim.de).lte('data_emissao', lim.ate).order('data_emissao').order('id'))
   ]);
   if (alvo !== comp) return;                      // trocou de mês no meio
-  const erro = cob.error || ent.error;
+  const erro = (leituras.find(r => r.error) || {}).error;
   if (erro) { $('lista').innerHTML = '<div class="ds-vazio ds-err">Não consegui ler as notas: ' + esc(erro.message) + '</div>'; return; }
-  const docs = ent.data || [];
+  const [cobE, cobN, entE, entN, vira, emitidas] = leituras.map(r => r.data || []);
+  const porId = new Map();
+  [...entE, ...entN].forEach(d => porId.set(d.id, d));
+  const docs = [...porId.values()];
+  const sairam = emitidas.filter(d => saiuDoMes(d, alvo));
   const itens = new Map();
-  for (const f of fatias(docs.map(d => d.id), 150)) {
+  for (const f of fatias([...new Set([...docs, ...vira, ...sairam].map(d => d.id))], 150)) {
     const { data, error } = await supabase.todasLinhas(() => supabase.from('nf_itens')
       .select('documento_id, n_item, ncm, cest, descricao, cfop, valor_total, icms_base, icms_aliquota, icms_valor, icms_st_base, icms_st_valor')
       .in('documento_id', f).order('documento_id').order('n_item'));
@@ -354,7 +420,7 @@ async function carregarMes(){
     (data || []).forEach(i => { if (!itens.has(i.documento_id)) itens.set(i.documento_id, []); itens.get(i.documento_id).push(i); });
   }
   if (alvo !== comp) return;
-  doMes = { comp: alvo, comNotas: new Set((cob.data || []).map(d => d.cliente_id)), docs, itens };
+  doMes = { comp: alvo, comNotas: new Set([...cobE, ...cobN].map(d => d.cliente_id)), docs, itens, virada: { ...vir, docs: vira }, sairam };
   desenharConferencia();
 }
 
@@ -407,7 +473,8 @@ function desenharConferencia(){
         : 'Nenhuma empresa com nota de fora do RS a 4% nem com ICMS-ST na entrada em ') + esc(mes) + entreAsImportadas + '.');
     if (aba !== 'st' && g.difal.length) conta.push(textoDaConta());
     if (aba !== 'difal' && g.st.length) conta.push(textoDaContaSt());
-    if (aba === 'todas') curtas = recolhivel('l:nada', blocoNada(g.nada, mes)) + recolhivel('l:semNotas', blocoSemNotas(g.semNotas, mes));
+    if (aba === 'todas') curtas = recolhivel('l:virada', blocoVirada()) + recolhivel('l:sairam', blocoSairam())
+      + recolhivel('l:nada', blocoNada(g.nada, mes)) + recolhivel('l:semNotas', blocoSemNotas(g.semNotas, mes));
   } else if (aba === 'nada') {
     lista = g.nada.length ? soNomes(aberta(blocoNada(g.nada, mes))) : nenhuma ? semImportar
       : vazio('Nenhuma empresa ficou sem nada a recolher em ' + esc(mes) + entreAsImportadas + '.');
@@ -455,6 +522,8 @@ $('btnFecharTudo').addEventListener('click', () => { aberto.clear(); tudoAberto 
 // clicar na linha (ou Enter e espaço no botão dela) abre e recolhe, sem desenhar a tela de novo; o link da ficha não, e
 // quem está selecionando um valor pra copiar também não
 $('secConf').addEventListener('click', ev => {
+  const ent = ev.target.closest('[data-entrada]');
+  if (ent) { abrirEntrada(ent.dataset.entrada, ent); return; }
   const regra = ev.target.closest('[data-abrir-regras]');
   if (regra) { abrirRegras(regra.dataset.abrirRegras); return; }
   const alvo = ev.target.closest('[data-alterna]');
@@ -500,6 +569,65 @@ function blocoDeNovo(l){
   return l.length ? { titulo: 'Com nota de fora do RS importada antes de 27/10/2026, sem a alíquota do ICMS (' + l.length + ')', classe: 'ds-warn',
     corpo: listaDeNomes(l, x => '<small>' + notas(x.conf.semAliquota) + '</small>')
       + '<p class="ds-vazio">Importe os XMLs do mês dessas empresas de novo: a importação completa a base e a alíquota, e a nota entra na conferência.</p>' } : null;
+}
+// a data de entrada (26/11/2026): as notas do fim do mês anterior sem ela (a Domínio pode ter posto neste mês) e as
+// emitidas neste mês que entraram noutro (saem da conta daqui) — só as que contam na conferência (com DIFAL, ICMS-ST ou
+// item a conferir), cada uma com o que ela soma
+const MESES = ['janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho', 'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro'];
+const nomeDoMes = c => MESES[Number(String(c || '').slice(5, 7)) - 1] || rotuloDoMes(c);
+const diaMes = iso => { try { return new Date(iso).toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo', day: '2-digit', month: '2-digit' }); } catch (e) { return ''; } };
+const deOndeEntrada = d => d.entrada_origem === 'dominio' ? 'pela Domínio'
+  : 'marcada por ' + (nomePorEmail(d.entrada_por) || (d.entrada_por ? String(d.entrada_por).split('@')[0] : 'alguém')) + (d.entrada_em ? ' em ' + diaMes(d.entrada_em) : '');
+function notasQueContam(lista){
+  const porEmpresa = new Map(), out = [];
+  (lista || []).forEach(d => { if (!porEmpresa.has(d.cliente_id)) porEmpresa.set(d.cliente_id, []); porEmpresa.get(d.cliente_id).push(d); });
+  empresas.forEach(e => {
+    const docs = porEmpresa.get(e.id);
+    if (!docs) return;
+    const conf = conferirEmpresa(docs, doMes.itens, regras, normalizarDocumento(e.documento));
+    const porNota = new Map();
+    const pega = d => { if (!porNota.has(d.id)) porNota.set(d.id, { e, doc: d, difal: null, recolher: null, conferir: 0 }); return porNota.get(d.id); };
+    conf.diferencial.forEach(x => { pega(x.doc).difal = x.difal; });
+    conf.st.forEach(x => { pega(x.doc).recolher = x.recolher; });
+    conf.conferir.forEach(x => { pega(x.doc).conferir += x.itens.length; });
+    out.push(...[...porNota.values()].sort((a, b) => String(a.doc.data_emissao || '').localeCompare(String(b.doc.data_emissao || ''))
+      || String(a.doc.numero || '').localeCompare(String(b.doc.numero || ''), 'pt-BR', { numeric: true })));
+  });
+  return out;
+}
+const valorOuTraco = v => v == null ? '<span class="ds-muda">—</span>' : BRL(v);
+const aConferirNa = x => x.conferir ? '<small class="ds-sem">' + qtd(x.conferir, 'item a conferir', 'itens a conferir') + '</small>' : '';
+const botaoEntrada = (d, rotulo) => '<button type="button" class="btn btn-ghost btn-sm" data-entrada="' + esc(d.id) + '">' + esc(rotulo) + '</button>';
+const celulasDaNota = x => '<td>' + esc(nomeDe(x.e)) + '</td><td>' + dataBR(x.doc.data_emissao) + '</td><td>' + esc(x.doc.numero || '—') + '</td>'
+  + '<td>' + esc(x.doc.emit_nome || '—') + '<small>' + esc(x.doc.emit_uf || '') + '</small></td>';
+function blocoVirada(){
+  const v = doMes.virada, linhas = notasQueContam(v.docs);
+  if (!linhas.length) return null;
+  const ant = nomeDoMes(v.comp), mes = nomeDoMes(doMes.comp);
+  return { titulo: 'Notas do fim de ' + esc(ant) + ' sem a data de entrada (' + linhas.length + ')', classe: '',
+    corpo: '<p class="ds-vazio">As notas de fora do RS emitidas de ' + dataBR(v.de) + ' a ' + dataBR(v.ate) + ' que contam na conferência. A Domínio põe a nota no mês em que '
+      + 'ela entrou na empresa, e o XML só traz a emissão: se a Domínio pôs alguma destas em ' + esc(mes) + ', marque aqui. Ela sai de ' + esc(ant) + ' e entra na conferência de ' + esc(mes) + '.</p>'
+      + '<div class="ds-tab"><table class="ds ds-vir"><thead><tr><th>Empresa</th><th>Emissão</th><th>Nota</th><th>Fornecedor</th><th class="num">DIFAL</th><th class="num">ICMS-ST a recolher</th><th></th></tr></thead><tbody>'
+      + linhas.map(x => '<tr>' + celulasDaNota(x) + '<td class="num">' + valorOuTraco(x.difal) + '</td><td class="num">' + valorOuTraco(x.recolher) + aConferirNa(x) + '</td>'
+        + '<td class="num">' + botaoEntrada(x.doc, 'Entrou em ' + mes) + '</td></tr>').join('')
+      + '</tbody></table></div>' };
+}
+function blocoSairam(){
+  const linhas = notasQueContam(doMes.sairam);
+  if (!linhas.length) return null;
+  return { titulo: 'Emitidas em ' + esc(nomeDoMes(doMes.comp)) + ' que entraram noutro mês (' + linhas.length + ')', classe: '',
+    corpo: '<p class="ds-vazio">Ficam fora desta conferência: contam no mês em que entraram na empresa.</p>'
+      + '<div class="ds-tab"><table class="ds ds-vir"><thead><tr><th>Empresa</th><th>Emissão</th><th>Nota</th><th>Fornecedor</th><th>Entrada</th><th class="num">DIFAL</th><th class="num">ICMS-ST a recolher</th><th></th></tr></thead><tbody>'
+      + linhas.map(x => '<tr>' + celulasDaNota(x) + '<td>' + dataBR(x.doc.data_entrada) + '<small>' + esc(deOndeEntrada(x.doc)) + '</small></td>'
+        + '<td class="num">' + valorOuTraco(x.difal) + '</td><td class="num">' + valorOuTraco(x.recolher) + aConferirNa(x) + '</td>'
+        + '<td class="num">' + (x.doc.entrada_origem === 'manual' ? botaoEntrada(x.doc, 'Mudar a data de entrada') : '') + '</td></tr>').join('')
+      + '</tbody></table></div>' };
+}
+// a linha da entrada, embaixo dos itens da nota: de onde veio a data e, se ela não é da Domínio, o botão de mudar
+function linhaDaEntrada(d, k, g, visivel, colunas){
+  const texto = d.data_entrada ? 'Entrou em ' + dataBR(d.data_entrada) + ' (' + deOndeEntrada(d) + ').' : 'Sem a data de entrada: conta pela emissão.';
+  return '<tr class="ds-i ds-ent" data-n="' + esc(k) + '"' + g + (visivel ? '' : ' hidden') + '><td></td><td></td><td colspan="' + (colunas - 2) + '">' + esc(texto)
+    + (d.entrada_origem === 'dominio' ? '' : ' ' + botaoEntrada(d, d.data_entrada ? 'Mudar a data de entrada' : 'Entrou noutro mês')) + '</td></tr>';
 }
 const aberta = b => b ? '<h3' + (b.classe ? ' class="' + b.classe + '"' : '') + '>' + b.titulo + '</h3>' + b.corpo : '';
 function recolhivel(k, b){
@@ -552,7 +680,7 @@ function detalheDaEmpresa({ e, conf }, modo){
     h += categoria(e.id, 'dif', 'Diferencial de alíquota — ICMS a 4% de fora do RS · ' + qtd(td.notas, 'nota', 'notas') + ', ' + qtd(td.itens, 'item', 'itens') + ' · DIFAL R$ ' + BRL(td.difal),
       '<table class="ds ds-dif"><thead><tr><th>Data</th><th>Nota</th><th>Fornecedor / item</th><th class="num">Itens</th><th class="num">Valor</th><th class="num">Base do ICMS</th><th class="num">Alíq.</th><th class="num">ICMS destacado</th>'
       + '<th class="num" title="' + esc(textoDaConta()) + '">DIFAL</th></tr></thead><tbody>'
-      + linhasDasNotas(e.id, 'dif', conf.diferencial, { soma: celulasDif, item: i => '<td></td>' + celulasDoItem(i) + '<td></td>' })
+      + linhasDasNotas(e.id, 'dif', conf.diferencial, { soma: celulasDif, item: i => '<td></td>' + celulasDoItem(i) + '<td></td>', colunas: 9 })
       + '</tbody><tfoot><tr><td colspan="3">Total</td>' + celulasDif(td, td.itens) + '</tr></tfoot></table>');
   }
   if (modo !== 'difal' && (conf.st.length || conf.conferir.length)) {
@@ -568,7 +696,8 @@ function detalheDaEmpresa({ e, conf }, modo){
       + linhasDasNotas(e.id, 'st', conf.st, {
           soma: celulasSt,
           item: i => '<td></td>' + celulasDoItem(i) + '<td class="num">' + (stRetido(i) ? BRL(i.icms_st_valor) : '<span class="ds-muda">sem retenção</span>') + '</td><td></td>',
-          aviso: i => stSemBase(i) ? 'sem a base do ICMS na nota: fora da conta, confira' : ''
+          aviso: i => stSemBase(i) ? 'sem a base do ICMS na nota: fora da conta, confira' : '',
+          colunas: 10
         })
       + '</tbody><tfoot><tr><td colspan="3">Total</td>' + celulasSt(ts, ts.itens) + '</tr></tfoot></table>' : '')
       + itensAConferir(conf) + itensForaPeloNome(conf));
@@ -607,7 +736,8 @@ function linhasDasNotas(empId, cat, notas, cel){
     const g = kg ? ' data-g="' + esc(kg) + '"' : '', data = dataBR(x.doc.data_emissao);
     return '<tr class="ds-n" data-alterna="' + esc(k) + '"' + g + (noGrupo ? '' : ' hidden') + '>'
       + '<td><button type="button" class="ds-abre" aria-expanded="' + abre + '" aria-label="' + esc(data + ', nota ' + (x.doc.numero || '—') + ': os itens') + '"><span class="ds-seta" aria-hidden="true"></span>' + data + '</button></td>'
-      + '<td>' + esc(x.doc.numero || '—') + '</td><td>' + esc(x.doc.emit_nome || '—') + '<small>' + esc(x.doc.emit_uf || '') + '</small></td>'
+      + '<td>' + esc(x.doc.numero || '—') + '</td><td>' + esc(x.doc.emit_nome || '—') + '<small>' + esc(x.doc.emit_uf || '') + '</small>'
+      + (entrouNoutroMes(x.doc) ? '<small class="ds-entrada">entrou em ' + dataBR(x.doc.data_entrada) + ' · ' + esc(deOndeEntrada(x.doc)) + '</small>' : '') + '</td>'
       + cel.soma(x, x.itens.length) + '</tr>'
       + x.itens.map(i => {
           const aviso = cel.aviso ? cel.aviso(i) : '';
@@ -615,7 +745,8 @@ function linhasDasNotas(empId, cat, notas, cel){
             + '<td>' + esc(i.descricao || '—') + '<small>NCM ' + esc(ncmFormatado(i.ncm) || '—') + (i.cfop ? ' · CFOP ' + esc(i.cfop) : '') + '</small>'
             + (i.como === 'nome' ? '<small class="ds-pelo-nome">entrou pelo nome: ' + esc(i.palavra) + '</small>' : '')
             + (aviso ? '<small class="ds-sem">' + esc(aviso) + '</small>' : '') + '</td>' + cel.item(i) + '</tr>';
-        }).join('');
+        }).join('')
+      + linhaDaEntrada(x.doc, k, g, noGrupo && abre, cel.colunas);
   };
   if (agrupar !== 'data' && agrupar !== 'fornecedor') return notas.map(x => daNota(x, null)).join('');
   return agruparNotas(notas, agrupar).map(gr => {
@@ -647,7 +778,8 @@ function itensAConferir(conf){
     + 'entrar em "Nomes que entram" ou em "Nomes que ficam fora" da regra. <button type="button" class="btn btn-ghost btn-sm" data-abrir-regras="' + esc(conf.conferir[0].itens[0].regra.id) + '">Abrir as regras</button></p>'
     + '<table class="ds ds-conf"><thead><tr><th>Data</th><th>Nota</th><th>Fornecedor</th><th>Item</th><th class="num">Valor</th><th class="num">Base do ICMS</th><th class="num">Alíq.</th><th class="num">ICMS destacado</th></tr></thead><tbody>'
     + conf.conferir.flatMap(x => x.itens.map(i => '<tr><td>' + dataBR(x.doc.data_emissao) + '</td><td>' + esc(x.doc.numero || '—') + '</td>'
-      + '<td>' + esc(x.doc.emit_nome || '—') + '<small>' + esc(x.doc.emit_uf || '') + '</small></td>'
+      + '<td>' + esc(x.doc.emit_nome || '—') + '<small>' + esc(x.doc.emit_uf || '') + '</small>'
+      + (entrouNoutroMes(x.doc) ? '<small class="ds-entrada">entrou em ' + dataBR(x.doc.data_entrada) + ' · ' + esc(deOndeEntrada(x.doc)) + '</small>' : '') + '</td>'
       + '<td>' + esc(i.descricao || '—') + '<small>NCM ' + esc(ncmFormatado(i.ncm) || '—') + (i.cest ? ' · CEST ' + esc(cestFormatado(i.cest)) : '') + '</small></td>'
       + celulasDoItem(i) + '</tr>')).join('')
     + '</tbody></table></div>';
@@ -657,6 +789,92 @@ function itensForaPeloNome(conf){
   if (!conf.fora.length) return '';
   return '<p class="ds-fora">Ficou fora pelo nome: ' + conf.fora.flatMap(x => x.itens.map(i => esc(i.descricao || '—') + ' (nota ' + esc(x.doc.numero || '—') + ', por "' + esc(i.palavra) + '")')).join('; ') + '.</p>';
 }
+
+// ---------- a data de entrada ----------
+// a que a Domínio usa pra pôr a nota no mês (26/11/2026, o caso da Thalia): marcada aqui até a ponte trazer a de lá; a
+// da Domínio não se muda aqui (a ponte grava por cima da marcada, e a tela não grava por cima da dela)
+function msgEnt(t, tipo){ const el = $('msgEnt'); el.textContent = t || ''; el.className = 'ds-msg' + (tipo === 'ok' ? ' ds-ok' : tipo === 'err' ? ' ds-err' : ''); }
+const mesPorExtenso = c => /^\d{4}-\d{2}/.test(String(c || '')) ? nomeDoMes(c) + ' de ' + String(c).slice(0, 4) : '';
+let notaEnt = null, botaoEnt = null, gravandoEnt = false;
+const acharNota = id => doMes ? ([...doMes.docs, ...doMes.virada.docs, ...doMes.sairam].find(d => String(d.id) === String(id)) || null) : null;
+function abrirEntrada(id, botao){
+  const d = acharNota(id);
+  if (!d || d.entrada_origem === 'dominio') return;
+  notaEnt = d; botaoEnt = botao || null;
+  const e = empresas.find(x => x.id === d.cliente_id);
+  const hoje = hojeLocal();
+  $('eNota').textContent = 'Nota nº ' + (d.numero || '—') + ' de ' + (d.emit_nome || 'fornecedor sem nome') + (d.emit_uf ? ' (' + d.emit_uf + ')' : '')
+    + ', da ' + nomeDe(e) + ', emitida em ' + dataBR(d.data_emissao) + '.';
+  $('eData').min = String(d.data_emissao || '').slice(0, 10);
+  $('eData').max = hoje;
+  $('eData').value = entradaSugerida(d, { comp: doMes.comp, hoje });
+  $('eVoltar').hidden = d.entrada_origem !== 'manual';
+  $('eErro').textContent = '';
+  travarEntrada(false);
+  dicaEntrada();
+  $('ovEnt').classList.add('is-open');
+  $('eData').focus();
+}
+function dicaEntrada(){
+  const d = notaEnt, v = $('eData').value;
+  if (!d || problemaDaEntrada(v, d, hojeLocal())) { $('eDica').textContent = ''; return; }
+  const c = v.slice(0, 7);
+  $('eDica').textContent = 'Conta na conferência de ' + mesPorExtenso(c) + (c === String(d.data_emissao || '').slice(0, 7) ? ', o mês da emissão.' : '.');
+}
+function travarEntrada(sim){
+  gravandoEnt = sim;
+  ['eData', 'eSalvar', 'eVoltar', 'eCancelar'].forEach(id => { $(id).disabled = sim; });
+  $('eSalvar').textContent = sim ? 'Salvando…' : 'Salvar';
+}
+function fecharEntrada(){
+  if (gravandoEnt) return;
+  $('ovEnt').classList.remove('is-open');
+  const b = botaoEnt;
+  notaEnt = null; botaoEnt = null;
+  if (b && b.isConnected) b.focus();
+}
+async function gravarEntrada(voltar){
+  const d = notaEnt;
+  if (!d || gravandoEnt) return;
+  const v = $('eData').value;
+  if (!voltar) {
+    const p = problemaDaEntrada(v, d, hojeLocal());
+    if (p) { $('eErro').textContent = p; $('eData').focus(); return; }
+    if (d.entrada_origem === 'manual' && String(d.data_entrada || '').slice(0, 10) === v) { fecharEntrada(); return; }
+  }
+  const patch = voltar ? { data_entrada: null, entrada_origem: null, entrada_por: null, entrada_em: null }
+    : { data_entrada: v, entrada_origem: 'manual', entrada_por: emailUsuario || usuario || null, entrada_em: new Date().toISOString() };
+  travarEntrada(true);
+  $('eErro').textContent = '';
+  // só por cima do que a tela leu: a marcada aqui, ou a nota sem a data — a da Domínio, que pode ter chegado com a janela
+  // aberta, fica
+  let q = supabase.from('nf_documentos').update(patch).eq('id', d.id);
+  q = d.entrada_origem === 'manual' ? q.eq('entrada_origem', 'manual') : q.is('data_entrada', null);
+  let r;
+  try { r = await q.select('id'); } catch (e) { r = { error: e }; }
+  travarEntrada(false);
+  if (r.error) { $('eErro').textContent = 'Não consegui gravar: ' + (r.error.message || 'erro desconhecido') + '. Tente de novo.'; return; }
+  const id = d.id;
+  fecharEntrada();
+  if (!r.data || !r.data.length) {
+    msgEnt('A nota mudou enquanto a janela estava aberta: a Domínio já mandou a data de entrada dela. A conferência foi lida de novo.', 'err');
+  } else {
+    const nota = 'A nota nº ' + (d.numero || '—') + ' de ' + (d.emit_nome || 'fornecedor sem nome');
+    msgEnt(voltar ? nota + ' voltou pro mês da emissão: conta na conferência de ' + mesPorExtenso(String(d.data_emissao || '').slice(0, 7)) + '.'
+      : nota + ' entrou em ' + dataBR(v) + ': conta na conferência de ' + mesPorExtenso(v.slice(0, 7)) + '.', 'ok');
+  }
+  await carregarMes(true);
+  // o foco volta pro botão da mesma nota, se ela segue na tela; senão, pro aviso
+  const volta = [...document.querySelectorAll('[data-entrada]')].find(b => b.dataset.entrada === String(id) && b.offsetParent !== null);
+  (volta || $('msgEnt')).focus();
+}
+$('eData').addEventListener('input', () => { $('eErro').textContent = ''; dicaEntrada(); });
+$('eData').addEventListener('keydown', ev => { if (ev.key === 'Enter') { ev.preventDefault(); gravarEntrada(false); } });
+$('eSalvar').addEventListener('click', () => gravarEntrada(false));
+$('eVoltar').addEventListener('click', () => gravarEntrada(true));
+$('eCancelar').addEventListener('click', fecharEntrada);
+$('eClose').addEventListener('click', fecharEntrada);
+$('ovEnt').addEventListener('click', ev => { if (ev.target === $('ovEnt')) fecharEntrada(); });
 
 // ---------- importar ----------
 const drop = $('drop');

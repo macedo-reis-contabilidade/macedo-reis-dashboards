@@ -3,7 +3,8 @@
 // dígito errado, nada de cliente). Rodar com: node tests/destda.test.mjs
 import { lerUfs, ncmDaRegra, ncmFormatado, ehQuatro, regraDoItem, notaDeFora, conferirEmpresa, mesAnterior, limitesDoMes,
   rotuloDoMes, situacaoDaEmpresa, difalDaNota, stDaNota, stRetido, stSemBase, agruparNotas, nomeTem, lerNomes, classificarItem,
-  ALIQUOTA_INTERNA_RS, UFS } from '../assets/js/destda.js';
+  ALIQUOTA_INTERNA_RS, UFS, dataDoMes, noMes, entrouNoutroMes, saiuDoMes, viradaDoMes, DIAS_DA_VIRADA, primeiroDoMesSeguinte,
+  problemaDaEntrada, entradaSugerida } from '../assets/js/destda.js';
 
 let falhas = 0;
 const chk = (nome, cond, extra) => { if (!cond) falhas++; console.log((cond ? '  ✓ ' : '  ✗ ') + nome + (!cond && extra !== undefined ? ' → ' + JSON.stringify(extra) : '')); };
@@ -195,6 +196,42 @@ chk('o mês anterior (em janeiro, dezembro do ano anterior)', mesAnterior('2026-
 chk('os limites do mês, com o fevereiro bissexto', JSON.stringify(limitesDoMes('2028-02')) === JSON.stringify({ de: '2028-02-01', ate: '2028-02-29' })
   && limitesDoMes('2026-09').ate === '2026-09-30' && limitesDoMes('2026-13') === null);
 chk('o rótulo do mês', rotuloDoMes('2026-09') === '09/2026' && rotuloDoMes('x') === '');
+
+// 26/11/2026, o caso da Thalia: a nota emitida em 30/09 que entrou em 01/10 a Domínio apura em outubro
+console.log('A data de entrada:');
+const virou = nota('v1', { data_emissao: '2026-09-30', data_entrada: '2026-10-01', entrada_origem: 'manual' });
+const semEntrada = nota('v2', { data_emissao: '2026-09-30' });
+const mesmoMes = nota('v3', { data_emissao: '2026-10-05', data_entrada: '2026-10-07', entrada_origem: 'dominio' });
+chk('o dia que põe a nota no mês: a entrada, quando tem; senão, a emissão',
+  dataDoMes(virou) === '2026-10-01' && dataDoMes(semEntrada) === '2026-09-30' && dataDoMes(null) === '');
+chk('a nota de 30/09 que entrou em 01/10 é de outubro, não de setembro', noMes(virou, '2026-10') && !noMes(virou, '2026-09')
+  && noMes(semEntrada, '2026-09') && !noMes(semEntrada, '2026-10'));
+chk('mudou de mês só quando a entrada é de outro mês', entrouNoutroMes(virou) && !entrouNoutroMes(mesmoMes) && !entrouNoutroMes(semEntrada));
+chk('emitida em setembro, entrou em outubro: saiu de setembro (e não "saiu" de outubro)', saiuDoMes(virou, '2026-09') && !saiuDoMes(virou, '2026-10')
+  && !saiuDoMes(semEntrada, '2026-09') && !saiuDoMes(mesmoMes, '2026-10'));
+chk('os últimos ' + DIAS_DA_VIRADA + ' dias do mês anterior (de 21 a 30/09 pra outubro)',
+  JSON.stringify(viradaDoMes('2026-10')) === JSON.stringify({ comp: '2026-09', de: '2026-09-21', ate: '2026-09-30' }), viradaDoMes('2026-10'));
+chk('em março, o fim de fevereiro (bissexto também); em janeiro, o fim de dezembro do ano anterior',
+  JSON.stringify(viradaDoMes('2027-03')) === JSON.stringify({ comp: '2027-02', de: '2027-02-19', ate: '2027-02-28' })
+  && viradaDoMes('2028-03').de === '2028-02-20' && JSON.stringify(viradaDoMes('2027-01')) === JSON.stringify({ comp: '2026-12', de: '2026-12-22', ate: '2026-12-31' })
+  && viradaDoMes('x') === null && viradaDoMes('2026-10', 3).de === '2026-09-28', [viradaDoMes('2027-03'), viradaDoMes('2028-03'), viradaDoMes('2027-01')]);
+chk('o primeiro dia do mês seguinte (dezembro vira janeiro)', primeiroDoMesSeguinte('2026-09-30') === '2026-10-01'
+  && primeiroDoMesSeguinte('2026-12-31') === '2027-01-01' && primeiroDoMesSeguinte('') === null);
+chk('a entrada que a tela aceita', problemaDaEntrada('2026-10-01', semEntrada, '2026-11-26') === null
+  && problemaDaEntrada('2026-09-30', semEntrada, '2026-11-26') === null);
+chk('sem o dia, ou um dia que não existe: recusa', /Escolha o dia/.test(problemaDaEntrada('', semEntrada, '2026-11-26'))
+  && /Escolha o dia/.test(problemaDaEntrada('2026-02-30', semEntrada, '2026-11-26')));
+chk('antes da emissão: recusa, com o dia da emissão', problemaDaEntrada('2026-09-29', semEntrada, '2026-11-26') === 'A entrada não pode ser antes da emissão (30/09/2026).');
+chk('depois de hoje: recusa', problemaDaEntrada('2026-11-27', semEntrada, '2026-11-26') === 'A entrada não pode ser depois de hoje.');
+chk('a data que a janela abre: a que a nota tem', entradaSugerida(virou, { comp: '2026-10', hoje: '2026-11-26' }) === '2026-10-01');
+chk('da lista do fim de setembro, na conferência de outubro: 01/10', entradaSugerida(semEntrada, { comp: '2026-10', hoje: '2026-11-26' }) === '2026-10-01');
+chk('de uma nota de 31/10, na conferência de outubro: 01/11 (a do fim do mês que entrou no outro)',
+  entradaSugerida(nota('x', { data_emissao: '2026-10-31' }), { comp: '2026-10', hoje: '2026-11-26' }) === '2026-11-01');
+chk('o mês seguinte que ainda não chegou: a emissão', entradaSugerida(nota('x', { data_emissao: '2026-11-20' }), { comp: '2026-11', hoje: '2026-11-26' }) === '2026-11-20');
+
+// a conferência do mês com a nota que mudou de mês: a mesma conta, só que no mês da entrada
+const daVirada = conferirEmpresa([virou], new Map([['v1', [item(1)]]]), [], EMPRESA);
+chk('a nota que entrou no mês seguinte entra na conta como qualquer outra', daVirada.diferencial.length === 1 && daVirada.totais.diferencial.difal === 130);
 
 console.log(falhas ? '\n' + falhas + ' falha(s).' : '\nTudo certo.');
 process.exit(falhas ? 1 : 0);

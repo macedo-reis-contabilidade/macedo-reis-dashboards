@@ -38,6 +38,13 @@
 //                                                              ao destino de cada autorização ativa, só as de entrada a
 //                                                              partir da data dela; nada das notas fica no sistema, só o
 //                                                              registro do envio (compartilhamentos_envios) (03/11/2026)
+//   { versao: 1, tipo: 'entradas', pedir: 'empresas' }       → os códigos do Domínio das empresas da SEDIF/DeSTDA e a
+//                                                              janela das datas de entrada a ler (26/11/2026)
+//   { versao: 1, tipo: 'entradas', rodada, empresas }        → a chave e a data de entrada de cada NF-e de compra de fora
+//                                                              do RS dessas empresas, conferidas (entradas.js) e gravadas
+//                                                              nas notas que já estão na base (nf_gravar_entradas): a
+//                                                              Conferência SEDIF/DeSTDA põe a nota no mês da entrada,
+//                                                              como a Domínio
 // Respostas que a ponte entende (ponte/envio.py): 2xx foi · 4xx recusado (não repete) · 5xx tenta de novo.
 // Puro: env, banco, relógio, o envio ao destino e o Google injetados (index.ts monta). Testes: tests/ponte-funcao.test.mjs.
 // ============================================================
@@ -48,6 +55,7 @@ import { validarPacoteNotas, empresasAutorizadas, autorizacaoAtiva, corpoDoDesti
 import { validarRelatorio, nomeDoRelatorio, pastaFiscal, pastaSituacao, idDaPasta, linkDoArquivo, PASTA_FISCAL, PASTA_SITUACAO,
   SEM_PASTA, SEM_CADASTRO, SEM_DRIVE, DRIVE_FORA } from './relatorio.js';
 import { criarDrive, ErroDrive } from './drive.js';
+import { validarPacoteEntradas, janelaDasEntradas, empresasDasEntradas, notasParaGravar, LIMITES_ENTRADAS } from './entradas.js';
 
 const CABECALHOS = { 'Content-Type': 'application/json' };
 const resposta = (obj, status = 200) => new Response(JSON.stringify(obj), { status, headers: CABECALHOS });
@@ -82,6 +90,40 @@ async function autorizadasHoje(db, hoje) {
   const { data: cli, error: e3 } = await db.from('clientes').select('id, documento').in('id', ids);
   if (e3) throw e3;
   return empresasAutorizadas(ativas, emp, cli, hoje, await destinosConfigurados(db));
+}
+
+// as empresas da Conferência SEDIF/DeSTDA (a mesma lista da tela: o vínculo ativo de uma obrigação com "destda" no nome),
+// pelo código do Domínio: [{ codigo, cliente_id }]
+async function empresasDaSedif(db) {
+  const { data: ob, error: e1 } = await db.from('obrigacoes_fiscais').select('id, nome').ilike('nome', '%destda%');
+  if (e1) throw e1;
+  const obrigacoes = (ob || []).filter(o => /destda/i.test(o.nome || '')).map(o => o.id);
+  if (!obrigacoes.length) return [];
+  const { data: vs, error: e2 } = await db.from('cliente_obrigacoes').select('cliente_id').in('obrigacao_id', obrigacoes).eq('ativo', true);
+  if (e2) throw e2;
+  const ids = [...new Set((vs || []).map(x => x.cliente_id).filter(Boolean))];
+  const out = [];
+  for (let i = 0; i < ids.length; i += 100) {
+    const { data, error } = await db.from('dominio_empresas').select('codigo, cliente_id').in('cliente_id', ids.slice(i, i + 100));
+    if (error) throw error;
+    out.push(...(data || []));
+  }
+  return out;
+}
+
+// as datas de entrada (26/11/2026): só das empresas da lista, gravadas em partes; o banco grava só nas notas de entrada
+// que já estão na base, e só o que mudou (a ponte manda a janela inteira todo dia)
+async function gravarEntradas(db, v) {
+  const g = notasParaGravar(v.pacote, await empresasDaSedif(db));
+  const recusadas = [...v.recusadas, ...g.recusadas];
+  const total = { recebidas: 0, achadas: 0, atualizadas: 0 };
+  for (let i = 0; i < g.notas.length; i += LIMITES_ENTRADAS.porVez) {
+    const { data, error } = await db.rpc('nf_gravar_entradas', { p: { notas: g.notas.slice(i, i + LIMITES_ENTRADAS.porVez) } });
+    if (error) throw error;
+    for (const k of Object.keys(total)) total[k] += Number((data || {})[k]) || 0;
+  }
+  return resposta({ ok: true, gravado: true, empresas: v.pacote.empresas.length, notas: g.notas.length, ...total,
+    recusadas: recusadas.slice(0, LIMITES_ENTRADAS.recusadas), total_recusadas: recusadas.length });
 }
 
 // as notas de uma empresa: a autorização conferida de novo aqui (o código do Domínio, o documento do cadastro e a
@@ -299,6 +341,14 @@ export function criarServidor({ criarDb, agora = () => Date.now(), enviar = (url
         const v = validarPacoteNotas(corpo);
         if (!v.ok) return resposta({ erro: 'Pacote de notas recusado: ' + v.erro + ' (' + v.campo + ').' }, 422);
         return await encaminharNotas(db, v, hojeEmBrasilia(agora()), agora, enviar);
+      }
+      if (corpo.tipo === 'entradas' && corpo.pedir === 'empresas') {
+        return resposta({ empresas: empresasDasEntradas(await empresasDaSedif(db)), ...janelaDasEntradas(hojeEmBrasilia(agora())) });
+      }
+      if (corpo.tipo === 'entradas') {
+        const v = validarPacoteEntradas(corpo, hojeEmBrasilia(agora()));
+        if (!v.ok) return resposta({ erro: 'Pacote das datas de entrada recusado: ' + v.erro + ' (' + v.campo + ').' }, 422);
+        return await gravarEntradas(db, v);
       }
       return resposta({ erro: 'Nada pra fazer com este pacote.' }, 422);
     } catch (e) {

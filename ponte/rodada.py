@@ -18,8 +18,9 @@ AVISO_TAMANHO = 14 * 1024 * 1024
 
 
 def rodar(falso=False, sem_enviar=False, saida=None, meses=None):
-    """A rodada dos totais e, no fim, a etapa das notas das empresas autorizadas (ponte/notas/), no mesmo modo — um erro
-    nela vai pro log e não muda o que a rodada dos totais fez nem o código de saída dela."""
+    """A rodada dos totais e, no fim, a etapa das notas das empresas autorizadas (ponte/notas/) e a das datas de entrada
+    das notas de fora do RS (ponte/entradas.py), no mesmo modo — um erro nelas vai pro log e não muda o que a rodada dos
+    totais fez nem o código de saída dela."""
     base = config.pasta()
     cfg = config.carregar()
     reg = Registro(base / 'logs', segredos=cfg.segredos())
@@ -30,6 +31,12 @@ def rodar(falso=False, sem_enviar=False, saida=None, meses=None):
         etapa(falso=falso, sem_enviar=sem_enviar, registro=reg)
     except Exception as e:   # o import das notas (ou o da Receita, que elas usam) quebrado: só o log
         reg(f'notas: a etapa das notas não abriu ({type(e).__name__}) — a rodada dos totais segue como foi', 'erro')
+    # a data de entrada das notas de fora do RS das empresas da SEDIF/DeSTDA (26/11/2026, ponte/entradas.py)
+    try:
+        from .entradas import etapa as etapa_entradas
+        etapa_entradas(falso=falso, sem_enviar=sem_enviar, registro=reg)
+    except Exception as e:
+        reg(f'entradas: a etapa das datas de entrada não abriu ({type(e).__name__}) — a rodada dos totais segue como foi', 'erro')
     return codigo
 
 

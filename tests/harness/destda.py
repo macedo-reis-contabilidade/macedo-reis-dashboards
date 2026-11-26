@@ -24,6 +24,11 @@ Confere, nos temas escuro e claro:
      "Falta importar" com os nomes, cada uma com a conta dela embaixo; pelo teclado (Enter e espaço);
   3c. o recolher (pedido do Samuel): agrupar as notas por fornecedor e por data, com o subtotal e guardado no navegador;
      Expandir tudo e Recolher tudo;
+  3d. a data de entrada (26/11/2026, a nota emitida em 30/09 que a Domínio pôs em outubro, da Thalia): a lista das notas
+     do fim do mês anterior sem a data, com o "Entrou em <mês>"; a janela (a sugestão, antes da emissão e depois de hoje
+     não gravam, o Esc, o Enter); marcada, a nota entra no mês da entrada, com quem marcou na linha dela, e sai da lista
+     do mês da emissão, onde aparece entre as que entraram noutro mês; "Voltar à data de emissão"; a data que a Domínio
+     manda com a janela aberta fica (a tela não grava por cima), e a da Domínio não tem o botão de mudar;
   4. trocar o mês na aba "Com DIFAL": 08/2026 mostra só a nota de GO, com o DIFAL dela, e a aba fica; o item a 4% que o
      nome não decide fica fora do DIFAL, com o aviso;
   4b. a ração pet de outro NCM (28/10/2026, as notas da Thalia com 2309.90.10): a de gato entra no ST pelo nome, com a
@@ -175,8 +180,19 @@ def abrir_aba(p, k):
 def cards(p):
     return p.eval_on_selector_all('#lista .ds-emp', 'els => els.map(e => e.dataset.empresa)')
 
-def linhas(p, sel):   # as linhas que estão na tela (as recolhidas ficam de fora)
-    return p.eval_on_selector_all(sel, 'trs => trs.filter(t => !t.closest("[hidden]")).map(t => [...t.cells].map(c => c.innerText.replace(/\\s+/g, " ").trim()))')
+def linhas(p, sel):   # as linhas que estão na tela (as recolhidas ficam de fora, e a da data de entrada da nota também: o 3d confere)
+    return p.eval_on_selector_all(sel, 'trs => trs.filter(t => !t.closest("[hidden]") && !t.classList.contains("ds-ent")).map(t => [...t.cells].map(c => c.innerText.replace(/\\s+/g, " ").trim()))')
+
+def texto(p, sel):   # o texto de um elemento, numa linha só
+    return p.eval_on_selector(sel, 'e => e.innerText.replace(/\\s+/g, " ").trim()')
+
+def esperar(p, js, arg=None):
+    p.wait_for_function(js, arg=arg, timeout=8000)
+
+N909 = "window.__mockDb.nf_documentos.find(d => d.numero === '909' && d.cliente_id === 'd1')"
+
+def campo(p, nome):   # um campo da nota 909 da d1 no banco falso (o que falta volta None)
+    return db(p, '(' + N909 + '.' + nome + ' ?? null)')
 
 def valores(p, id_):   # o DIFAL e o ST na linha da empresa
     return p.eval_on_selector_all(f'.ds-emp[data-empresa="{id_}"] > .ds-emp-linha .ds-emp-val', 'els => els.map(e => e.innerText.replace(/\\s+/g, " ").trim())')
@@ -407,6 +423,101 @@ def fluxo(b, base, tema, erros):
     p.click('#btnFecharTudo')
     ok(abertas(p) == 0 and 'PADARIA' not in p.inner_text('#curtas'), '"Recolher tudo": tudo fechado de novo')
     p.click('#agrupar [data-agrupar="nota"]')
+
+    print(f'[{tema}] 3d. A data de entrada (26/11/2026, a nota de 30/09 que entrou em 01/10 da Thalia)')
+    curtas = p.inner_text('#curtas')
+    ok('Notas do fim de agosto sem a data de entrada (1)' in curtas and 'RACOES SC TESTE SA' not in curtas,
+       'em "Todas", a lista das notas do fim de agosto sem a data de entrada, recolhida')
+    p.click('#curtas h3[data-alterna="l:virada"] button')
+    vir = linhas(p, '#curtas table.ds-vir tbody tr')
+    ok(vir == [['AGROPECUÁRIA TESTE LTDA', '25/08/2026', '909', 'RACOES SC TESTE SA SC', '—', '10,00 1 item a conferir', 'Entrou em setembro']],
+       f'aberta: a nota de SC de 25/08, com o que ela soma (sem DIFAL: o item a 4% está a conferir) ({vir})')
+    ok(valores(p, 'd1') == ['DIFAL: R$ 130,00 1 nota', 'ICMS-ST a recolher: R$ 25,00 1 nota'], 'sem a data de entrada, ela não entra na conferência de setembro')
+    p.click('#curtas table.ds-vir [data-entrada]')
+    ok('is-open' in p.get_attribute('#ovEnt', 'class') and p.evaluate("() => document.activeElement.id") == 'eData', 'o botão abre a janela da data de entrada, com o cursor na data')
+    ok(p.inner_text('#eNota') == 'Nota nº 909 de RACOES SC TESTE SA (SC), da AGROPECUÁRIA TESTE LTDA, emitida em 25/08/2026.'
+       and p.input_value('#eData') == '2026-09-01' and p.inner_text('#eDica') == 'Conta na conferência de setembro de 2026.' and p.is_hidden('#eVoltar'),
+       f'a nota, a data sugerida (o primeiro dia de setembro) e o mês em que ela conta ({p.inner_text("#eNota")!r}, {p.input_value("#eData")}, {p.inner_text("#eDica")!r})')
+    p.keyboard.press('Escape')
+    ok('is-open' not in p.get_attribute('#ovEnt', 'class') and p.evaluate("() => document.activeElement.dataset.entrada") == db(p, N909 + '.id'),
+       'Esc fecha a janela, e o foco volta pro botão')
+    p.click('#curtas table.ds-vir [data-entrada]')
+    p.fill('#eData', '2026-08-20')
+    p.click('#eSalvar')
+    ok(p.inner_text('#eErro') == 'A entrada não pode ser antes da emissão (25/08/2026).' and campo(p, 'data_entrada') is None and p.inner_text('#eDica') == '',
+       'antes da emissão não grava')
+    p.fill('#eData', '2026-10-28')
+    ok(p.inner_text('#eErro') == '', 'mudar a data tira o aviso')
+    p.keyboard.press('Enter')
+    ok(p.inner_text('#eErro') == 'A entrada não pode ser depois de hoje.' and campo(p, 'data_entrada') is None, 'depois de hoje também não (e o Enter grava)')
+    p.fill('#eData', '2026-09-02')
+    ok(p.inner_text('#eDica') == 'Conta na conferência de setembro de 2026.', 'a dica acompanha a data')
+    p.screenshot(path=str(FOTOS / f'{tema}-destda-entrada.png'))
+    p.click('#eSalvar')
+    esperar(p, "() => !document.querySelector('#curtas table.ds-vir') && document.querySelector('#lista .ds-emp')")
+    nd = db(p, N909)
+    ok(nd['data_entrada'] == '2026-09-02' and nd['entrada_origem'] == 'manual' and nd['entrada_por'] == 'financeiro@macedoereis.com.br' and nd['entrada_em'],
+       f'grava a data, marcada à mão, com quem e quando ({nd.get("data_entrada")}, {nd.get("entrada_origem")}, {nd.get("entrada_por")})')
+    ok('is-open' not in p.get_attribute('#ovEnt', 'class')
+       and p.inner_text('#msgEnt') == 'A nota nº 909 de RACOES SC TESTE SA entrou em 02/09/2026: conta na conferência de setembro de 2026.'
+       and p.evaluate("() => document.activeElement.id") == 'msgEnt',
+       f'a janela fecha, com o aviso (e o foco nele) ({p.inner_text("#msgEnt")!r})')
+    ok(valores(p, 'd1') == ['DIFAL: R$ 130,00 1 nota', 'ICMS-ST a recolher: R$ 35,00 2 notas 1 item a conferir'] and abas(p)['st'] == '1'
+       and 'Notas do fim de agosto' not in p.inner_text('#curtas'),
+       f'a nota entra na conferência de setembro: o ST dela soma (25,00 + 10,00), e ela sai da lista do fim de agosto ({valores(p, "d1")})')
+    abrir_empresa(p, 'd1')
+    st = [l for l in linhas(p, '.ds-emp[data-empresa="d1"] table.ds-st tbody tr') if l[1] == '909']
+    ok(st == [['25/08/2026', '909', 'RACOES SC TESTE SA SC entrou em 02/09/2026 · marcada por Samuel em 27/10', '1', '200,00', '200,00', '', '24,00', '0,00', '10,00']],
+       f'na linha da nota, quando ela entrou e quem marcou ({st})')
+    abrir_nota(p, 'd1', 'ds-st', '909')
+    ent = p.locator('.ds-emp[data-empresa="d1"] table.ds-st tr.ds-ent:not([hidden])')
+    ok(ent.count() == 1 and texto(p, '.ds-emp[data-empresa="d1"] table.ds-st tr.ds-ent:not([hidden])') == 'Entrou em 02/09/2026 (marcada por Samuel em 27/10). Mudar a data de entrada',
+       'aberta, embaixo dos itens, a data de entrada e o botão de mudar')
+    ent2 = p.locator('.ds-emp[data-empresa="d1"] table.ds-st tr.ds-ent').all_inner_texts()
+    ok(any('Sem a data de entrada: conta pela emissão.' in t and 'Entrou noutro mês' in t for t in ent2), 'a nota sem a data de entrada diz que conta pela emissão, com o botão')
+    abrir_nota(p, 'd1', 'ds-st', '909')
+    p.click('#btnFecharTudo')
+
+    trocar_mes(p, '2026-08')
+    ok(abas(p) == {'difal': '1', 'st': '0', 'nada': '0', 'importar': '3', 'todas': '4'}, f'em agosto, a nota de 25/08 sai do ICMS-ST ({abas(p)})')
+    curtas = p.inner_text('#curtas')
+    ok('Emitidas em agosto que entraram noutro mês (1)' in curtas and 'RACOES' not in curtas, 'embaixo, a lista das emitidas em agosto que entraram noutro mês, recolhida')
+    p.click('#curtas h3[data-alterna="l:sairam"] button')
+    sai = linhas(p, '#curtas table.ds-vir tbody tr')
+    p.screenshot(path=str(FOTOS / f'{tema}-destda-sairam.png'), full_page=True)
+    ok(sai == [['AGROPECUÁRIA TESTE LTDA', '25/08/2026', '909', 'RACOES SC TESTE SA SC', '02/09/2026 marcada por Samuel em 27/10', '—', '10,00 1 item a conferir', 'Mudar a data de entrada']],
+       f'aberta: a nota, com a entrada e quem marcou ({sai})')
+    p.click('#curtas table.ds-vir [data-entrada]')
+    ok(p.input_value('#eData') == '2026-09-02' and p.is_visible('#eVoltar'), 'a janela abre com a data marcada e o "Voltar à data de emissão"')
+    p.click('#eVoltar')
+    esperar(p, "() => !document.querySelector('#curtas table.ds-vir') && document.querySelector('#lista .ds-emp')")
+    nd = db(p, N909)
+    ok(nd['data_entrada'] is None and nd['entrada_origem'] is None and nd['entrada_por'] is None and nd['entrada_em'] is None
+       and p.inner_text('#msgEnt') == 'A nota nº 909 de RACOES SC TESTE SA voltou pro mês da emissão: conta na conferência de agosto de 2026.'
+       and abas(p)['st'] == '1',
+       f'"Voltar à data de emissão" apaga a data, e a nota volta pra agosto ({p.inner_text("#msgEnt")!r}, {abas(p)})')
+    # a Domínio manda a data com a janela aberta: a tela não grava por cima
+    abrir_empresa(p, 'd1')
+    abrir_nota(p, 'd1', 'ds-st', '909')
+    p.click('.ds-emp[data-empresa="d1"] table.ds-st tr.ds-ent:not([hidden]) [data-entrada]')
+    ok(p.input_value('#eData') == '2026-09-01' and p.inner_text('#eDica') == 'Conta na conferência de setembro de 2026.',
+       f'da nota do mês, a sugestão é o primeiro dia do mês seguinte ({p.input_value("#eData")})')
+    p.evaluate("(() => { Object.assign(" + N909 + ", { data_entrada: '2026-08-28', entrada_origem: 'dominio', entrada_por: 'ponte', entrada_em: '2026-10-27T10:00:00Z' }); })()")
+    p.click('#eSalvar')
+    esperar(p, "() => /mudou enquanto/.test(document.getElementById('msgEnt').textContent) && document.querySelector('#lista .ds-emp')")
+    nd = db(p, N909)
+    ok(nd['data_entrada'] == '2026-08-28' and nd['entrada_origem'] == 'dominio' and 'ds-err' in p.get_attribute('#msgEnt', 'class')
+       and p.inner_text('#msgEnt') == 'A nota mudou enquanto a janela estava aberta: a Domínio já mandou a data de entrada dela. A conferência foi lida de novo.',
+       'a data que a Domínio mandou com a janela aberta fica, com o aviso')
+    ok(texto(p, '.ds-emp[data-empresa="d1"] table.ds-st tr.ds-ent:not([hidden])') == 'Entrou em 28/08/2026 (pela Domínio).'
+       and p.locator('.ds-emp[data-empresa="d1"] table.ds-st tr.ds-ent:not([hidden]) [data-entrada]').count() == 0
+       and p.evaluate("() => document.activeElement.id") == 'msgEnt',
+       'a da Domínio aparece na nota, sem o botão de mudar (não se muda aqui)')
+    p.evaluate("(() => { const d = " + N909 + "; ['data_entrada', 'entrada_origem', 'entrada_por', 'entrada_em'].forEach(k => delete d[k]); })()")
+    p.click('#btnFecharTudo')
+    trocar_mes(p, '2026-09')
+    abrir_aba(p, 'todas')
+    ok(cards(p) == ['d1', 'd2'] and abertas(p) == 0 and p.inner_text('#msgEnt') == '', 'de volta a setembro, sem o aviso')
 
     print(f'[{tema}] 4. Trocar o mês (na aba "Com DIFAL")')
     abrir_aba(p, 'difal')

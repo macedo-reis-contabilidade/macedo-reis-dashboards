@@ -288,6 +288,31 @@ rede fora — as tentativas de sempre e, não indo, vai na próxima rodada (as n
 chave — como nos totais. O `conferir` mostra quantas empresas o sistema tem autorizadas e quantas prontas. O log de
 cada empresa sai pelo código, só com números.
 
+## A data de entrada das notas de fora do RS (26/11/2026)
+
+Pra Conferência SEDIF/DeSTDA do sistema pôr cada nota no mês em que ela entrou na empresa, como a Domínio apura (o caso
+da Thalia: a nota emitida em 30/09 que entrou em 01/10 a Domínio apura em outubro, e a conferência, pela emissão, punha
+em setembro). `ponte\entradas.py`, a fila `docs/FILA-CODE-2026-11-26-ENTRADAS.md`.
+
+**O que sai**: só a chave e a data de entrada (a do livro, `dent_ent`) de cada NF-e de compra de fora do RS das
+empresas que o sistema manda (a lista, `{"tipo": "entradas", "pedir": "empresas"}`: as da obrigação SEDIF/DeSTDA,
+pelo código do Domínio, e a janela — o mês de hoje e os dois antes). Nada da nota nem do fornecedor. A consulta
+(`entradas_fora.sql`, o código da empresa e o período) tem as regras do `notas_itens.sql` — modelo 55, emitida por
+terceiro, fora a cancelada, a denegada e a inutilizada — e mais: de fora do RS (os dois primeiros dígitos da chave) e
+sem o fornecedor pessoa física. A ponte confere cada chave de novo (o dígito verificador, o modelo, a UF, o CPF no lugar
+do CNPJ) e a data (na janela, não antes do mês da emissão), e a função `ponte` confere tudo outra vez.
+
+**Quando**: no fim do `py -3 -m ponte rodar` (a tarefa das 7h), depois das notas, no mesmo modo (`--sem-enviar`,
+`--falso`) — um erro nela vai pro log e não muda a rodada dos totais —, ou sozinha:
+
+    py -3 -m ponte entradas rodar [--sem-enviar] [--falso]
+
+**Sem estado**: a janela inteira vai todo dia, num pacote só (até 20 mil notas; mais que isso, outro). O sistema grava
+a data só nas notas de entrada que já estão na base (as que a Thalia importou pelos XMLs) e só o que mudou; a data da
+Domínio passa por cima da marcada à mão na tela. Não indo (o sistema fora), vai na rodada seguinte. O log sai por
+empresa e pelo código, só com números: quantas notas, quantas de fora e por quê, e o que o sistema respondeu
+(recebidas, achadas na base, com a data nova, recusadas sem a chave).
+
 ---
 
 # Ponte da Receita (Integra Contador)

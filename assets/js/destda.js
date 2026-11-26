@@ -238,3 +238,58 @@ export function situacaoDaEmpresa(conf, temNotas) {
   if (conf.diferencial.length || conf.st.length || (conf.conferir || []).length || conf.semAliquota.length) return 'a_conferir';
   return 'nada';
 }
+
+// ---------- a data de entrada (26/11/2026, o caso da Thalia) ----------
+// A Domínio apura a nota no mês em que a mercadoria entrou na empresa; o XML só traz a emissão. A nota emitida em 30/09
+// que entrou em 01/10 a Domínio põe em outubro, e a conferência punha em setembro. A data de entrada (nf_documentos.
+// data_entrada) vem da Domínio pela ponte (entrada_origem 'dominio') ou é marcada aqui, na conferência ('manual'); sem
+// ela, vale a emissão. A da Domínio passa por cima da marcada, e só a marcada se muda ou desfaz na tela.
+const dia = s => String(s == null ? '' : s).slice(0, 10);
+const br = s => s.slice(8, 10) + '/' + s.slice(5, 7) + '/' + s.slice(0, 4);
+const diaValido = s => {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(s);
+  if (!m) return false;
+  const d = new Date(Date.UTC(+m[1], +m[2] - 1, +m[3]));
+  return d.getUTCFullYear() === +m[1] && d.getUTCMonth() === +m[2] - 1 && d.getUTCDate() === +m[3];
+};
+// o dia que põe a nota no mês: o da entrada, quando a nota tem; senão, o da emissão
+export const dataDoMes = d => dia(d && (d.data_entrada || d.data_emissao));
+export const noMes = (d, comp) => dataDoMes(d).slice(0, 7) === comp;
+// a nota emitida num mês que entrou noutro (a que muda de mês na conferência)
+export const entrouNoutroMes = d => !!(d && d.data_entrada && dia(d.data_entrada).slice(0, 7) !== dia(d.data_emissao).slice(0, 7));
+// emitida no mês, entrou noutro: fica fora da conferência do mês (conta no da entrada)
+export const saiuDoMes = (d, comp) => dia(d && d.data_emissao).slice(0, 7) === comp && !!(d && d.data_entrada) && !noMes(d, comp);
+// os últimos dias do mês anterior, em que a nota emitida pode ter entrado neste mês: a lista do "Entrou em <mês>"
+export const DIAS_DA_VIRADA = 10;
+export function viradaDoMes(comp, dias = DIAS_DA_VIRADA) {
+  const ant = mesAnterior(comp), lim = ant && limitesDoMes(ant);
+  if (!lim) return null;
+  const [a, m, d] = lim.ate.split('-').map(Number);
+  return { comp: ant, de: new Date(Date.UTC(a, m - 1, d - (dias - 1))).toISOString().slice(0, 10), ate: lim.ate };
+}
+// o primeiro dia do mês seguinte ao da data ('AAAA-MM-DD' → 'AAAA-MM-01')
+export function primeiroDoMesSeguinte(s) {
+  const [a, m] = dia(s).split('-').map(Number);
+  if (!a || !m) return null;
+  return m === 12 ? (a + 1) + '-01-01' : a + '-' + String(m + 1).padStart(2, '0') + '-01';
+}
+// a data de entrada que a tela grava: um dia de verdade, nem antes da emissão nem depois de hoje → null, ou o porquê
+export function problemaDaEntrada(data, doc, hoje) {
+  const s = dia(data);
+  if (!diaValido(s)) return 'Escolha o dia em que a nota entrou na empresa.';
+  const emissao = dia(doc && doc.data_emissao);
+  if (diaValido(emissao) && s < emissao) return 'A entrada não pode ser antes da emissão (' + br(emissao) + ').';
+  if (diaValido(dia(hoje)) && s > dia(hoje)) return 'A entrada não pode ser depois de hoje.';
+  return null;
+}
+// a data que a janela da entrada abre: a que a nota já tem; da lista do fim do mês anterior, o primeiro dia do mês da
+// tela; de uma nota do mês, o primeiro dia do mês seguinte (a nota do fim do mês que entrou no outro), se já chegou;
+// senão, a emissão
+export function entradaSugerida(doc, { comp = null, hoje = null } = {}) {
+  if (doc && doc.data_entrada) return dia(doc.data_entrada);
+  const emissao = dia(doc && doc.data_emissao);
+  const lim = comp && limitesDoMes(comp);
+  if (lim && lim.de > emissao) return lim.de;
+  const seguinte = primeiroDoMesSeguinte(emissao);
+  return seguinte && (!hoje || seguinte <= dia(hoje)) ? seguinte : emissao;
+}

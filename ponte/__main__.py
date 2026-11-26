@@ -4,6 +4,9 @@
    py -3 -m ponte receita relatorios        (os PDFs do relatório de situação fiscal que faltam, pro Drive — sem o Serpro)
    py -3 -m ponte notas rodar [--sem-enviar] [--saida arquivo.json] [--falso] [--tudo] [--empresa CODIGO]
                                             (as notas de compra das empresas autorizadas — ponte/notas/)
+   py -3 -m ponte entradas rodar [--sem-enviar] [--falso]
+                                            (a data de entrada das notas de fora do RS das empresas da SEDIF/DeSTDA —
+                                             ponte/entradas.py)
    py -3 -m ponte chave [--trocar]          (gera a chave da ponte no config.ini e mostra só a impressão digital)
    py -3 -m ponte dominio conexao [--esperar] | tabelas [--procurar termo] [--saida arquivo.txt]
                           | sql "SELECT …" | --arquivo consulta.sql [--mes AAAA-MM] [--linhas N]
@@ -100,6 +103,11 @@ def main(argv=None):
     nr.add_argument('--falso', action='store_true', help='lê da Domínio de mentira (só manda pra endereço local)')
     nr.add_argument('--tudo', action='store_true', help='a janela inteira, desde a data da autorização')
     nr.add_argument('--empresa', type=_empresas, metavar='CODIGO', help='só esta empresa (o código do Domínio), se estiver na lista')
+    en = sub.add_parser('entradas', help='a data de entrada das notas de fora do RS das empresas da SEDIF/DeSTDA (ponte/entradas.py)')
+    esub = en.add_subparsers(dest='acao', required=True)
+    er = esub.add_parser('rodar', help='pede a lista ao sistema, lê da Domínio a chave e a data de entrada, manda')
+    er.add_argument('--sem-enviar', action='store_true', help='lê e conta; não manda')
+    er.add_argument('--falso', action='store_true', help='lê da Domínio de mentira (só manda pra endereço local)')
     ch = sub.add_parser('chave', help='gera a chave da ponte (x-chave) no config.ini e mostra só a impressão digital')
     ch.add_argument('--trocar', action='store_true', help='troca a chave que existe (pede confirmação)')
     dom = sub.add_parser('dominio', help='a ligação com o banco do Domínio Web: conexao, tabelas, sql — o LEIA-ME explica')
@@ -129,6 +137,10 @@ def main(argv=None):
         if bool(args.consulta) == bool(args.arquivo):
             p.error('dominio sql: passe a consulta entre aspas OU --arquivo consulta.sql')
         return dominio.sql(consulta=args.consulta, arquivo=args.arquivo, mes=args.mes, linhas=args.linhas)
+
+    if args.comando == 'entradas':
+        from .entradas import rodar as rodar_entradas
+        return rodar_entradas(sem_enviar=args.sem_enviar, falso=args.falso)
 
     if args.comando == 'notas':
         from .notas.rodada import rodar as rodar_notas

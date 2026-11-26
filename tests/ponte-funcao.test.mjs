@@ -11,6 +11,7 @@ import { validarPacote, empresasDaCarteira, documento, hojeEmBrasilia, sha256Hex
 import { criarServidor } from '../supabase/functions/ponte/servidor.js';
 import { validarPacoteDominio, LIMITES_DOMINIO, BLOCOS_DA_VERSAO, BLOCOS_DOMINIO, BLOCOS_DA_5 } from '../supabase/functions/ponte/dominio.js';
 import { validarPacoteNotas, empresasAutorizadas, destinosDaConfig, dvDaChave, pareceCpf, semCpf, LIMITES_NOTAS, SEM_DESTINO, SEM_AUTORIZACAO, DESTINO_FORA } from '../supabase/functions/ponte/notas.js';
+import { validarPacoteEntradas, janelaDasEntradas, empresasDasEntradas, notasParaGravar, LIMITES_ENTRADAS, SEM_SEDIF } from '../supabase/functions/ponte/entradas.js';
 
 let falhas = 0;
 const chk = (nome, cond, extra) => { if (!cond) falhas++; console.log((cond ? '  ✓ ' : '  ✗ ') + nome + (!cond && extra !== undefined ? ' → ' + JSON.stringify(extra) : '')); };
@@ -1184,6 +1185,136 @@ console.log('O relatório de situação fiscal no Drive (09/11/2026):');
   chk('o banco falhou depois de subir: 500 (a ponte manda de novo e acha o arquivo)', rr.status === 500 && g.subidos.length === 1, rr);
   rr = await pedirRel(dbRel({ clientes: CLI }), montar(), REL({ pdf: b64('isto não é pdf') }));
   chk('o pedido fora do contrato: 422 com o campo', rr.status === 422 && /\(pdf\)/.test(rr.corpo.erro), rr);
+}
+
+console.log('A data de entrada das notas de compra de fora do RS (26/11/2026):');
+{
+  const FORN = '44555666000100';   // inventado, com o dígito verificador errado de propósito
+  const chaveDe = (numero, { uf = '42', aamm = '2609', cnpj = FORN, modelo = '55' } = {}) => {
+    const base = uf + aamm + cnpj + modelo + '001' + String(numero).padStart(9, '0') + '1' + '00004321';
+    return base + dvDaChave(base);
+  };
+  const HOJE = '2026-11-26';
+  chk('a janela: o mês de hoje e os dois antes', JSON.stringify(janelaDasEntradas(HOJE)) === JSON.stringify({ desde: '2026-09-01', ate: HOJE })
+    && janelaDasEntradas('2026-01-15').desde === '2025-11-01' && janelaDasEntradas('2026-03-31').desde === '2026-01-01', janelaDasEntradas('2026-01-15'));
+  chk('as empresas: os códigos do Domínio ligados ao cadastro, sem repetir, em ordem',
+    JSON.stringify(empresasDasEntradas([{ codigo: 12, cliente_id: 'a' }, { codigo: 5, cliente_id: 'b' }, { codigo: 12, cliente_id: 'a' }, { codigo: 7, cliente_id: null }, { codigo: '8', cliente_id: 'c' }]))
+      === JSON.stringify([{ codigo: 5 }, { codigo: 12 }]));
+  const CPF_NA_CHAVE = '000' + '52998224725';   // um CPF de exemplo com os dígitos certos, no lugar do CNPJ
+  chk('o CPF de exemplo é reconhecido como CPF', pareceCpf(CPF_NA_CHAVE));
+  const PAC = mudar => {
+    const p = { versao: 1, tipo: 'entradas', rodada: { id: '9D0C5C56-1111-4A2B-9C3D-000000000026', inicio: '2026-11-26T07:20:00-03:00', maquina: 'PC-PONTE', ponte: '0.6.0', extra: 'x' },
+      empresas: [
+        { codigo: 901, notas: [{ chave: chaveDe(1), entrada: '2026-10-01', fornecedor: 'NÃO DEVIA IR' }, { chave: chaveDe(2, { aamm: '2610' }), entrada: '2026-10-03' }] },
+        { codigo: 904, notas: [{ chave: chaveDe(3, { cnpj: 'AB12CD34EF5601' }).toLowerCase(), entrada: '2026-09-30' }] }
+      ] };
+    if (mudar) mudar(p);
+    return p;
+  };
+  const ve = validarPacoteEntradas(PAC(), HOJE);
+  chk('o pacote do contrato passa, sem recusa', ve.ok && ve.recusadas.length === 0 && ve.pacote.empresas.length === 2 && ve.pacote.empresas[0].notas.length === 2, ve);
+  chk('só a chave e a data: o resto fica de fora; a rodada sem o que o contrato não prevê, o id em minúscula',
+    ve.ok && JSON.stringify(ve.pacote.empresas[0].notas[0]) === JSON.stringify({ chave: chaveDe(1), entrada: '2026-10-01' })
+      && !('extra' in ve.pacote.rodada) && ve.pacote.rodada.id === '9d0c5c56-1111-4a2b-9c3d-000000000026', ve.ok && ve.pacote);
+  chk('a chave com letras (o CNPJ alfanumérico) em maiúscula', ve.ok && ve.pacote.empresas[1].notas[0].chave === chaveDe(3, { cnpj: 'AB12CD34EF5601' }));
+  const naNota = (mudar, campo, erro) => {
+    const r = validarPacoteEntradas(PAC(p => mudar(p.empresas[0].notas[0], p)), HOJE);
+    const rec = r.ok && r.recusadas.find(x => x.campo === campo);
+    return r.ok && rec && (!erro || erro.test(rec.erro)) && r.pacote.empresas[0].notas.length === 1 && r.pacote.empresas[1].notas.length === 1 && rec.codigo === 901 ? r : null;
+  };
+  chk('a nota do RS fica de fora sozinha', !!naNota(n => { n.chave = chaveDe(1, { uf: '43' }); }, 'empresas[0].notas[0].chave', /do RS/));
+  chk('a NFC-e (modelo 65) fica de fora', !!naNota(n => { n.chave = chaveDe(1, { modelo: '65' }); }, 'empresas[0].notas[0].chave', /modelo 55/));
+  chk('a chave com o dígito verificador errado fica de fora', !!naNota(n => { n.chave = n.chave.slice(0, 43) + ((Number(n.chave[43]) + 1) % 10); }, 'empresas[0].notas[0].chave', /inválida/));
+  chk('a nota de emitente pessoa física (o CPF na chave) não vai', !!naNota(n => { n.chave = chaveDe(1, { cnpj: CPF_NA_CHAVE }); }, 'empresas[0].notas[0].chave', /pessoa física/));
+  chk('a entrada antes do mês da emissão fica de fora', !!naNota(n => { n.entrada = '2026-08-31'; }, 'empresas[0].notas[0].entrada', /antes do mês da emissão/));
+  chk('a data que não existe fica de fora', !!naNota(n => { n.entrada = '2026-09-31'; }, 'empresas[0].notas[0].entrada', /não existe/));
+  chk('depois de hoje fica de fora', !!naNota(n => { n.entrada = '2026-11-27'; }, 'empresas[0].notas[0].entrada', /janela/));
+  chk('antes da janela, com o mês de folga, fica de fora', !!naNota(n => { n.chave = chaveDe(1, { aamm: '2607' }); n.entrada = '2026-07-31'; }, 'empresas[0].notas[0].entrada', /janela/));
+  {
+    const r = validarPacoteEntradas(PAC(p => { p.empresas[0].notas[0].chave = chaveDe(1, { aamm: '2608' }); p.empresas[0].notas[0].entrada = '2026-08-03'; }), HOJE);
+    chk('o mês de folga: a ponte que pediu a janela antes da virada do mês não perde as notas', r.ok && r.recusadas.length === 0, r);
+  }
+  chk('a nota repetida na empresa: a segunda fica de fora', !!(() => {
+    const r = validarPacoteEntradas(PAC(p => { p.empresas[0].notas.push({ chave: chaveDe(1), entrada: '2026-10-02' }); }), HOJE);
+    return r.ok && r.pacote.empresas[0].notas.length === 2 && r.pacote.empresas[0].notas[0].entrada === '2026-10-01'
+      && r.recusadas.length === 1 && /repetida/.test(r.recusadas[0].erro) ? r : null;
+  })());
+  chk('a empresa repetida, ou sem a lista, fica de fora sozinha', !!(() => {
+    const r = validarPacoteEntradas(PAC(p => { p.empresas.push({ codigo: 901, notas: [] }, { codigo: 905, notas: 'x' }, { codigo: 'x', notas: [] }); }), HOJE);
+    return r.ok && r.pacote.empresas.length === 2 && r.recusadas.length === 3 && r.recusadas.map(x => x.codigo).join() === '901,905,' ? r : null;
+  })());
+  const doPacote = (mudar, campo) => { const r = validarPacoteEntradas(PAC(mudar), HOJE); return !r.ok && r.campo === campo ? r : null; };
+  chk('o que é do pacote recusa o pacote inteiro (a versão, a rodada, a lista, notas demais)',
+    !!doPacote(p => { p.versao = 2; }, 'versao') && !!doPacote(p => { p.rodada.id = 'abc'; }, 'rodada.id') && !!doPacote(p => { p.rodada.inicio = '2026-11-26 07:20'; }, 'rodada.inicio')
+      && !!doPacote(p => { p.empresas = {}; }, 'empresas')
+      && !!doPacote(p => { p.empresas[0].notas = Array.from({ length: LIMITES_ENTRADAS.notas }, (_, i) => ({ chave: chaveDe(i + 10), entrada: '2026-10-01' })); }, 'empresas'));
+  {
+    const g = notasParaGravar(ve.pacote, [{ codigo: 901, cliente_id: 'a' }, { codigo: 902, cliente_id: 'b' }]);
+    chk('pro banco: cada nota com o cliente do código; a empresa fora da lista fica de fora, com o porquê',
+      g.notas.length === 2 && g.notas.every(n => n.cliente_id === 'a') && g.recusadas.length === 1 && g.recusadas[0].codigo === 904 && g.recusadas[0].erro === SEM_SEDIF, g);
+  }
+
+  // a porta de entrada, com um banco de mentira
+  const AGORA_E = () => Date.parse('2026-11-26T07:30:00-03:00');
+  function dbEntradas({ rpcErro = null, semDestda = false } = {}) {
+    const t = {
+      configuracoes_escritorio: [{ chave: 'ponte_chave_sha256', valor: h }],
+      obrigacoes_fiscais: semDestda ? [{ id: 'o2', nome: 'PGDAS' }] : [{ id: 'o1', nome: 'SEDIF/DESTDA - SIMPLES NACIONAL' }, { id: 'o2', nome: 'PGDAS' }],
+      cliente_obrigacoes: [{ cliente_id: 'a', obrigacao_id: 'o1', ativo: true }, { cliente_id: 'b', obrigacao_id: 'o1', ativo: false }, { cliente_id: 'c', obrigacao_id: 'o2', ativo: true }],
+      dominio_empresas: [{ codigo: 901, cliente_id: 'a' }, { codigo: 902, cliente_id: 'b' }, { codigo: 903, cliente_id: 'c' }, { codigo: 904, cliente_id: 'a' }]
+    };
+    const chamadas = [];
+    return {
+      chamadas,
+      from(tabela) {
+        const filtros = [];
+        const linhas = () => (t[tabela] || []).filter(l => filtros.every(([op, c, x]) => (op === 'eq' ? l[c] === x : op === 'in' ? x.includes(l[c])
+          : new RegExp(x.replace(/%/g, '.*'), 'i').test(String(l[c] || '')))));
+        const api = {
+          select() { return api; },
+          eq(c, x) { filtros.push(['eq', c, x]); return api; },
+          in(c, x) { filtros.push(['in', c, x]); return api; },
+          ilike(c, x) { filtros.push(['ilike', c, x]); return api; },
+          async maybeSingle() { return { data: linhas()[0] || null, error: null }; },
+          then(ok, erro) { return Promise.resolve({ data: linhas(), error: null }).then(ok, erro); }
+        };
+        return api;
+      },
+      async rpc(nome, args) {
+        chamadas.push({ nome, args });
+        if (rpcErro) return { data: null, error: rpcErro };
+        const n = args.p.notas.length;
+        return { data: { recebidas: n, achadas: Math.max(0, n - 1), atualizadas: Math.max(0, n - 2) }, error: null };
+      }
+    };
+  }
+  const pedirE = async (db, corpo) => {
+    const atender = criarServidor({ criarDb: () => db, agora: AGORA_E });
+    const r2 = await atender(new Request('http://local/ponte', { method: 'POST', headers: { 'x-chave': 'segredo' }, body: JSON.stringify(corpo) }));
+    return { status: r2.status, corpo: await r2.json() };
+  };
+  let re = await pedirE(dbEntradas(), { versao: 1, tipo: 'entradas', pedir: 'empresas' });
+  chk('a lista: só as empresas com o vínculo ativo da SEDIF/DeSTDA, pelo código do Domínio, e a janela',
+    re.status === 200 && JSON.stringify(re.corpo) === JSON.stringify({ empresas: [{ codigo: 901 }, { codigo: 904 }], desde: '2026-09-01', ate: HOJE }), re);
+  re = await pedirE(dbEntradas({ semDestda: true }), { versao: 1, tipo: 'entradas', pedir: 'empresas' });
+  chk('sem a obrigação no catálogo, a lista vem vazia', re.status === 200 && re.corpo.empresas.length === 0, re);
+  let dbe = dbEntradas();
+  re = await pedirE(dbe, PAC(p => { p.empresas.push({ codigo: 903, notas: [{ chave: chaveDe(7), entrada: '2026-10-05' }] }); p.empresas[0].notas.push({ chave: chaveDe(8, { uf: '43' }), entrada: '2026-10-05' }); }));
+  chk('o pacote: grava as notas das empresas da lista, pelo cliente; a de fora da lista e a nota do RS voltam em recusadas',
+    re.status === 200 && re.corpo.ok && re.corpo.gravado && re.corpo.notas === 3 && re.corpo.empresas === 3 && dbe.chamadas.length === 1
+      && dbe.chamadas[0].nome === 'nf_gravar_entradas' && dbe.chamadas[0].args.p.notas.every(n => n.cliente_id === 'a' && Object.keys(n).join() === 'cliente_id,chave,entrada')
+      && re.corpo.total_recusadas === 2 && re.corpo.recusadas.some(x => x.codigo === 903 && x.erro === SEM_SEDIF) && re.corpo.recusadas.some(x => /do RS/.test(x.erro))
+      && re.corpo.recebidas === 3 && re.corpo.achadas === 2 && re.corpo.atualizadas === 1, re);
+  dbe = dbEntradas();
+  re = await pedirE(dbe, PAC(p => { p.empresas = [{ codigo: 901, notas: Array.from({ length: 4500 }, (_, i) => ({ chave: chaveDe(1000 + i), entrada: '2026-10-01' })) }]; }));
+  chk('em partes de ' + LIMITES_ENTRADAS.porVez + ', com os totais somados', re.status === 200 && dbe.chamadas.map(c => c.args.p.notas.length).join() === '2000,2000,500'
+    && re.corpo.recebidas === 4500 && re.corpo.achadas === 4497, { status: re.status, partes: dbe.chamadas.map(c => c.args.p.notas.length), corpo: re.corpo });
+  re = await pedirE(dbEntradas({ rpcErro: { message: 'caiu' } }), PAC());
+  chk('o banco falhou: 500 (a ponte manda de novo)', re.status === 500, re);
+  re = await pedirE(dbEntradas(), PAC(p => { p.rodada.id = 'x'; }));
+  chk('o pacote fora do contrato: 422 com o campo', re.status === 422 && /rodada\.id/.test(re.corpo.erro), re);
+  re = await pedirE(dbEntradas(), PAC(p => { p.versao = 2; }));
+  chk('a versão 2 é só do pacote do Domínio: 422', re.status === 422 && /Versão do pacote/.test(re.corpo.erro), re);
 }
 
 console.log('O código que a função roda:');

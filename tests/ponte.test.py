@@ -138,6 +138,7 @@ class Sistema:
         self.recebidos = []
         self.gets = []           # os GET que não são o do IP (um redirecionamento seguido apareceria aqui)
         self.pedidos_notas = 0   # os pedidos da lista das notas (a etapa das notas e o conferir)
+        self.pedidos_entradas = 0   # os da lista das datas de entrada (a etapa delas)
         self.trava = threading.Lock()
         dono = self
 
@@ -176,6 +177,12 @@ class Sistema:
                     with dono.trava:
                         dono.pedidos_notas += 1
                     return self._responder(200, b'{"empresas":[]}')
+                if isinstance(pedido, dict) and pedido.get('tipo') == 'entradas' and pedido.get('pedir') == 'empresas':
+                    # a etapa das datas de entrada (26/11/2026), no fim da rodada: aqui, nenhuma empresa da SEDIF/DeSTDA
+                    # (o teste dela é o tests/ponte-entradas.test.py) — e não conta nos envios desta suíte
+                    with dono.trava:
+                        dono.pedidos_entradas += 1
+                    return self._responder(200, b'{"empresas":[],"desde":"2026-09-01","ate":"2026-11-26"}')
                 with dono.trava:
                     dono.recebidos.append({'cabecalhos': {k.lower(): v for k, v in self.headers.items()},
                                            'corpo': json.loads(bruto.decode('utf-8'))})
@@ -337,7 +344,7 @@ def caso_pacote():
     hora_com_fuso = r'\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d[+-]\d\d:\d\d'
     ok(re.fullmatch(hora_com_fuso, r['inicio']) and re.fullmatch(hora_com_fuso, r['fim']) and r['inicio'] <= r['fim'],
        'inicio e fim com o fuso do PC, inicio <= fim')
-    ok(bool(r['maquina']) and r['ponte'] == '0.5.0', 'maquina preenchida, ponte 0.5.0')
+    ok(bool(r['maquina']) and r['ponte'] == '0.6.0', 'maquina preenchida, ponte 0.6.0')
 
     emp = {e['codigo']: e for e in p['empresas']}
     ok(sorted(emp) == [101, 102, 103, 104], 'as 4 empresas inventadas, pelo código')
