@@ -87,8 +87,8 @@ Commit deste arquivo (o registro preenchido) e `git push origin fila-26-11-entra
 ## Registro de progresso
 | Data | Item | O que aconteceu |
 |---|---|---|
-| | 1 | |
-| | 2 | |
-| | 3 | |
-| | 4 | |
-| | 5 | |
+| 26/11/2026 | 1 | Feito às 15h41, na mesma sentada das filas de 19/11 (a procuração) e de 24/11 (o teste final): `git fetch --prune`, `main` atualizada (em `6028d94`, já com a fila de 19/11), a branch `fila-26-11-entradas`. `py -3 tests/ponte-entradas.test.py`: "Tudo certo." (10 s); `py -3 tests/ponte.test.py`: "Tudo certo." (57 s); `py -3 tests/ponte-notas.test.py`: "Tudo certo." (16 s). A `VERSAO` da ponte instalada: **`0.6.0`** (a fila de 19/11 instalou a `main` de agora, às 14h36); a da `main`: `0.6.0`. |
+| 26/11/2026 | 2 | Feito às 15h42, da pasta do repositório: `py -3 -m ponte entradas rodar --sem-enviar`, código 0. `entradas: 35 empresa(s) da SEDIF/DeSTDA, de 01/09/2026 a 26/11/2026` · `entradas: 372 nota(s) de 25 empresa(s)` · o maior tempo de uma empresa: **4,7 s** · **nenhuma** empresa com erro na leitura. A consulta roda no SQL Anywhere. |
+| 26/11/2026 | 3 | Feito às 15h42: `powershell -NoProfile -ExecutionPolicy Bypass -File ponte\instalar.ps1 -Hora 07:00`, código 0, sem pedir o administrador. A última linha: `py -3 -m ponte rodar --sem-enviar` (do aviso padrão "Antes da primeira rodada: …"; antes dele, "Tarefa 'Ponte Domínio' registrada: todo dia às 07:00 (os últimos 14 meses), como DESKTOP-OB3NBFV\PC (sem guardar senha)."). Conferido: `VERSAO = '0.6.0'` na instalada; `C:\ponte-dominio\app\ponte\consultas\entradas_fora.sql` existe; a "Ponte Domínio", `Ready`, todo dia às 07:00; a "Ponte Receita", `Ready`, de segunda a sexta (`DaysOfWeek` 62) às 08:30; as duas com o `StartWhenAvailable` ligado. |
+| 26/11/2026 | 4 | Feito às 15h43, da pasta da ponte instalada: `py -3 -m ponte entradas rodar`, código **0**. `entradas: 372 nota(s) de 25 empresa(s)` · `entradas: pacote 1 de 1 (372 nota(s)): foi (HTTP 200)` · `entradas: pacote 1 de 1 (372 nota(s)): 372 recebida(s), 242 achada(s) na base, 242 com a data nova`. Nada deixado de fora pelo sistema. Nenhuma empresa com erro na leitura (o maior tempo, 3,9 s). As linhas por empresa (com o código) não foram copiadas. |
+| 26/11/2026 | 5 | Feito: este registro, o commit (só este arquivo) e `git push origin fila-26-11-entradas`, às 15h45. |
