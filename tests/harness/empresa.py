@@ -12,21 +12,24 @@ Confere:
   2. enviar vazio marca o que falta (os seus dados, a empresa, o endereço, cada campo do sócio e o documento dele) e não
      envia; a 2ª razão social igual à 1ª e a área utilizada maior que a total são marcadas, com a frase de cada uma;
   3. os sócios: o 2º mostra a participação, quem administra e a soma (que avisa quando não dá 100%); casado pergunta o
-     regime de bens; "Mora no endereço da empresa" esconde o endereço; tirar o sócio do meio renumera; o CEP preenche a
-     rua, o bairro e a cidade; "O telefone e o e-mail da empresa são os meus" copia os dois; sem o documento de um sócio,
-     o envio não sai; o nome do arquivo aparece como texto;
-  4. o envio: o pedido vai com as respostas e os anexos na ordem dos sócios da tela (o documento do sócio que ficou em 2º
-     vai como o do 2º); o documento de 3 MB sobe em 2 partes, com a chave; o envio fecha no fim; a tela de recebido diz
-     quantos foram, o que não subiu e lembra do gov.br;
+     regime de bens e mostra onde anexar a certidão de casamento (opcional); "Mora no endereço da empresa" esconde o
+     endereço; tirar o sócio do meio renumera; o CEP preenche a rua, o bairro e a cidade; "O telefone e o e-mail da empresa
+     são os meus" copia os dois; sem o documento de um sócio, o envio não sai (sem a certidão, sai); o nome do arquivo
+     aparece como texto;
+  4. o envio: o pedido vai com as respostas e os anexos na ordem dos sócios da tela (o documento e a certidão do sócio que
+     ficou em 2º vão como os do 2º); o documento de 3 MB sobe em 2 partes, com a chave; o envio fecha no fim; a tela de
+     recebido diz quantos foram, o que não subiu e lembra do gov.br;
   5. a transformação: o título, o CNPJ do MEI (o errado é marcado) e o tipo no pedido;
   6. a função que recusa (a trava de envios por hora): a frase dela aparece e o botão volta;
   7. a tela do celular (400 px) não rola de lado; o ?t= desconhecido abre a abertura de empresa;
-  8. a alteração pelo link da janela (o que muda e o que o escritório já tem): o que muda só pra ler, só as perguntas do
-     que se pede (os sócios sem o documento e o endereço), o que falta, o documento do imóvel e o pedido com o que muda,
-     o que se pediu e só essas respostas; o recebido lembra do gov.br de quem administra;
+  8. a alteração pelo link da janela (o que muda e o que o escritório já tem): o que muda só pra ler; de quem preenche só
+     o nome (sem o telefone, o e-mail, a razão social e o CNPJ, a revisão do Samuel de 26/11/2026); só as perguntas do que
+     se pede (os sócios sem o documento e o endereço; sem o documento do imóvel), o que falta, a certidão de casamento do
+     sócio casado e o pedido com o que muda, o que se pediu e só essas respostas; o recebido lembra do gov.br de quem
+     administra;
   9. a alteração sem a seleção: o cliente marca o que muda (sem marcar, falta), o endereço de outra cidade desmarca o da
-     mesma cidade, o quadro de sócios pede o documento; o pedido só do e-mail e do telefone; o ?m= que não existe abre as
-     caixas; a 400 px não rola de lado.
+     mesma cidade (e não pede o imóvel), o quadro de sócios pede o documento; o pedido só do e-mail e do telefone; o ?m=
+     que não existe abre as caixas; a 400 px não rola de lado.
 Termina com código 1 se alguma checagem falhar.
 Pré-requisito: pip install playwright e python -m playwright install chromium
 """
@@ -148,6 +151,9 @@ def main():
         socio(p, 1, 'Bruno Exemplo Souza', '111.444.777-35')
         socio(p, 2, 'Carla Exemplo Lima', '123.456.789-09', civil='casado', mora=False, gov='bronze')
         ok(p.is_visible('[data-regime="2"]') and not p.is_visible('[data-regime="1"]'), 'casado: pergunta o regime de bens')
+        cert = p.locator('.campo[data-id="socios.2.certidao"]')
+        ok(cert.is_visible() and 'Certidão de casamento (opcional)' in cert.inner_text() and cert.locator('.obr').count() == 0
+           and not p.is_visible('.campo[data-id="socios.1.certidao"]'), 'casado: mostra onde anexar a certidão de casamento, opcional (e só no casado)')
         p.select_option('#id_socios_2_regime', 'nao_sei')
         p.fill('#id_socios_2_endereco_cep', '95660-000')
         p.wait_for_function("() => document.getElementById('id_socios_2_endereco_logradouro').value === 'Rua das Flores'", timeout=3000)
@@ -167,6 +173,7 @@ def main():
         ok(f == ['socios.0.documento', 'socios.2.documento'] and not chamadas(p, 'enviar'), f'sem o documento de cada sócio, o envio não sai ({f})')
         p.set_input_files('input[data-grupo="socio-0"]', [arquivo('cnh-ana.pdf', 3 * 1024 * 1024)])
         p.set_input_files('input[data-grupo="socio-2"]', [arquivo('<b>rg</b> carla.jpg', 2000, 'image/jpeg')])
+        p.set_input_files('input[data-grupo="certidao-2"]', [arquivo('certidao carla.pdf', 1500)])
         p.set_input_files('input[data-grupo="outros"]', [arquivo('ruim.pdf', 1000)])
         ok(p.locator('[data-lista="socio-2"] .anexo-item').count() == 1 and p.locator('.anexo-item b').count() == 0 and '<b>rg</b> carla.jpg' in p.inner_text('[data-lista="socio-2"]'),
            'o nome do arquivo aparece como texto')
@@ -188,16 +195,16 @@ def main():
            and ss[1]['estadoCivil'] == 'casado' and ss[1]['regime'] == 'nao_sei' and ss[1]['govbr'] == 'bronze' and ss[0]['participacao'] == '60' and ss[1]['participacao'] == '40',
            'quem mora na empresa vai com o endereço dela; o outro, com o dele, o regime e a participação')
         grupos = [(a['nome'], a['grupo']) for a in e.get('arquivos', [])]
-        ok(grupos == [('cnh-ana.pdf', 'socio-0'), ('<b>rg</b> carla.jpg', 'socio-1'), ('ruim.pdf', 'outros')],
-           f'os anexos na ordem dos sócios da tela: o documento de quem ficou em 2º vai como o do 2º ({grupos})')
+        ok(grupos == [('cnh-ana.pdf', 'socio-0'), ('<b>rg</b> carla.jpg', 'socio-1'), ('certidao carla.pdf', 'certidao-1'), ('ruim.pdf', 'outros')],
+           f'os anexos na ordem dos sócios da tela: o documento e a certidão de quem ficou em 2º vão como os do 2º ({grupos})')
         partes = [x[1] for x in p.evaluate('() => window.__log') if x[0] == 'parte']
         ok(len([x for x in partes if x['i'] == '0']) == 2 and all(x['chave'] == 'chave-de-teste' and x['id'] == ID for x in partes)
            and [x['inicio'] for x in partes if x['i'] == '0'] == [0, 2 * 1024 * 1024], f'o documento de 3 MB sobe em 2 partes, com a chave ({len(partes)} partes)')
         arqs = chamadas(p, 'arquivo')
-        ok(len(arqs) == 3 and all('nome' not in a and a.get('chave') == 'chave-de-teste' for a in arqs), 'cada anexo abre o envio só com o número dele (o nome a função já tem)')
+        ok(len(arqs) == 4 and all('nome' not in a and a.get('chave') == 'chave-de-teste' for a in arqs), 'cada anexo abre o envio só com o número dele (o nome a função já tem)')
         ok(len(chamadas(p, 'concluir')) == 1, 'o envio fecha no fim')
         fim = p.inner_text('.aviso')
-        ok('Recebido!' in fim and '2 documentos enviados' in fim and 'Não conseguimos enviar: ruim.pdf' in fim and 'prata ou ouro' in fim,
+        ok('Recebido!' in fim and '3 documentos enviados' in fim and 'Não conseguimos enviar: ruim.pdf' in fim and 'prata ou ouro' in fim,
            f'recebido: quantos foram, o que não subiu, o lembrete do gov.br ({fim[:220]!r})')
         p.close()
 
@@ -246,8 +253,16 @@ def main():
            'o título da alteração (na tela, no alto e na aba)')
         ok(p.inner_text('#muda') == 'O nome fantasia, a natureza jurídica, o endereço (na mesma cidade) e os contatos (e-mail e telefone).' and p.locator('[data-alt]').count() == 0,
            'o que muda vem do link, só pra ler → ' + p.inner_text('#muda'))
-        ok(vis('#id_razaoAtual') and vis('#id_cnpj') and vis('#id_fantasia') and vis('#id_endereco_cep') and vis('#id_areaTotal') and vis('#id_funcionamento')
-           and vis('.campo[data-id="imovel"]') and vis('#id_empresaTelefone'), 'a empresa e só o que se pede: o nome fantasia, o endereço novo com a área, o horário e o imóvel, e o telefone e o e-mail')
+        # a revisão do Samuel (26/11/2026): de quem preenche só o nome, sem a empresa e o CNPJ, sem o documento do imóvel
+        ok(vis('#id_contato_nome') and p.inner_text('.campo[data-id="contato.nome"] label').startswith('Seu nome') and 'completo' not in p.inner_text('.campo[data-id="contato.nome"] label')
+           and p.locator('#id_contato_telefone').count() == 0 and p.locator('#id_contato_email').count() == 0,
+           'de quem preenche, só o nome ("Seu nome"), sem o telefone e o e-mail')
+        ok(p.locator('#id_razaoAtual').count() == 0 and p.locator('#id_cnpj').count() == 0 and 'A empresa' not in p.eval_on_selector_all('h3.bloco', 'hs => hs.map(h => h.textContent).join("|")'),
+           'sem a razão social e o CNPJ da empresa (o escritório sabe de quem é)')
+        ok(p.locator('.campo[data-id="imovel"]').count() == 0 and p.locator('input[data-grupo="imovel"]').count() == 0 and p.locator('#mesmoContato').count() == 0,
+           'sem o documento do imóvel, e sem o "são os meus" do telefone e do e-mail (não há mais os de quem preenche)')
+        ok(vis('#id_fantasia') and vis('#id_endereco_cep') and vis('#id_areaTotal') and vis('#id_funcionamento') and vis('#id_empresaTelefone'),
+           'só o que se pede: o nome fantasia, o endereço novo com a área e o horário, e o telefone e o e-mail')
         ok(not vis('#id_razao1') and not vis('#id_atividades') and not vis('#id_capital'), 'e não o que não muda: o nome empresarial, as atividades e o capital')
         ok(vis('#cardSocios') and vis('#id_socios_0_estadoCivil') and vis('#id_socios_0_profissao') and vis('.campo[data-id="socios.0.govbr"]')
            and not vis('.campo[data-id="socios.0.documento"]') and not vis('.socio [data-socio-item="residencia"]'),
@@ -255,38 +270,37 @@ def main():
         ok(vis('#avisoGov') and 'Quem administra a empresa' in p.inner_text('#avisoGov') and p.locator('input[type=password]').count() == 0, 'o aviso do gov.br de quem administra, sem pedir senha')
         p.click('#btnEnviar'); p.wait_for_timeout(300)
         f = faltas(p)
-        esperadas = ['contato.nome', 'contato.telefone', 'contato.email', 'razaoAtual', 'cnpj', 'fantasia', 'funcionamento', 'areaTotal', 'areaUtilizada', 'empresaTelefone',
+        esperadas = ['contato.nome', 'fantasia', 'funcionamento', 'areaTotal', 'areaUtilizada', 'empresaTelefone',
                      'empresaEmail', 'endereco.cep', 'endereco.logradouro', 'endereco.numero', 'endereco.bairro', 'endereco.cidade', 'socios.0.nome', 'socios.0.cpf',
-                     'socios.0.estadoCivil', 'socios.0.profissao', 'socios.0.govbr', 'imovel']
+                     'socios.0.estadoCivil', 'socios.0.profissao', 'socios.0.govbr']
         ok(sorted(f) == sorted(esperadas) and not chamadas(p, 'enviar'), f'enviar vazio marca só o que se pede (a mais: {[k for k in f if k not in esperadas]}, a menos: {[k for k in esperadas if k not in f]})')
-        ok('Escreva a razão social, como está no CNPJ.' in p.inner_text('.campo[data-id="razaoAtual"]'), 'a razão social de hoje, com a frase dela')
-        p.fill('#id_contato_nome', 'Ana Teste da Silva'); p.fill('#id_contato_telefone', '(51) 99999-0000'); p.fill('#id_contato_email', 'ana@exemplo.com')
-        p.fill('#id_razaoAtual', 'Empresa Exemplo Inventada'); p.fill('#id_cnpj', '11.222.333/0001-82'); p.fill('#id_fantasia', 'Loja Exemplo')
+        ok('Escreva o seu nome.' in p.inner_text('.campo[data-id="contato.nome"]'), 'o nome, com a frase dele')
+        p.fill('#id_contato_nome', 'Ana')
+        p.fill('#id_fantasia', 'Loja Exemplo')
         p.fill('#id_endereco_cep', '95660-000')
         p.wait_for_function("() => document.getElementById('id_endereco_logradouro').value === 'Rua das Flores'", timeout=3000)
         p.fill('#id_endereco_numero', '300'); p.fill('#id_areaTotal', '90'); p.fill('#id_areaUtilizada', '60'); p.fill('#id_funcionamento', 'Segunda a sexta, das 8h às 18h')
-        p.check('#mesmoContato')
-        ok(p.input_value('#id_empresaTelefone') == '(51) 99999-0000' and p.input_value('#id_empresaEmail') == 'ana@exemplo.com', '"O telefone e o e-mail novos são os meus" copia os dois')
+        p.fill('#id_empresaTelefone', '(51) 3333-4444'); p.fill('#id_empresaEmail', 'loja@exemplo.com')
         p.fill('#id_socios_0_nome', 'Ana Teste da Silva'); p.fill('#id_socios_0_cpf', '529.982.247-25'); p.fill('#id_socios_0_profissao', 'Comerciante')
-        p.select_option('#id_socios_0_estadoCivil', 'solteiro'); p.check('input[name="id_socios_0_govbr"][value="sim"]')
+        p.select_option('#id_socios_0_estadoCivil', 'casado'); p.check('input[name="id_socios_0_govbr"][value="sim"]')
+        ok(vis('#id_socios_0_regime') and vis('.campo[data-id="socios.0.certidao"]'), 'o sócio casado: o regime de bens e onde anexar a certidão de casamento')
         p.click('#btnEnviar'); p.wait_for_timeout(200)
-        ok(faltas(p) == ['cnpj', 'imovel'] and 'Confira o CNPJ.' in p.inner_text('.campo[data-id="cnpj"]') and not chamadas(p, 'enviar'),
-           f'o CNPJ errado e o documento do imóvel que falta são marcados ({faltas(p)})')
-        p.fill('#id_cnpj', '11.222.333/0001-81')
-        p.set_input_files('input[data-grupo="imovel"]', [arquivo('iptu.pdf', 1500)])
+        ok(faltas(p) == ['socios.0.regime'] and not chamadas(p, 'enviar'), f'sem o regime, falta só ele: a certidão é opcional ({faltas(p)})')
+        p.select_option('#id_socios_0_regime', 'comunhao_parcial')
+        p.set_input_files('input[data-grupo="certidao-0"]', [arquivo('certidao.pdf', 1500)])
         p.click('#btnEnviar'); p.wait_for_selector('.aviso', timeout=8000)
         env = chamadas(p, 'enviar')
         e = env[0] if env else {}
         ok(len(env) == 1 and e.get('tipo') == 'alteracao' and e.get('alteracoes') == ['fantasia', 'natureza', 'endereco', 'contato']
-           and e.get('pedir') == ['fantasia', 'endereco', 'area', 'horario', 'imovel', 'contato', 'civil', 'profissao', 'gov'],
+           and e.get('pedir') == ['fantasia', 'endereco', 'area', 'horario', 'contato', 'civil', 'profissao', 'gov'],
            f'o pedido vai com o que muda e o que se pediu ({json.dumps({k: e.get(k) for k in ("tipo", "alteracoes", "pedir")}, ensure_ascii=False)})')
-        ok(e.get('razaoAtual') == 'Empresa Exemplo Inventada' and e.get('cnpj') == '11.222.333/0001-81' and e.get('fantasia') == 'Loja Exemplo' and e.get('razao1') == ''
-           and e.get('capital') == '' and e.get('atividades') == '' and (e.get('endereco') or {}).get('numero') == '300' and e.get('empresaEmail') == 'ana@exemplo.com',
-           'só as respostas do que se pede')
+        ok(e.get('contato') == {'nome': 'Ana'} and 'razaoAtual' not in e and 'cnpj' not in e, f'de quem preencheu, só o nome; nada da empresa ({e.get("contato")})')
+        ok(e.get('fantasia') == 'Loja Exemplo' and e.get('razao1') == '' and e.get('capital') == '' and e.get('atividades') == ''
+           and (e.get('endereco') or {}).get('numero') == '300' and e.get('empresaEmail') == 'loja@exemplo.com', 'só as respostas do que se pede')
         ss = e.get('socios', [])
-        ok(len(ss) == 1 and ss[0]['nome'] == 'Ana Teste da Silva' and ss[0]['estadoCivil'] == 'solteiro' and ss[0]['govbr'] == 'sim' and ss[0]['endereco'] is None,
-           'o sócio, sem o endereço (o escritório já tem)')
-        ok([(a['nome'], a['grupo']) for a in e.get('arquivos', [])] == [('iptu.pdf', 'imovel')], 'o documento do imóvel, no grupo dele')
+        ok(len(ss) == 1 and ss[0]['nome'] == 'Ana Teste da Silva' and ss[0]['estadoCivil'] == 'casado' and ss[0]['regime'] == 'comunhao_parcial' and ss[0]['govbr'] == 'sim'
+           and ss[0]['endereco'] is None, 'o sócio, casado, sem o endereço (o escritório já tem)')
+        ok([(a['nome'], a['grupo']) for a in e.get('arquivos', [])] == [('certidao.pdf', 'certidao-0')], 'a certidão de casamento, no grupo dela')
         fim = p.inner_text('.aviso')
         ok('Recebido!' in fim and '1 documento enviado' in fim and 'quem administra a empresa precisa da conta gov.br' in fim, f'o recebido lembra do gov.br de quem administra ({fim[:200]!r})')
         p.close()
@@ -301,8 +315,8 @@ def main():
         p.check('[data-alt="contato"]')
         ok(vis('#id_empresaTelefone') and not vis('#cardSocios') and not vis('#id_endereco_cep') and vis('#avisoGov'), 'marcar o e-mail e o telefone mostra só eles (e o aviso do gov.br)')
         p.check('[data-alt="endereco"]'); p.check('[data-alt="cidade"]')
-        ok(not p.is_checked('[data-alt="endereco"]') and p.is_checked('[data-alt="cidade"]') and vis('#id_endereco_cep') and vis('.campo[data-id="imovel"]'),
-           'o endereço de outra cidade desmarca o da mesma cidade, e pede o endereço e o imóvel')
+        ok(not p.is_checked('[data-alt="endereco"]') and p.is_checked('[data-alt="cidade"]') and vis('#id_endereco_cep') and p.locator('.campo[data-id="imovel"]').count() == 0,
+           'o endereço de outra cidade desmarca o da mesma cidade, e pede o endereço (sem o documento do imóvel)')
         p.check('[data-alt="socios"]')
         ok(vis('#cardSocios') and vis('.campo[data-id="socios.0.documento"]') and vis('.socio [data-socio-item="residencia"]') and vis('[data-mesmo-rotulo]'),
            'o quadro de sócios pede os sócios, com o documento e o endereço (e "Mora no endereço novo da empresa")')
@@ -310,8 +324,7 @@ def main():
         ok(not vis('[data-mesmo-rotulo]') and vis('.socio [data-socio-item="residencia"]'), 'sem o endereço novo, sai o "Mora no endereço novo da empresa"')
         p.uncheck('[data-alt="socios"]')
         ok(not vis('#cardSocios') and not vis('#id_endereco_cep'), 'desmarcar tira as perguntas')
-        p.fill('#id_contato_nome', 'Ana Teste da Silva'); p.fill('#id_contato_telefone', '(51) 99999-0000'); p.fill('#id_contato_email', 'ana@exemplo.com')
-        p.fill('#id_razaoAtual', 'Empresa Exemplo Inventada'); p.fill('#id_cnpj', '11.222.333/0001-81')
+        p.fill('#id_contato_nome', 'Ana Teste da Silva')
         p.fill('#id_empresaTelefone', '(51) 3333-4444'); p.fill('#id_empresaEmail', 'loja@exemplo.com')
         p.click('#btnEnviar'); p.wait_for_selector('.aviso', timeout=8000)
         env = chamadas(p, 'enviar')

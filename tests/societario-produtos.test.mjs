@@ -50,7 +50,7 @@ chk('a transformação segue com o desenquadramento e "passa a ser ME"', T.etapa
 chk('o rótulo do cliente na janela', T.cliente === 'Cliente (o titular do MEI)' && C.cliente === 'Cliente' && A.cliente === 'Cliente');
 
 console.log('A alteração: o que muda decide as etapas, a documentação e o começo');
-const VANIR = { alteracoes: ['fantasia', 'natureza', 'endereco', 'contato'], pedir: ['fantasia', 'endereco', 'area', 'horario', 'imovel', 'contato', 'civil', 'profissao', 'gov'] };
+const VANIR = { alteracoes: ['fantasia', 'natureza', 'endereco', 'contato'], pedir: ['fantasia', 'endereco', 'area', 'horario', 'contato', 'civil', 'profissao', 'gov'] };
 const itensDa = q => q.etapas.map(e => [e.n, e.titulo, e.dias, e.itens]);
 chk('só a alteração se escolhe; os outros produtos voltam como são', A.selecionavel === true && produtoDaSelecao(T, VANIR) === T && produtoDaSelecao(C, null) === C && produtoDaSelecao(null, VANIR) === null);
 const G = produtoDaSelecao(A, null);
@@ -61,7 +61,7 @@ chk('sem nada marcado (a apresentação do anúncio): as 4 etapas, com cada linh
   [3, 'Receita Estadual (SEFAZ RS)', 2, ['Atualização da Inscrição Estadual (comércio e indústria)']],
   [4, 'Prefeitura Municipal', 2, ['Atualização da inscrição municipal (e do Alvará de Localização, quando muda o endereço)']]]), itensDa(G));
 chk('e a documentação de tudo o que a alteração pode pedir, dizendo quando', igual(G.documentos.map(g => [g.grupo, g.itens.length]),
-  [['Da empresa, conforme o que muda', 9], ['De cada sócio, quando muda a natureza jurídica ou o quadro de sócios', 5]])
+  [['Da empresa, conforme o que muda', 8], ['De cada sócio, quando muda a natureza jurídica ou o quadro de sócios', 5]])
   && G.inicio === A.inicio.geral && G.escopo === '' && /Conforme o que muda/.test(G.docSubtitulo));
 const V = produtoDaSelecao(A, VANIR);
 chk('o caso: a viabilidade, o DBE e o Contrato Social (muda a natureza jurídica), e o alvará no endereço novo', igual(itensDa(V), [
@@ -71,8 +71,8 @@ chk('o caso: a viabilidade, o DBE e o Contrato Social (muda a natureza jurídica
   [4, 'Prefeitura Municipal', 2, ['Atualização da inscrição municipal e do Alvará de Localização no endereço novo']]]), itensDa(V));
 chk('a documentação é só o que se pede (o que o escritório já tem fica fora)', igual(V.documentos.map(g => [g.grupo, g.itens.map(i => i.t)]), [
   ['Da empresa', ['Nome fantasia novo', 'Endereço novo, completo', 'Área total da edificação e área utilizada, no endereço novo', 'Horários e dias de funcionamento',
-    'Contrato de aluguel, escritura ou IPTU do imóvel novo', 'Telefone e e-mail novos']],
-  ['De cada sócio', ['Estado civil e, se for casado, o regime de bens', 'Profissão', 'Conta gov.br nível prata ou ouro']]]), V.documentos);
+    'Telefone e e-mail novos']],
+  ['De cada sócio', ['Estado civil e, se for casado, o regime de bens e a certidão de casamento', 'Profissão', 'Conta gov.br nível prata ou ouro']]]), V.documentos);
 chk('o começo pela viabilidade, o que muda no orçamento e os 24 dias úteis', V.inicio === A.inicio.viabilidade && totalDeDias(V) === 24
   && V.escopo === 'o nome fantasia, a natureza jurídica, o endereço (na mesma cidade) e os contatos (e-mail e telefone)' && /Só o que precisamos/.test(V.docSubtitulo));
 const SC = produtoDaSelecao(A, { alteracoes: ['contato'] });
@@ -83,7 +83,7 @@ chk('outra cidade: a inscrição na prefeitura nova e a baixa na de antes', igua
   ['Inscrição na prefeitura da cidade nova (Alvará de Localização) e baixa na prefeitura de antes']));
 chk('o escritório que já tem tudo: só confirmar os dados no formulário', igual(produtoDaSelecao(A, { alteracoes: ['contato'], pedir: [] }).documentos,
   [{ grupo: 'Da empresa', itens: [{ t: 'Só confirmar os dados no formulário: o resto o escritório já tem' }] }]) && documentosDaSelecao(null).length === 2);
-chk('a lista do que muda e do que se pede é a do formulário', ALTERACOES.length === 9 && Object.keys(ITENS).length === 14);
+chk('a lista do que muda e do que se pede é a do formulário (sem o documento do imóvel, desde 26/11/2026)', ALTERACOES.length === 9 && Object.keys(ITENS).length === 13 && !ITENS.imovel);
 chk('sem preço de sempre: a janela pede pra digitar o do orçamento', /depende do que muda/.test(A.semValores) && T.semValores === undefined && A.minutos === 5);
 
 console.log('A validade do orçamento: o último dia útil do mês seguinte');

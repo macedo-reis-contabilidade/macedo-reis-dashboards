@@ -9,7 +9,10 @@
 // interessante eu poder marcar em algum local o que vou pedir ou não, pois um o outro documento pode ser que tenhamos e
 // outros não"): o que muda (ALTERACOES) vai no endereço (&m=…) e, quando o escritório não pede tudo, o que ele já tem
 // (&n=…; paramsDaSelecao e selecaoDoEndereco), e o formulário pergunta só o resto (ITENS); sem o &m, o cliente marca o que
-// muda.
+// muda. Na mesma tarde, a revisão do Samuel: na alteração, de quem preenche só o nome ("não precisa o completo, telefone e
+// email nao faz sentido por nesse caso"), sem a razão social e o CNPJ da empresa (o escritório sabe de quem é: a tarefa e
+// a pasta levam o nome de quem preencheu) e sem o documento do imóvel; e, nos três, o sócio casado ganha onde anexar a
+// certidão de casamento (opcional: sem ela, a tarefa avisa).
 // Aqui ficam as perguntas, a conferência do pedido, o resumo da tarefa, o texto das respostas que vai pro Drive e o nome de
 // cada anexo. Um arquivo só pro link e pra Edge Function empresa-link, que importa este do repositório num commit fixado
 // (tests/empresa-pedido.test.mjs confere). Puro, sem DOM e sem banco.
@@ -37,13 +40,16 @@ export const ALTERACOES = [
   { id: 'nome', rotulo: 'Nome empresarial (razão social)', curto: 'o nome empresarial', pedir: ['razao'] },
   { id: 'fantasia', rotulo: 'Nome fantasia (inclusão ou troca)', curto: 'o nome fantasia', pedir: ['fantasia'] },
   { id: 'natureza', rotulo: 'Natureza jurídica (ex.: de empresário individual para sociedade limitada)', curto: 'a natureza jurídica', pedir: ['doc', 'civil', 'profissao', 'residencia', 'gov'] },
-  { id: 'endereco', rotulo: 'Endereço, na mesma cidade', curto: 'o endereço (na mesma cidade)', pedir: ['endereco', 'area', 'horario', 'imovel'], sai: 'cidade' },
-  { id: 'cidade', rotulo: 'Endereço, para outra cidade', curto: 'o endereço (para outra cidade)', pedir: ['endereco', 'area', 'horario', 'imovel'], sai: 'endereco' },
+  { id: 'endereco', rotulo: 'Endereço, na mesma cidade', curto: 'o endereço (na mesma cidade)', pedir: ['endereco', 'area', 'horario'], sai: 'cidade' },
+  { id: 'cidade', rotulo: 'Endereço, para outra cidade', curto: 'o endereço (para outra cidade)', pedir: ['endereco', 'area', 'horario'], sai: 'endereco' },
   { id: 'atividades', rotulo: 'Atividades (CNAE)', curto: 'as atividades', pedir: ['atividades'] },
   { id: 'capital', rotulo: 'Capital social', curto: 'o capital social', pedir: ['capital'] },
   { id: 'socios', rotulo: 'Sócios (entrada, saída ou participação)', curto: 'o quadro de sócios', pedir: ['doc', 'civil', 'profissao', 'residencia', 'gov'] },
   { id: 'contato', rotulo: 'E-mail e telefone', curto: 'os contatos (e-mail e telefone)', pedir: ['contato'] }
 ];
+// o estado civil de cada sócio, como a documentação diz (a da alteração e a dos outros dois produtos, em
+// societario-produtos.js): a certidão de casamento se anexa no formulário, sem ser obrigatória
+export const CIVIL = 'Estado civil e, se for casado, o regime de bens e a certidão de casamento';
 // o que se pede: o texto da documentação (a imagem, a janela e o formulário) e de quem é (da empresa ou de cada sócio);
 // a ordem daqui é a da lista
 export const ITENS = {
@@ -52,12 +58,11 @@ export const ITENS = {
   endereco: { de: 'empresa', t: 'Endereço novo, completo' },
   area: { de: 'empresa', t: 'Área total da edificação e área utilizada, no endereço novo' },
   horario: { de: 'empresa', t: 'Horários e dias de funcionamento' },
-  imovel: { de: 'empresa', t: 'Contrato de aluguel, escritura ou IPTU do imóvel novo', anexo: true },
   atividades: { de: 'empresa', t: 'Descrição de todas as atividades, como vão ficar' },
   capital: { de: 'empresa', t: 'Capital social novo' },
   contato: { de: 'empresa', t: 'Telefone e e-mail novos' },
   doc: { de: 'socio', t: 'CNH ou identidade', anexo: true },
-  civil: { de: 'socio', t: 'Estado civil e, se for casado, o regime de bens' },
+  civil: { de: 'socio', t: CIVIL },
   profissao: { de: 'socio', t: 'Profissão' },
   residencia: { de: 'socio', t: 'Endereço completo' },
   gov: { de: 'socio', t: 'Conta gov.br nível prata ou ouro', nota: 'O nível aparece no app gov.br, em "Nível da conta". Não pedimos a sua senha.' }
@@ -104,7 +109,6 @@ export function emFrase(partes) {
 export const oQueMuda = ids => emFrase(listaDe(ids).filter(id => ALT.has(id)).map(id => ALT.get(id).curto));
 // pede os dados de cada sócio: quando muda a natureza jurídica ou o quadro de sócios
 export const comSocios = ids => (ids || []).some(id => id === 'natureza' || id === 'socios');
-export const IMOVEL = 'imovel';
 export const AVISO_GOV_ALT = 'Quem administra a empresa precisa da conta gov.br nível prata ou ouro para assinar a alteração.';
 
 export const AVISO_GOV = 'Cada sócio precisa da conta gov.br nível prata ou ouro para assinar o Contrato Social.';
@@ -118,9 +122,15 @@ export const SIM_NAO = [['sim', 'Sim'], ['nao', 'Não']];
 export const MAX_SOCIOS = 10;
 // os anexos: os limites das admissões, das rescisões e do MEI (25 MB cada, 20 arquivos, 100 MB no total)
 export const MAX_ARQ = 25 * 1024 * 1024, MAX_QTD = 20, MAX_TOTAL = 100 * 1024 * 1024;
-// o grupo de cada anexo: o documento do sócio N ("socio-0", "socio-1"…) ou os outros documentos
+// o grupo de cada anexo: o documento do sócio N ("socio-0", "socio-1"…), a certidão de casamento do sócio N casado
+// ("certidao-0"…) ou os outros documentos
 export const OUTROS = 'outros';
 export const grupoDoSocio = i => 'socio-' + i;
+export const grupoDaCertidao = i => 'certidao-' + i;
+// os grupos das certidões que o pedido aceita: as dos sócios casados
+const certidoesDe = socios => socios.map((s, i) => (s.estadoCivil === 'casado' ? grupoDaCertidao(i) : null)).filter(Boolean);
+// depois dos anexos conferidos, cada sócio casado diz se a certidão veio (o texto do Drive e o aviso da tarefa)
+const marcarCertidoes = (socios, lista) => socios.forEach((s, i) => { if (s.estadoCivil === 'casado') s.certidao = lista.some(a => a.grupo === grupoDaCertidao(i)); });
 
 export const PERGUNTAS = {
   'contato.nome': 'Seu nome completo', 'contato.telefone': 'Seu telefone (WhatsApp)', 'contato.email': 'Seu e-mail',
@@ -131,15 +141,15 @@ export const PERGUNTAS = {
   'socio.nome': 'Nome completo', 'socio.cpf': 'CPF', 'socio.estadoCivil': 'Estado civil', 'socio.regime': 'Regime de bens',
   'socio.profissao': 'Profissão', 'socio.endereco': 'Endereço completo', 'socio.participacao': 'Participação no capital (%)',
   'socio.administra': 'Vai administrar a empresa?', 'socio.govbr': 'Tem a conta gov.br nível prata ou ouro?',
-  'socio.documento': 'CNH ou identidade (frente e verso, ou o PDF da CNH digital)', outros: 'Outros documentos (opcional)', obs: 'Alguma observação? (opcional)'
+  'socio.documento': 'CNH ou identidade (frente e verso, ou o PDF da CNH digital)', 'socio.certidao': 'Certidão de casamento (opcional)',
+  outros: 'Outros documentos (opcional)', obs: 'Alguma observação? (opcional)'
 };
 // as perguntas da alteração que são outras (o resto é das PERGUNTAS)
 export const PERGUNTAS_ALT = {
-  alteracoes: 'O que vai mudar na empresa?', razaoAtual: 'Nome empresarial (razão social), como está hoje', cnpj: 'CNPJ da empresa',
+  'contato.nome': 'Seu nome', alteracoes: 'O que vai mudar na empresa?',
   razao1: 'Nome empresarial novo: 1ª opção', razao2: 'Nome empresarial novo: 2ª opção', fantasia: 'Nome fantasia novo',
   atividades: 'Descrição de todas as atividades, como vão ficar', capital: 'Capital social novo (R$)',
-  empresaTelefone: 'Telefone novo da empresa', empresaEmail: 'E-mail novo da empresa', endereco: 'Endereço novo da empresa',
-  imovel: 'Contrato de aluguel, escritura ou IPTU do imóvel novo'
+  empresaTelefone: 'Telefone novo da empresa', empresaEmail: 'E-mail novo da empresa', endereco: 'Endereço novo da empresa'
 };
 
 const texto = (v, n) => [...String(v == null ? '' : v).replace(/\s+/g, ' ').trim()].slice(0, n).join('').trim();
@@ -162,7 +172,7 @@ function endereco(e, campo, faltam) {
 }
 
 // os anexos como a página manda: [{ nome, tamanho, tipo, grupo }] → { lista, erro }; extras: os grupos a mais que o
-// pedido aceita (na alteração, o do imóvel)
+// pedido aceita (as certidões de casamento dos sócios casados)
 export function conferirAnexos(arquivos, nSocios, extras = []) {
   const lista = (Array.isArray(arquivos) ? arquivos : []).map(a => ({
     nome: texto(a && a.nome, 180), tamanho: Number(a && a.tamanho) || 0, tipo: texto(a && a.tipo, 120) || 'application/octet-stream',
@@ -212,8 +222,9 @@ function conferirSocios(lista, faltam, pede) {
 }
 const TODOS_DO_SOCIO = { civil: true, profissao: true, residencia: true, gov: true };
 
-// a alteração: a empresa (a razão social de hoje e o CNPJ), quem preenche, o que muda e só o que foi pedido. O que muda e
-// o que pedir vêm do corpo e são conferidos de novo aqui (selecao): pedir menos só tira perguntas
+// a alteração: quem preenche (só o nome: o escritório sabe de quem é a empresa e fala com a pessoa pelo WhatsApp), o que
+// muda e só o que foi pedido. O que muda e o que pedir vêm do corpo e são conferidos de novo aqui (selecao): pedir menos só
+// tira perguntas
 function conferirAlteracao(b) {
   const faltam = [];
   const sel = selecao(b.alteracoes, Array.isArray(b.pedir) ? b.pedir : null);
@@ -221,8 +232,7 @@ function conferirAlteracao(b) {
   const c = b.contato && typeof b.contato === 'object' ? b.contato : {};
   const p = {
     tipo: 'alteracao', alteracoes: sel.alteracoes, pedir: sel.pedir,
-    contato: { nome: texto(c.nome, 160), telefone: soDigitos(c.telefone).slice(0, 13), email: texto(c.email, 160).toLowerCase() },
-    razaoAtual: texto(b.razaoAtual, 160), cnpj: normalizarDocumento(b.cnpj).slice(0, 14),
+    contato: { nome: texto(c.nome, 160), telefone: '', email: '' },
     razao1: tem('razao') ? texto(b.razao1, 160) : '', razao2: tem('razao') ? texto(b.razao2, 160) : '', fantasia: tem('fantasia') ? texto(b.fantasia, 120) : '',
     atividades: tem('atividades') ? textoLongo(b.atividades, 3000) : '', capital: tem('capital') ? lerValor(b.capital) : null,
     funcionamento: tem('horario') ? textoLongo(b.funcionamento, 500) : '',
@@ -231,11 +241,7 @@ function conferirAlteracao(b) {
     obs: textoLongo(b.obs, 2000)
   };
   if (!sel.alteracoes.length) faltam.push('alteracoes');
-  if (!nomeCompleto(p.contato.nome)) faltam.push('contato.nome');
-  if (p.contato.telefone.length < 10) faltam.push('contato.telefone');
-  if (!emailOk(p.contato.email)) faltam.push('contato.email');
-  if ([...p.razaoAtual].length < 3) faltam.push('razaoAtual');
-  if (!cnpjValido(p.cnpj)) faltam.push('cnpj');
+  if ([...p.contato.nome].length < 2) faltam.push('contato.nome');
   if (tem('razao') && [...p.razao1].length < 3) faltam.push('razao1');
   if (tem('razao') && ([...p.razao2].length < 3 || (p.razao1 && semAcento(p.razao2) === semAcento(p.razao1)))) faltam.push('razao2');
   if (tem('fantasia') && [...p.fantasia].length < 2) faltam.push('fantasia');
@@ -250,12 +256,12 @@ function conferirAlteracao(b) {
   p.socios = comSocios(sel.alteracoes)
     ? conferirSocios(b.socios, faltam, { civil: tem('civil'), profissao: tem('profissao'), residencia: tem('residencia'), gov: tem('gov') }) : [];
 
-  // os anexos pedidos são obrigatórios (o documento de cada sócio, o do imóvel); os outros documentos, não
-  const anexos = conferirAnexos(b.arquivos, p.socios.length, tem('imovel') ? [IMOVEL] : []);
+  // o documento de cada sócio, quando pedido, é obrigatório; a certidão de casamento e os outros documentos, não
+  const anexos = conferirAnexos(b.arquivos, p.socios.length, certidoesDe(p.socios));
   if (anexos.erro) return { faltam: ['arquivos'], erro: anexos.erro };
-  if (tem('imovel') && !anexos.lista.some(a => a.grupo === IMOVEL)) faltam.push(IMOVEL);
   if (tem('doc')) p.socios.forEach((_, i) => { if (!anexos.lista.some(a => a.grupo === grupoDoSocio(i))) faltam.push(`socios.${i}.documento`); });
   if (faltam.length) return { faltam, erro: faltam.length === 1 ? 'Falta 1 resposta.' : 'Faltam ' + faltam.length + ' respostas.' };
+  marcarCertidoes(p.socios, anexos.lista);
   return { pedido: p, arquivos: anexos.lista };
 }
 
@@ -294,11 +300,12 @@ export function conferirPedido(b = {}) {
   p.endereco = endereco(b.endereco, 'endereco', faltam);
   p.socios = conferirSocios(b.socios, faltam, TODOS_DO_SOCIO);
 
-  // o documento de cada sócio é obrigatório; os outros documentos, não
-  const anexos = conferirAnexos(b.arquivos, p.socios.length);
+  // o documento de cada sócio é obrigatório; a certidão de casamento e os outros documentos, não
+  const anexos = conferirAnexos(b.arquivos, p.socios.length, certidoesDe(p.socios));
   if (anexos.erro) return { faltam: ['arquivos'], erro: anexos.erro };
   p.socios.forEach((_, i) => { if (!anexos.lista.some(a => a.grupo === grupoDoSocio(i))) faltam.push(`socios.${i}.documento`); });
   if (faltam.length) return { faltam, erro: faltam.length === 1 ? 'Falta 1 resposta.' : 'Faltam ' + faltam.length + ' respostas.' };
+  marcarCertidoes(p.socios, anexos.lista);
   return { pedido: p, arquivos: anexos.lista };
 }
 
@@ -309,7 +316,12 @@ export function alertasDoPedido(p = {}) {
     const quem = s.nome || `Sócio ${i + 1}`;
     if (s.govbr === 'bronze') a.push(`${quem} tem a conta gov.br bronze: precisa subir pra prata ou ouro antes de assinar o Contrato Social.`);
     if (s.govbr === 'nao') a.push(`${quem} não tem a conta gov.br prata ou ouro (ou não sabe): confira antes de mandar o Contrato Social pra assinatura.`);
-    if (s.estadoCivil === 'casado' && s.regime === 'nao_sei') a.push(`${quem} é casado(a) e não sabe o regime de bens: confira na certidão de casamento.`);
+    // a certidão de casamento é opcional: o aviso diz quando ela não veio (com o regime que a pessoa não sabe, ela é o
+    // jeito de saber); s.certidao só existe no pedido conferido
+    if (s.estadoCivil === 'casado' && s.regime === 'nao_sei') {
+      a.push(s.certidao === false ? `${quem} é casado(a), não sabe o regime de bens e não anexou a certidão de casamento: peça a certidão pelo WhatsApp.`
+        : `${quem} é casado(a) e não sabe o regime de bens: confira na certidão de casamento.`);
+    } else if (s.estadoCivil === 'casado' && s.certidao === false) a.push(`${quem} é casado(a) e não anexou a certidão de casamento: se precisar, peça pelo WhatsApp.`);
   });
   if (p.tipo === 'constituicao' && (p.socios || []).length === 1) a.push('Um sócio só: confira se é sociedade limitada unipessoal ou empresário individual.');
   return a;
@@ -320,6 +332,8 @@ const m2 = v => Number(v).toLocaleString('pt-BR', { maximumFractionDigits: 2 }) 
 const pct = v => Number(v).toLocaleString('pt-BR', { maximumFractionDigits: 2 }) + '%';
 const opcao = (lista, v) => (lista.find(([o]) => o === v) || [null, '—'])[1];
 const civil = s => opcao(ESTADOS_CIVIS, s.estadoCivil) + (s.estadoCivil === 'casado' ? ', ' + opcao(REGIMES, s.regime).toLowerCase() : '');
+// a linha da certidão de casamento, no sócio casado (no pedido conferido)
+const certidao = s => (s.estadoCivil === 'casado' && typeof s.certidao === 'boolean' ? [`Certidão de casamento: ${s.certidao ? 'anexada' : 'não anexada'}`] : []);
 
 // o que o escritório não pediu (desmarcou na janela da Vitrine, porque já tem): os textos dos itens
 const naoPedidos = p => itensDe(p.alteracoes || []).filter(i => !(p.pedir || []).includes(i)).map(i => ITENS[i].t + (ITENS[i].de === 'socio' ? ' (do sócio)' : ''));
@@ -334,7 +348,6 @@ export function resumoDoPedido(p = {}) {
     `Quem preencheu: ${c.nome || '—'}` + (c.telefone ? ' · WhatsApp ' + formatarTelefone(c.telefone) : '') + (c.email ? ' · ' + c.email : '')
   ];
   if (p.tipo === 'alteracao') {
-    linhas.push(`Empresa: ${p.razaoAtual || '—'}` + (p.cnpj ? ' · CNPJ ' + formatCNPJ(p.cnpj) : ''));
     linhas.push('O que muda: ' + (oQueMuda(p.alteracoes) || '—'));
     if (p.razao1) linhas.push(`Razão social nova: 1ª opção ${p.razao1} · 2ª opção ${p.razao2}`);
     if (p.fantasia) linhas.push('Nome fantasia novo: ' + p.fantasia);
@@ -363,9 +376,11 @@ export function textoDasRespostas(p = {}, quando = '') {
   const c = p.contato || {};
   const e = p.endereco || {};
   const L = [`${t.titulo.toUpperCase()}: AS RESPOSTAS DO FORMULÁRIO`, quando ? 'Recebido em ' + quando : '', ''];
-  L.push('QUEM PREENCHEU', `Nome: ${c.nome}`, `WhatsApp: ${formatarTelefone(c.telefone)}`, `E-mail: ${c.email}`, '');
+  L.push('QUEM PREENCHEU', `Nome: ${c.nome}`);
+  if (c.telefone) L.push(`WhatsApp: ${formatarTelefone(c.telefone)}`);
+  if (c.email) L.push(`E-mail: ${c.email}`);
+  L.push('');
   if (p.tipo === 'alteracao') {
-    L.push('A EMPRESA', `Nome empresarial (razão social), como está hoje: ${p.razaoAtual}`, `CNPJ: ${formatCNPJ(p.cnpj)}`, '');
     L.push('O QUE MUDA', ...(p.alteracoes || []).map(id => '- ' + ((ALTERACOES.find(a => a.id === id) || {}).rotulo || id)), '');
     if (p.razao1) L.push('NOME EMPRESARIAL NOVO', `1ª opção: ${p.razao1}`, `2ª opção: ${p.razao2}`, '');
     if (p.fantasia) L.push('NOME FANTASIA NOVO', p.fantasia, '');
@@ -381,7 +396,7 @@ export function textoDasRespostas(p = {}, quando = '') {
     if (p.empresaTelefone || p.empresaEmail) L.push('TELEFONE E E-MAIL NOVOS', `Telefone: ${formatarTelefone(p.empresaTelefone)}`, `E-mail: ${p.empresaEmail}`, '');
     (p.socios || []).forEach((s, i) => {
       L.push(`SÓCIO ${i + 1}`, `Nome: ${s.nome}`, `CPF: ${formatarCpf(s.cpf)}`);
-      if (s.estadoCivil) L.push(`Estado civil: ${civil(s)}`);
+      if (s.estadoCivil) L.push(`Estado civil: ${civil(s)}`, ...certidao(s));
       if (s.profissao) L.push(`Profissão: ${s.profissao}`);
       if (s.endereco) L.push(`Endereço: ${enderecoEmLinha(s.endereco)}`);
       if ((p.socios || []).length > 1) L.push(`Participação no capital: ${pct(s.participacao)}`, `Administra a empresa: ${s.administra === 'sim' ? 'Sim' : 'Não'}`);
@@ -401,7 +416,7 @@ export function textoDasRespostas(p = {}, quando = '') {
     `Horários e dias de funcionamento: ${p.funcionamento}`, `Capital social: ${p.capital > 0 ? brl(p.capital) : '—'}`,
     `Telefone: ${formatarTelefone(p.empresaTelefone)}`, `E-mail: ${p.empresaEmail}`, 'Atividades:', String(p.atividades || ''), '');
   (p.socios || []).forEach((s, i) => {
-    L.push(`SÓCIO ${i + 1}`, `Nome: ${s.nome}`, `CPF: ${formatarCpf(s.cpf)}`, `Estado civil: ${civil(s)}`, `Profissão: ${s.profissao}`,
+    L.push(`SÓCIO ${i + 1}`, `Nome: ${s.nome}`, `CPF: ${formatarCpf(s.cpf)}`, `Estado civil: ${civil(s)}`, ...certidao(s), `Profissão: ${s.profissao}`,
       `Endereço: ${enderecoEmLinha(s.endereco)}`, `Participação no capital: ${pct(s.participacao)}`, `Administra a empresa: ${s.administra === 'sim' ? 'Sim' : 'Não'}`,
       `Conta gov.br prata ou ouro: ${opcao(GOVBR, s.govbr)}`, '');
   });
@@ -409,22 +424,26 @@ export function textoDasRespostas(p = {}, quando = '') {
   return L.filter((x, i) => !(x === '' && i === 1)).join('\n');
 }
 
-// o nome de cada anexo na pasta do Drive: "SÓCIO 1 - FULANO DE TAL - cnh.pdf", "IMÓVEL - iptu.pdf" ou "OUTROS - contrato.pdf"
+// o nome de cada anexo na pasta do Drive: "SÓCIO 1 - FULANO DE TAL - cnh.pdf", "SÓCIO 2 - FULANA - CERTIDÃO DE CASAMENTO -
+// certidao.pdf" ou "OUTROS - contrato.pdf"
 export function nomeDoAnexo(grupo, socios, nome) {
   const arq = String(nome || 'arquivo').replace(/[\u0000-\u001f\/\\]+/g, ' ').trim().slice(0, 120) || 'arquivo';
-  if (grupo === IMOVEL) return 'IMÓVEL - ' + arq;
-  const m = /^socio-(\d+)$/.exec(String(grupo || ''));
+  const m = /^(socio|certidao)-(\d+)$/.exec(String(grupo || ''));
   if (!m) return 'OUTROS - ' + arq;
-  const i = Number(m[1]);
+  const i = Number(m[2]);
   const quem = semAcento(((socios || [])[i] || {}).nome || '').slice(0, 60);
-  return `SÓCIO ${i + 1}${quem ? ' - ' + quem : ''} - ${arq}`;
+  return `SÓCIO ${i + 1}${quem ? ' - ' + quem : ''}${m[1] === 'certidao' ? ' - CERTIDÃO DE CASAMENTO' : ''} - ${arq}`;
 }
 
-// a empresa do pedido (a coluna empresa e o título da tarefa): a 1ª opção de razão social; na alteração, a de hoje
-export const empresaDoPedido = p => String((p && (p.tipo === 'alteracao' ? p.razaoAtual : p.razao1)) || '');
-// a pasta do pedido no Drive: a empresa, em maiúsculas (o padrão do Drive); na alteração, "ALTERAÇÃO - " na frente
+// a empresa do pedido (a coluna empresa e o título da tarefa): a 1ª opção de razão social; na alteração, nenhuma (o
+// formulário não pergunta: o escritório sabe de quem é), e a tarefa leva o nome de quem preencheu
+export const empresaDoPedido = p => String((p && p.tipo !== 'alteracao' && p.razao1) || '');
+// a pasta do pedido no Drive, em maiúsculas (o padrão do Drive): a empresa; na alteração, "ALTERAÇÃO - " e o nome de quem
+// preencheu
 export const pastaDoPedido = p => {
-  const nome = String(empresaDoPedido(p)).toUpperCase().replace(/[\u0000-\u001f\/\\]+/g, ' ').replace(/\s+/g, ' ').trim();
+  const alt = !!(p && p.tipo === 'alteracao');
+  const base = alt ? ((p.contato || {}).nome || '') : empresaDoPedido(p);
+  const nome = String(base).toUpperCase().replace(/[\u0000-\u001f\/\\]+/g, ' ').replace(/\s+/g, ' ').trim();
   if (!nome) return 'PEDIDO';
-  return ((p && p.tipo === 'alteracao' ? 'ALTERAÇÃO - ' : '') + nome).slice(0, 150);
+  return ((alt ? 'ALTERAÇÃO - ' : '') + nome).slice(0, 150);
 };

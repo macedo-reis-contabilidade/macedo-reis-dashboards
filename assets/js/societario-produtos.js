@@ -25,7 +25,7 @@
 // ============================================================================
 import { diaUtil, somaDias, isoValida, fmtData } from './rescisao-datas.js';
 import { primeiroNome, reais, artigo } from './mei-planos.js';
-import { ALTERACOES, ITENS, selecao, paramsDaSelecao, oQueMuda } from './empresa-pedido.js';
+import { ALTERACOES, ITENS, CIVIL, selecao, paramsDaSelecao, oQueMuda } from './empresa-pedido.js';
 
 // ---------- o que os produtos têm em comum ----------
 // a apresentação (as duas primeiras imagens: servem pra qualquer cliente e não têm valor nenhum)
@@ -34,7 +34,7 @@ export const PRIMEIROS = [
   { icone: 'doc', titulo: 'Envio das informações', texto: 'A documentação necessária está na próxima imagem.' },
   { icone: 'reais', titulo: 'Acerto financeiro', texto: 'O investimento e o pagamento estão no orçamento, que vai à parte.' }
 ];
-// a lista do Samuel (24/11/2026, 13h48)
+// a lista do Samuel (24/11/2026, 13h48); o estado civil com a certidão de casamento desde 26/11/2026 (o CIVIL do formulário)
 export const DOCUMENTOS = [
   { grupo: 'Da empresa', itens: [
     { t: 'Nome empresarial (razão social): duas opções' },
@@ -47,7 +47,7 @@ export const DOCUMENTOS = [
     { t: 'Telefone e e-mail' }] },
   { grupo: 'De cada sócio', itens: [
     { t: 'CNH ou identidade' },
-    { t: 'Estado civil e, se for casado, o regime de bens' },
+    { t: CIVIL },
     { t: 'Profissão' },
     { t: 'Endereço completo' },
     { t: 'Conta gov.br nível prata ou ouro', nota: 'O nível aparece no app gov.br, em "Nível da conta". Não pedimos a sua senha.' }] }

@@ -5,8 +5,10 @@
 // link pra eu enviar pro cliente poder preencher as informações e anexar os documentos, se nao ele tem que enviar pra mim
 // por email ou whats e dificulta mais (tanto pra transformação quanto para constituição)".
 // Desde 26/11/2026, também a alteração de empresa (empresa.html?t=alteracao&m=<o que muda>&n=<o que não se pede>): o
-// cliente diz a empresa e o CNPJ e preenche só o que muda; a lista do que se pede vai no pedido (pedir), e a conferência
-// é a mesma, pelo tipo. A pasta é ALTERAÇÃO - <a razão social de hoje>, na mesma CONSTITUIÇÕES E TRANSFORMAÇÕES.
+// cliente diz só o nome dele e preenche só o que muda (a empresa não se pergunta: o escritório sabe de quem é); a lista do
+// que se pede vai no pedido (pedir), e a conferência é a mesma, pelo tipo. A pasta é ALTERAÇÃO - <o nome de quem
+// preencheu>, na mesma CONSTITUIÇÕES E TRANSFORMAÇÕES, e a tarefa, "Alteração de empresa: <o nome>" (o gatilho usa o
+// nome quando a empresa vem vazia). Nos três, a certidão de casamento do sócio casado vai junto, sem ser obrigatória.
 // O pedido nasce em pedidos_empresa e, pelo gatilho do banco (empresa_sincronizar_tarefa), na agenda do Samuel (Societário),
 // com o resumo e o link da pasta, e o aviso na conversa Avisos do sistema. As perguntas e a conferência são as de
 // assets/js/empresa-pedido.js, importado do repositório num commit fixado (abaixo), como o resto do sistema faz.
@@ -221,7 +223,7 @@ async function enviar(b: any) {
   const arquivos = (c.arquivos || []).map((a: { nome: string; tamanho: number; tipo: string; grupo: string }) =>
     ({ nome: a.nome, tamanho: a.tamanho, tipo: a.tipo, grupo: a.grupo, status: "pendente" }));
   const { data: res, error } = await supa.from(TABELA).insert({
-    tipo: p.tipo, nome: p.contato.nome, telefone: p.contato.telefone, email: p.contato.email, empresa: empresaDoPedido(p),
+    tipo: p.tipo, nome: p.contato.nome, telefone: p.contato.telefone || null, email: p.contato.email || null, empresa: empresaDoPedido(p) || null,
     resumo: resumoDoPedido(p), pedido: p, alertas: alertasDoPedido(p), arquivos,
     envio_chave: chave, envio_expira: new Date(Date.now() + HORAS_CHAVE * 3600e3).toISOString(),
   }).select("id").single();

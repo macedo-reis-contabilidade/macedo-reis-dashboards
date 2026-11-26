@@ -289,13 +289,13 @@ def main():
         for a in ['fantasia', 'natureza', 'endereco', 'contato']:
             p.check(f'#spMuda [data-sp-alt="{a}"]')
         ok(p.evaluate(MARCADAS) == 'fantasia,natureza,endereco,contato', 'as quatro marcadas → ' + p.evaluate(MARCADAS))
-        ok(p.evaluate(ITENS) == 'fantasia,endereco,area,horario,imovel,contato,doc,civil,profissao,residencia,gov', 'o que pedir: os itens do que muda, todos marcados → ' + p.evaluate(ITENS))
+        ok(p.evaluate(ITENS) == 'fantasia,endereco,area,horario,contato,doc,civil,profissao,residencia,gov', 'o que pedir: os itens do que muda, todos marcados → ' + p.evaluate(ITENS))
         p.check('#spMuda [data-sp-alt="cidade"]')
         ok(p.evaluate(MARCADAS) == 'fantasia,natureza,cidade,contato', 'outra cidade tira o endereço na mesma cidade')
         p.check('#spMuda [data-sp-alt="endereco"]')
         ok(p.evaluate(MARCADAS) == 'fantasia,natureza,endereco,contato', 'e o contrário')
         p.uncheck('#spPedir [data-sp-item="doc"]'); p.uncheck('#spPedir [data-sp-item="residencia"]')
-        ok(p.evaluate(ITENS) == 'fantasia,endereco,area,horario,imovel,contato,doc-,civil,profissao,residencia-,gov', 'desmarcar o que o escritório já tem')
+        ok(p.evaluate(ITENS) == 'fantasia,endereco,area,horario,contato,doc-,civil,profissao,residencia-,gov', 'desmarcar o que o escritório já tem')
         link = base + 'empresa.html?t=alteracao&m=fantasia,natureza,endereco,contato&n=doc,residencia'
         ok(espera(p, "() => document.getElementById('spMsg').value.split('\\n').includes(%s)" % json.dumps(link)), 'o link leva o que muda e o que o escritório já tem')
         msg = p.input_value('#spMsg')
@@ -314,7 +314,7 @@ def main():
         ok(baixados == ['Alteração de empresa (1 de 2).png', 'Alteração de empresa (2 de 2).png', 'Orçamento - Alteração de empresa - Beltrano.png'],
            'os nomes dos arquivos da alteração → ' + str(baixados))
         p.uncheck('#spMuda [data-sp-alt="natureza"]')
-        ok(p.evaluate(ITENS) == 'fantasia,endereco,area,horario,imovel,contato', 'sem a natureza jurídica, saem os itens dos sócios')
+        ok(p.evaluate(ITENS) == 'fantasia,endereco,area,horario,contato', 'sem a natureza jurídica, saem os itens dos sócios')
         link2 = base + 'empresa.html?t=alteracao&m=fantasia,endereco,contato'
         ok(espera(p, "() => document.getElementById('spMsg').value.split('\\n').includes(%s)" % json.dumps(link2)), 'e o link muda junto → ' + p.input_value('#spMsg').split('\n')[-3])
         p.keyboard.press('Escape')
