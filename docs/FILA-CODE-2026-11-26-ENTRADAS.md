@@ -41,8 +41,9 @@ py -3 tests/ponte-entradas.test.py
 py -3 tests/ponte.test.py
 py -3 tests/ponte-notas.test.py
 ```
-Os três têm de terminar em "Tudo certo.". Anote a `VERSAO` da ponte instalada (`C:\ponte-dominio\app\ponte\__init__.py`,
-deve ser `0.5.0`) e a da `main` (`0.6.0`). Se um teste não terminar em "Tudo certo.", **pare aqui**: registro e push.
+Os três têm de terminar em "Tudo certo.". Anote a `VERSAO` da ponte instalada (`C:\ponte-dominio\app\ponte\__init__.py`:
+`0.6.0` se a fila de 19/11 já instalou a `main` de agora, que leva as duas pontes; senão, `0.5.0`) e a da `main`
+(`0.6.0`). Se um teste não terminar em "Tudo certo.", **pare aqui**: registro e push.
 
 ## 2. A consulta no Domínio, sem mandar nada
 Da pasta do repositório (o código da `main`, com o `config.ini` de sempre):
@@ -77,7 +78,8 @@ py -3 -m ponte entradas rodar
 Anote o código de saída e, do log, só as linhas sem código de empresa: o total (`entradas: N nota(s) de M empresa(s)`) e
 a resposta do sistema (`entradas: pacote 1 de 1 (N nota(s)): N recebida(s), A achada(s) na base, B com a data nova` e,
 se tiver, `o sistema deixou de fora N`). "Achadas na base" são as que a Thalia já importou pelos XMLs; as outras ganham a
-data quando forem importadas, na rodada seguinte. A partir de amanhã isso roda sozinho, no fim da tarefa das 7h.
+data quando forem importadas, na rodada seguinte. Se a tarefa das 7h já rodou com a `0.6.0` instalada, as datas já foram
+nela: "com a data nova" pode vir zero, e está certo. A partir de amanhã isso roda sozinho, no fim da tarefa das 7h.
 
 ## 5. Fim
 Commit deste arquivo (o registro preenchido) e `git push origin fila-26-11-entradas`.
