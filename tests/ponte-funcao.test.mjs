@@ -12,6 +12,7 @@ import { criarServidor } from '../supabase/functions/ponte/servidor.js';
 import { validarPacoteDominio, LIMITES_DOMINIO, BLOCOS_DA_VERSAO, BLOCOS_DOMINIO, BLOCOS_DA_5 } from '../supabase/functions/ponte/dominio.js';
 import { validarPacoteNotas, empresasAutorizadas, destinosDaConfig, dvDaChave, pareceCpf, semCpf, LIMITES_NOTAS, SEM_DESTINO, SEM_AUTORIZACAO, DESTINO_FORA } from '../supabase/functions/ponte/notas.js';
 import { validarPacoteEntradas, janelaDasEntradas, empresasDasEntradas, notasParaGravar, LIMITES_ENTRADAS, SEM_SEDIF } from '../supabase/functions/ponte/entradas.js';
+import { validarPacoteSedif, notasDaEmpresa, docNorm, LIMITES_SEDIF, NAO_E_DA_EMPRESA } from '../supabase/functions/ponte/sedif.js';
 
 let falhas = 0;
 const chk = (nome, cond, extra) => { if (!cond) falhas++; console.log((cond ? '  ✓ ' : '  ✗ ') + nome + (!cond && extra !== undefined ? ' → ' + JSON.stringify(extra) : '')); };
@@ -1315,6 +1316,156 @@ console.log('A data de entrada das notas de compra de fora do RS (26/11/2026):')
   chk('o pacote fora do contrato: 422 com o campo', re.status === 422 && /rodada\.id/.test(re.corpo.erro), re);
   re = await pedirE(dbEntradas(), PAC(p => { p.versao = 2; }));
   chk('a versão 2 é só do pacote do Domínio: 422', re.status === 422 && /Versão do pacote/.test(re.corpo.erro), re);
+}
+
+console.log('As notas de entrada das empresas da SEDIF/DeSTDA, do XML que a Domínio guarda (26/11/2026):');
+{
+  const FORN = '44555666000100';   // inventado, com o dígito verificador errado de propósito
+  const EMPRESA = '22333444000100';
+  const chaveDe = (numero, { uf = '42', aamm = '2610', cnpj = FORN, modelo = '55' } = {}) => {
+    const base = uf + aamm + cnpj + modelo + '001' + String(numero).padStart(9, '0') + '1' + '00004321';
+    return base + dvDaChave(base);
+  };
+  const HOJE = '2026-11-26';
+  const ITEM = (n, mudar) => {
+    const i = { n_item: n, codigo: 'A' + n, descricao: '  SECADOR  ', ncm: '85163100', cest: null, cfop: '6102', unidade: 'UN',
+      quantidade: 10, valor_unitario: 100, valor_total: 1000, desconto: 0, icms_origem: '1', icms_cst: '00', csosn: null,
+      pis_cst: '01', cofins_cst: '01', icms_valor: 40, icms_st_valor: 0, ipi_valor: 7.5, pis_valor: 6.5, cofins_valor: 30,
+      icms_base: 1000, icms_aliquota: 4, icms_st_base: null, ean: 'NÃO DEVIA IR' };
+    if (mudar) mudar(i);
+    return i;
+  };
+  const NOTA = (numero, mudar) => {
+    const n = { chave: chaveDe(numero), entrada: '2026-10-02', xml: '<nfeProc>NÃO DEVIA IR</nfeProc>',
+      doc: { modelo: '55', serie: '1', numero: String(numero), data_emissao: '2026-09-30', tp_nf: 1, finalidade: 1,
+        natureza_operacao: 'VENDA', emit_doc: FORN, emit_nome: 'FORNECEDOR', emit_uf: 'sc', emit_municipio: 'JOINVILLE',
+        emit_ie: '123', emit_crt: 3, dest_doc: EMPRESA, dest_tipo: 'PJ', dest_nome: 'CLIENTE', dest_uf: 'RS',
+        dest_municipio: 'TRES COROAS', dest_ie: '456', dest_ind_ie: 1, valor_total: 1007.5, valor_produtos: 1000,
+        valor_desconto: 0, valor_frete: 0, icms: 40, icms_st: 0, ipi: 7.5, pis: 6.5, cofins: 30, cfop_principal: '6102',
+        status: 'autorizada', segredo: 'x' },
+      itens: [ITEM(1), ITEM(2, i => { i.icms_aliquota = 12; i.icms_st_base = 700; i.icms_st_valor = 59; })] };
+    n.chave = chaveDe(numero, { aamm: '2609' });
+    if (mudar) mudar(n);
+    return n;
+  };
+  const PAC = mudar => {
+    const p = { versao: 1, tipo: 'sedif', rodada: { id: '9D0C5C56-1111-4A2B-9C3D-000000000027', inicio: '2026-11-26T07:25:00-03:00', maquina: 'PC-PONTE', ponte: '0.7.0', extra: 'x' },
+      empresa: { codigo: 901, nome: 'NÃO DEVIA IR' }, notas: [NOTA(1), NOTA(2, n => { n.chave = chaveDe(2, { cnpj: 'AB12CD34EF5601' }); n.doc.emit_doc = 'AB.12C.D34/EF56-01'; })] };
+    if (mudar) mudar(p);
+    return p;
+  };
+  const vs = validarPacoteSedif(PAC(), HOJE);
+  chk('o pacote do contrato passa, sem recusa', vs.ok && vs.recusadas.length === 0 && vs.pacote.notas.length === 2, vs.ok ? vs.recusadas : vs);
+  const n0 = vs.ok && vs.pacote.notas[0];
+  chk('só os campos da nf_documentos e da nf_itens: o XML, o EAN e o que o contrato não prevê ficam de fora',
+    n0 && JSON.stringify(Object.keys(n0)) === JSON.stringify(['chave', 'entrada', 'doc', 'itens']) && !('segredo' in n0.doc)
+      && !('ean' in n0.itens[0]) && Object.keys(n0.itens[0]).length === 24 && Object.keys(n0.doc).length === 31
+      && !('extra' in vs.pacote.rodada) && !('nome' in vs.pacote.empresa), n0 && { doc: Object.keys(n0.doc).length, item: Object.keys(n0.itens[0]) });
+  chk('o texto como o importador guarda (sem as pontas), a UF em maiúscula, o CNPJ com letras normalizado como o do sistema',
+    n0 && n0.itens[0].descricao === 'SECADOR' && n0.doc.emit_uf === 'SC' && vs.pacote.notas[1].doc.emit_doc === 'AB12CD34EF5601', n0 && n0.itens[0]);
+  chk('o nulo segue nulo (a alíquota do Simples, a base da ST) e o valor que falta vira 0, como no importador',
+    !!(() => { const r = validarPacoteSedif(PAC(p => { p.notas[0].itens[0].icms_aliquota = null; delete p.notas[0].itens[0].desconto; delete p.notas[0].doc.valor_frete; }), HOJE);
+      const i = r.ok && r.pacote.notas[0].itens[0]; return i && i.icms_aliquota === null && i.desconto === 0 && r.pacote.notas[0].doc.valor_frete === 0 ? r : null; })());
+  const naNota = (mudar, campo, erro) => {
+    const r = validarPacoteSedif(PAC(p => mudar(p.notas[0], p)), HOJE);
+    const rec = r.ok && r.recusadas.find(x => x.campo === campo);
+    return r.ok && rec && (!erro || erro.test(rec.erro)) && r.pacote.notas.length === 1 && rec.codigo === 901 ? r : null;
+  };
+  chk('a chave com o dígito verificador errado fica de fora sozinha', !!naNota(n => { n.chave = n.chave.slice(0, 43) + ((Number(n.chave[43]) + 1) % 10); }, 'notas[0].chave', /inválida/));
+  chk('a NFC-e (modelo 65) fica de fora', !!naNota(n => { n.chave = chaveDe(1, { aamm: '2609', modelo: '65' }); }, 'notas[0].chave', /modelo 55/));
+  chk('a nota de emitente pessoa física (o CPF na chave) não vai', !!naNota(n => { n.chave = chaveDe(1, { aamm: '2609', cnpj: '000' + '52998224725' }); }, 'notas[0].chave', /pessoa física/));
+  chk('o emitente com CPF no XML não vai', !!naNota(n => { n.doc.emit_doc = '529.982.247-25'; }, 'notas[0].doc.emit_doc', /pessoa física/));
+  chk('o emitente do XML que não é o da chave fica de fora', !!naNota(n => { n.doc.emit_doc = '11222333000181'; }, 'notas[0].doc.emit_doc', /não é o da chave/));
+  chk('a nota do RS também vai (a conferência sabe por ela quem teve nota no mês)',
+    !!(() => { const r = validarPacoteSedif(PAC(p => { p.notas[0].chave = chaveDe(1, { uf: '43', aamm: '2609' }); p.notas[0].doc.emit_uf = 'RS'; }), HOJE); return r.ok && r.recusadas.length === 0 ? r : null; })());
+  chk('a entrada antes do mês da emissão fica de fora', !!naNota(n => { n.entrada = '2026-08-31'; }, 'notas[0].entrada', /antes do mês da emissão/));
+  chk('a entrada depois de hoje fica de fora', !!naNota(n => { n.entrada = '2026-11-27'; }, 'notas[0].entrada', /janela/));
+  chk('a nota sem itens fica de fora', !!naNota(n => { n.itens = []; }, 'notas[0].itens', /sem os itens/));
+  chk('o item repetido na nota fica de fora (com a nota)', !!naNota(n => { n.itens[1].n_item = 1; }, 'notas[0].itens[1].n_item', /repetido/));
+  chk('o NCM com letra fica de fora', !!naNota(n => { n.itens[0].ncm = '8516A100'; }, 'notas[0].itens[0].ncm', /só dígitos/));
+  chk('o número que vem como texto fica de fora', !!naNota(n => { n.itens[0].valor_total = '1000'; }, 'notas[0].itens[0].valor_total', /número/));
+  chk('o texto que vem como número fica de fora', !!naNota(n => { n.itens[0].descricao = 12; }, 'notas[0].itens[0].descricao', /texto/));
+  chk('a situação fora das três fica de fora', !!naNota(n => { n.doc.status = 'rejeitada'; }, 'notas[0].doc.status', /autorizada/));
+  chk('a UF que não existe fica de fora', !!naNota(n => { n.doc.emit_uf = 'XX'; }, 'notas[0].doc.emit_uf', /UF/));
+  chk('o destinatário sem documento fica de fora', !!naNota(n => { n.doc.dest_doc = null; }, 'notas[0].doc.dest_doc', /destinatário/));
+  chk('a nota repetida no pacote: a segunda fica de fora', !!(() => {
+    const r = validarPacoteSedif(PAC(p => { p.notas.push(NOTA(1)); }), HOJE);
+    return r.ok && r.pacote.notas.length === 2 && r.recusadas.length === 1 && /repetida/.test(r.recusadas[0].erro) ? r : null;
+  })());
+  const doPacote = (mudar, campo) => { const r = validarPacoteSedif(PAC(mudar), HOJE); return !r.ok && r.campo === campo ? r : null; };
+  chk('o que é do pacote recusa o pacote inteiro (a versão, o tipo, a rodada, a empresa, a lista, notas demais)',
+    !!doPacote(p => { p.versao = 2; }, 'versao') && !!doPacote(p => { p.tipo = 'notas'; }, 'tipo') && !!doPacote(p => { p.rodada.id = 'abc'; }, 'rodada.id')
+      && !!doPacote(p => { p.empresa.codigo = '901'; }, 'empresa.codigo') && !!doPacote(p => { p.notas = {}; }, 'notas')
+      && !!doPacote(p => { p.notas = Array.from({ length: LIMITES_SEDIF.notas + 1 }, (_, i) => NOTA(i + 10)); }, 'notas'));
+  {
+    const g = notasDaEmpresa(vs.pacote, '22.333.444/0001-00');
+    chk('as notas de entrada da empresa: o destinatário é o documento do cadastro (com a pontuação, ou sem)', g.notas.length === 2 && g.recusadas.length === 0, g);
+    const g2 = notasDaEmpresa(validarPacoteSedif(PAC(p => { p.notas[0].doc.dest_doc = '11222333000181'; p.notas[1].doc.dest_doc = FORN; }), HOJE).pacote, EMPRESA);
+    chk('a nota de outro destinatário, ou emitida pela própria empresa, volta em recusadas',
+      g2.notas.length === 0 && g2.recusadas.length === 2 && g2.recusadas.every(x => x.erro === NAO_E_DA_EMPRESA && x.codigo === 901), g2);
+    const g3 = notasDaEmpresa(vs.pacote, null);
+    chk('sem o documento no cadastro, nada vai', g3.notas.length === 0 && g3.recusadas.length === 2, g3);
+    chk('o documento como o sistema guarda (o normalizarDocumento)', docNorm('22.333.444/0001-00') === EMPRESA && docNorm('ab.12c.d34/ef56-01') === 'AB12CD34EF5601' && docNorm('529.982.247-25') === '52998224725');
+  }
+
+  // a porta de entrada, com um banco de mentira
+  const AGORA_S = () => Date.parse('2026-11-26T07:30:00-03:00');
+  function dbSedif({ rpcErro = null, semCadastro = false } = {}) {
+    const t = {
+      configuracoes_escritorio: [{ chave: 'ponte_chave_sha256', valor: h }],
+      obrigacoes_fiscais: [{ id: 'o1', nome: 'SEDIF/DESTDA - SIMPLES NACIONAL' }],
+      cliente_obrigacoes: [{ cliente_id: 'a', obrigacao_id: 'o1', ativo: true }, { cliente_id: 'b', obrigacao_id: 'o1', ativo: false }],
+      dominio_empresas: [{ codigo: 901, cliente_id: 'a' }, { codigo: 902, cliente_id: 'b' }],
+      clientes: semCadastro ? [] : [{ id: 'a', documento: '22.333.444/0001-00' }, { id: 'b', documento: '99888777000100' }]
+    };
+    const chamadas = [];
+    return {
+      chamadas,
+      from(tabela) {
+        const filtros = [];
+        const linhas = () => (t[tabela] || []).filter(l => filtros.every(([op, c, x]) => (op === 'eq' ? l[c] === x : op === 'in' ? x.includes(l[c])
+          : new RegExp(x.replace(/%/g, '.*'), 'i').test(String(l[c] || '')))));
+        const api = {
+          select() { return api; },
+          eq(c, x) { filtros.push(['eq', c, x]); return api; },
+          in(c, x) { filtros.push(['in', c, x]); return api; },
+          ilike(c, x) { filtros.push(['ilike', c, x]); return api; },
+          async maybeSingle() { return { data: linhas()[0] || null, error: null }; },
+          then(ok, erro) { return Promise.resolve({ data: linhas(), error: null }).then(ok, erro); }
+        };
+        return api;
+      },
+      async rpc(nome, args) {
+        chamadas.push({ nome, args });
+        if (rpcErro) return { data: null, error: rpcErro };
+        const n = args.p.notas.length;
+        return { data: { recebidas: n, novas: 1, ja_na_base: n - 1, itens: 2, itens_completados: 3, datas: n - 1, importacao_id: 'l1' }, error: null };
+      }
+    };
+  }
+  const pedirS = async (db, corpo) => {
+    const atender = criarServidor({ criarDb: () => db, agora: AGORA_S });
+    const r2 = await atender(new Request('http://local/ponte', { method: 'POST', headers: { 'x-chave': 'segredo' }, body: JSON.stringify(corpo) }));
+    return { status: r2.status, corpo: await r2.json() };
+  };
+  let dbs = dbSedif();
+  let rs = await pedirS(dbs, PAC(p => { p.notas.push(NOTA(3, n => { n.doc.dest_doc = '11222333000181'; }), NOTA(4, n => { n.chave = 'x'; })); }));
+  chk('o pacote: grava as notas da empresa da lista, pelo cliente, como a importação; a de outro destinatário e a fora do contrato voltam em recusadas',
+    rs.status === 200 && rs.corpo.ok && rs.corpo.gravado && rs.corpo.notas === 2 && dbs.chamadas.length === 1 && dbs.chamadas[0].nome === 'nf_gravar_notas_entrada'
+      && dbs.chamadas[0].args.p.cliente_id === 'a' && dbs.chamadas[0].args.p.notas.length === 2
+      && JSON.stringify(Object.keys(dbs.chamadas[0].args.p.notas[0])) === JSON.stringify(['chave', 'entrada', 'doc', 'itens'])
+      && rs.corpo.recebidas === 2 && rs.corpo.novas === 1 && rs.corpo.ja_na_base === 1 && rs.corpo.itens_completados === 3 && rs.corpo.datas === 1
+      && !('importacao_id' in rs.corpo) && rs.corpo.total_recusadas === 2
+      && rs.corpo.recusadas.some(x => x.erro === NAO_E_DA_EMPRESA) && rs.corpo.recusadas.some(x => x.campo === 'notas[3].chave'), rs);
+  rs = await pedirS(dbSedif(), PAC(p => { p.empresa.codigo = 902; }));
+  chk('a empresa fora da lista da SEDIF/DeSTDA (o vínculo desligado): 422, nada gravado', rs.status === 422 && rs.corpo.erro === SEM_SEDIF, rs);
+  dbs = dbSedif({ semCadastro: true });
+  rs = await pedirS(dbs, PAC());
+  chk('sem o documento no cadastro: nada vai pro banco, e as notas voltam em recusadas', rs.status === 200 && dbs.chamadas.length === 0 && rs.corpo.notas === 0 && rs.corpo.total_recusadas === 2, rs);
+  rs = await pedirS(dbSedif({ rpcErro: { message: 'caiu' } }), PAC());
+  chk('o banco falhou: 500 (a ponte manda de novo na próxima rodada)', rs.status === 500, rs);
+  rs = await pedirS(dbSedif(), PAC(p => { p.rodada.id = 'x'; }));
+  chk('o pacote fora do contrato: 422 com o campo', rs.status === 422 && /rodada\.id/.test(rs.corpo.erro), rs);
 }
 
 console.log('O código que a função roda:');

@@ -325,7 +325,8 @@ def caso_rodar(sis):
     arq = cenario(pasta, {901: [{'chave': chave(40), 'entrada': '2026-10-01'}]})
     sis.zerar(codigos=(901,))
     cod, out = ponte(pasta, 'rodar', '--falso', '--sem-enviar', arq=arq)
-    ok(cod == 0 and 'entradas: rodada' in out and 'entradas: sem enviar' in out and not sis.pacotes and sis.listas == 1,
+    # a lista é pedida duas vezes: a etapa das datas de entrada e a das notas de entrada da SEDIF/DeSTDA (ponte/sedif.py)
+    ok(cod == 0 and 'entradas: rodada' in out and 'entradas: sem enviar' in out and not sis.pacotes and sis.listas == 2,
        '--falso --sem-enviar: a etapa pede a lista, lê da Domínio de mentira e não manda')
     quebrado = pasta / 'quebrado.json'
     quebrado.write_text('{isto não é json', encoding='utf-8')

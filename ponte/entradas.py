@@ -112,14 +112,15 @@ def _data(v):
         return None
 
 
-def nota(linha, ini, fim):
-    """({chave, entrada}, None) ou (None, motivo) — a mesma conferência da função (entradas.js)."""
+def nota(linha, ini, fim, so_de_fora=True):
+    """({chave, entrada}, None) ou (None, motivo) — a mesma conferência da função (entradas.js). Com so_de_fora=False,
+    a do RS também (as notas de entrada da SEDIF/DeSTDA, ponte/sedif.py)."""
     chave = str(linha.get('chave') or '').strip().upper()
     if not re.fullmatch(r'\d{6}[0-9A-Z]{12}\d{26}', chave) or dv_da_chave(chave[:43]) != int(chave[43]):
         return None, 'chave'
     if chave[20:22] != '55':
         return None, 'modelo'
-    if chave[:2] == UF_RS:
+    if so_de_fora and chave[:2] == UF_RS:
         return None, 'rs'
     if str(linha.get('emitente_tipo') or '') == '2' or parece_cpf(chave[6:20]):
         return None, 'cpf'
@@ -221,8 +222,9 @@ class _SemRedirecionar(urllib.request.HTTPRedirectHandler):
 _ABRIR = urllib.request.build_opener(_SemRedirecionar())
 
 
-def pedir_empresas(cfg, reg):
-    """(([codigo], ini, fim), None) — ou (None, status HTTP ou None), com o porquê no log."""
+def pedir_empresas(cfg, reg, rotulo='entradas'):
+    """(([codigo], ini, fim), None) — ou (None, status HTTP ou None), com o porquê no log (rotulo: o começo das linhas;
+    a lista é a mesma pras notas de entrada da SEDIF/DeSTDA, ponte/sedif.py)."""
     from .receita.sistema import erro_da_resposta
     chave = cfg.valor('sistema', 'chave_publica')
     cab = {'apikey': chave, 'Authorization': f'Bearer {chave}', 'x-chave': cfg.valor('sistema', 'chave_ponte'),
@@ -237,17 +239,17 @@ def pedir_empresas(cfg, reg):
             detalhe = erro_da_resposta(e.read(2000))
         except Exception:
             detalhe = ''
-        reg(f'entradas: o sistema não deu a lista das empresas (HTTP {e.code}' + (f' — {detalhe}' if detalhe else '') + ')', 'erro')
+        reg(f'{rotulo}: o sistema não deu a lista das empresas (HTTP {e.code}' + (f' — {detalhe}' if detalhe else '') + ')', 'erro')
         return None, e.code
     except (urllib.error.URLError, http.client.HTTPException, OSError, ValueError) as e:
-        reg(f'entradas: o sistema não deu a lista das empresas ({type(getattr(e, "reason", e)).__name__})', 'erro')
+        reg(f'{rotulo}: o sistema não deu a lista das empresas ({type(getattr(e, "reason", e)).__name__})', 'erro')
         return None, None
     if not isinstance(resposta, dict):
-        reg('entradas: a lista das empresas veio fora do formato', 'erro')
+        reg(f'{rotulo}: a lista das empresas veio fora do formato', 'erro')
         return None, None
     ini, fim = _data(resposta.get('desde')), _data(resposta.get('ate'))
     if ini is None or fim is None or ini > fim:
-        reg('entradas: a janela da lista veio fora do formato', 'erro')
+        reg(f'{rotulo}: a janela da lista veio fora do formato', 'erro')
         return None, None
     codigos, fora = [], 0
     for e in resposta.get('empresas') or []:
@@ -257,7 +259,7 @@ def pedir_empresas(cfg, reg):
             continue
         codigos.append(codigo)
     if fora:
-        reg(f'entradas: {fora} empresa(s) da lista fora do formato ou repetida(s) ficaram de fora', 'aviso')
+        reg(f'{rotulo}: {fora} empresa(s) da lista fora do formato ou repetida(s) ficaram de fora', 'aviso')
     return (codigos, ini, min(fim, hoje_local())), None
 
 

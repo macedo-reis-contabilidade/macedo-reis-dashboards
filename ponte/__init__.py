@@ -9,7 +9,8 @@ contado, e o que vier além dos campos do contrato é descartado antes de montar
     py -3 -m ponte dominio conexao | tabelas | sql      (a ligação com o banco do Domínio Web, 29/10/2026)
     py -3 -m ponte notas rodar [--sem-enviar] [--tudo] [--empresa CODIGO]   (as notas de compra das autorizadas)
     py -3 -m ponte entradas rodar [--sem-enviar]        (a data de entrada das notas de fora do RS da SEDIF/DeSTDA)
+    py -3 -m ponte sedif rodar [--sem-enviar] [--tudo]  (as notas de entrada da SEDIF/DeSTDA, com os itens, do XML)
 
 Leia ponte/LEIA-ME.md.
 """
-VERSAO = '0.6.0'
+VERSAO = '0.7.0'

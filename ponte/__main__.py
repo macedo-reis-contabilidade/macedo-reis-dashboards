@@ -7,6 +7,9 @@
    py -3 -m ponte entradas rodar [--sem-enviar] [--falso]
                                             (a data de entrada das notas de fora do RS das empresas da SEDIF/DeSTDA —
                                              ponte/entradas.py)
+   py -3 -m ponte sedif rodar [--sem-enviar] [--falso] [--tudo]
+                                            (as notas de entrada das empresas da SEDIF/DeSTDA, com os itens, lidas do
+                                             XML que a Domínio guarda — ponte/sedif.py)
    py -3 -m ponte chave [--trocar]          (gera a chave da ponte no config.ini e mostra só a impressão digital)
    py -3 -m ponte dominio conexao [--esperar] | tabelas [--procurar termo] [--saida arquivo.txt]
                           | sql "SELECT …" | --arquivo consulta.sql [--mes AAAA-MM] [--linhas N]
@@ -108,6 +111,12 @@ def main(argv=None):
     er = esub.add_parser('rodar', help='pede a lista ao sistema, lê da Domínio a chave e a data de entrada, manda')
     er.add_argument('--sem-enviar', action='store_true', help='lê e conta; não manda')
     er.add_argument('--falso', action='store_true', help='lê da Domínio de mentira (só manda pra endereço local)')
+    sd = sub.add_parser('sedif', help='as notas de entrada das empresas da SEDIF/DeSTDA, com os itens (ponte/sedif.py)')
+    ssub = sd.add_subparsers(dest='acao', required=True)
+    sr = ssub.add_parser('rodar', help='pede a lista ao sistema, lê da Domínio as notas e o XML que ela guarda, manda')
+    sr.add_argument('--sem-enviar', action='store_true', help='lê e conta; não manda nem grava o estado')
+    sr.add_argument('--falso', action='store_true', help='lê da Domínio de mentira (só manda pra endereço local)')
+    sr.add_argument('--tudo', action='store_true', help='manda de novo as notas da janela, mesmo as que já foram')
     ch = sub.add_parser('chave', help='gera a chave da ponte (x-chave) no config.ini e mostra só a impressão digital')
     ch.add_argument('--trocar', action='store_true', help='troca a chave que existe (pede confirmação)')
     dom = sub.add_parser('dominio', help='a ligação com o banco do Domínio Web: conexao, tabelas, sql — o LEIA-ME explica')
@@ -141,6 +150,10 @@ def main(argv=None):
     if args.comando == 'entradas':
         from .entradas import rodar as rodar_entradas
         return rodar_entradas(sem_enviar=args.sem_enviar, falso=args.falso)
+
+    if args.comando == 'sedif':
+        from .sedif import rodar as rodar_sedif
+        return rodar_sedif(sem_enviar=args.sem_enviar, falso=args.falso, tudo=args.tudo)
 
     if args.comando == 'notas':
         from .notas.rodada import rodar as rodar_notas

@@ -313,6 +313,44 @@ Domínio passa por cima da marcada à mão na tela. Não indo (o sistema fora), 
 empresa e pelo código, só com números: quantas notas, quantas de fora e por quê, e o que o sistema respondeu
 (recebidas, achadas na base, com a data nova, recusadas sem a chave).
 
+## As notas de entrada da SEDIF/DeSTDA, com os itens (26/11/2026)
+
+O pedido da Thalia: a Conferência SEDIF/DeSTDA precisava dos XMLs de entrada do mês, que ela exportava da Domínio e
+soltava na tela (a do Cleiton, 1.222 notas num mês). A ponte passa a mandar as notas sozinha. `ponte\sedif.py`, o leitor
+`ponte\nfe.py`, a fila `docs/FILA-CODE-2026-11-26-NOTAS-SEDIF.md`.
+
+**O que sai**: de cada NF-e de compra das empresas da lista (a mesma das datas de entrada: as da obrigação
+SEDIF/DeSTDA, pelo código do Domínio, e a janela, o mês de hoje e os dois antes) — de todos os estados, a do RS também —,
+a nota e os itens como a importação dos XMLs do sistema grava (`assets/js/importar-xml.js`): o fornecedor, os totais, e
+de cada item o NCM, o CFOP, a quantidade, o valor, a base, a alíquota e o valor do ICMS, a base e o valor da ST, o IPI, o
+PIS e a Cofins. **O XML não sai do PC**: ele é lido aqui, pelo `nfe.py` (o mesmo jeito do importador, campo a campo:
+`tests/harness/sedif-nfe.py` confere). Não vai: a nota de fornecedor pessoa física, a rejeitada pela Sefaz, a de XML
+ilegível ou de outra nota, e a sem o XML na Domínio (a digitada, ou a de quando a Domínio já apagou o XML — ela guarda
+uns dois meses): o log conta cada uma.
+
+**Como**: a `sedif_lista.sql` (o código da empresa e o período, pela data de entrada) dá a chave, a data, o tipo do
+fornecedor e se o catálogo da Domínio Atendimento ainda tem o XML; o XML vem pela `notas_xml.sql` (a mesma das notas
+das autorizadas), **só das notas que ainda não foram** e só do trecho de dias delas. Os pacotes vão empresa por empresa,
+até 200 notas e 4 MB cada. O sistema grava como a importação grava: a nota nova com os itens, num lote da ponte (o
+"Quem" das Notas fiscais diz `ponte`), com a data de entrada da Domínio; a que já estava na base (a que a Thalia
+importou) ganha a data e os itens do XML.
+
+**O que já foi**: `C:\ponte-dominio\sedif\estado.json` — a chave e a data de entrada de cada nota mandada, com a versão
+do leitor (`nfe.LEITOR`), e o porquê das que o XML não deixou mandar (pra não buscar o XML delas todo dia). Nada mais da
+nota. A nota vai de novo quando a data de entrada muda na Domínio, quando o leitor muda, ou com o `--tudo` (o lote da
+ponte desfeito nas Notas fiscais só volta com ele).
+
+**Quando**: no fim do `py -3 -m ponte rodar` (a tarefa das 7h), depois das datas de entrada, no mesmo modo — um erro
+nela vai pro log e não muda a rodada dos totais —, ou sozinha:
+
+    py -3 -m ponte sedif rodar [--sem-enviar] [--falso] [--tudo]
+
+O `--sem-enviar` lê e confere tudo (o XML das que iriam também), não manda e não grava o estado. O log sai por empresa e
+pelo código, só com números: as notas da janela, as já mandadas, as que vão, as de fora por motivo, e o que o sistema
+respondeu (recebidas, novas na base, as que já estavam, os itens completados, as datas novas, as recusadas sem números).
+O sistema fora: a rodada para e o resto vai na seguinte (nada fica como mandado). O pacote de uma empresa recusado: ela
+espera a próxima rodada, as outras seguem.
+
 ---
 
 # Ponte da Receita (Integra Contador)

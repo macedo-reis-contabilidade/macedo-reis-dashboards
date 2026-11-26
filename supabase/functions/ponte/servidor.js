@@ -45,6 +45,12 @@
 //                                                              nas notas que já estão na base (nf_gravar_entradas): a
 //                                                              Conferência SEDIF/DeSTDA põe a nota no mês da entrada,
 //                                                              como a Domínio
+//   { versao: 1, tipo: 'sedif', rodada, empresa: { codigo }, notas: [{ chave, entrada, doc, itens }] }
+//                                                            → as notas de entrada de uma empresa da SEDIF/DeSTDA, lidas
+//                                                              do XML que a Domínio guarda (26/11/2026, sedif.js):
+//                                                              conferidas e gravadas como a importação dos XMLs grava
+//                                                              (nf_gravar_notas_entrada: a nova com os itens e a data de
+//                                                              entrada; a que já estava ganha a data e os itens do XML)
 // Respostas que a ponte entende (ponte/envio.py): 2xx foi · 4xx recusado (não repete) · 5xx tenta de novo.
 // Puro: env, banco, relógio, o envio ao destino e o Google injetados (index.ts monta). Testes: tests/ponte-funcao.test.mjs.
 // ============================================================
@@ -55,7 +61,8 @@ import { validarPacoteNotas, empresasAutorizadas, autorizacaoAtiva, corpoDoDesti
 import { validarRelatorio, nomeDoRelatorio, pastaFiscal, pastaSituacao, idDaPasta, linkDoArquivo, PASTA_FISCAL, PASTA_SITUACAO,
   SEM_PASTA, SEM_CADASTRO, SEM_DRIVE, DRIVE_FORA } from './relatorio.js';
 import { criarDrive, ErroDrive } from './drive.js';
-import { validarPacoteEntradas, janelaDasEntradas, empresasDasEntradas, notasParaGravar, LIMITES_ENTRADAS } from './entradas.js';
+import { validarPacoteEntradas, janelaDasEntradas, empresasDasEntradas, notasParaGravar, LIMITES_ENTRADAS, SEM_SEDIF } from './entradas.js';
+import { validarPacoteSedif, notasDaEmpresa, LIMITES_SEDIF } from './sedif.js';
 
 const CABECALHOS = { 'Content-Type': 'application/json' };
 const resposta = (obj, status = 200) => new Response(JSON.stringify(obj), { status, headers: CABECALHOS });
@@ -124,6 +131,27 @@ async function gravarEntradas(db, v) {
   }
   return resposta({ ok: true, gravado: true, empresas: v.pacote.empresas.length, notas: g.notas.length, ...total,
     recusadas: recusadas.slice(0, LIMITES_ENTRADAS.recusadas), total_recusadas: recusadas.length });
+}
+
+// as notas de entrada de uma empresa da SEDIF/DeSTDA (26/11/2026): o código do Domínio tem de ser de uma empresa da lista,
+// e cada nota, de entrada dela (o destinatário é o documento do cadastro); o banco grava como a importação dos XMLs grava
+const NUMEROS_SEDIF = ['recebidas', 'novas', 'ja_na_base', 'itens', 'itens_completados', 'datas'];
+async function gravarNotasSedif(db, v) {
+  const { empresa } = v.pacote;
+  const ligada = (await empresasDaSedif(db)).find(e => e.codigo === empresa.codigo && e.cliente_id);
+  if (!ligada) return resposta({ erro: SEM_SEDIF }, 422);
+  const { data: cli, error } = await db.from('clientes').select('id, documento').eq('id', ligada.cliente_id);
+  if (error) throw error;
+  const g = notasDaEmpresa(v.pacote, cli && cli[0] && cli[0].documento);
+  const recusadas = [...v.recusadas, ...g.recusadas];
+  const total = Object.fromEntries(NUMEROS_SEDIF.map(k => [k, 0]));
+  if (g.notas.length) {
+    const { data, error: e2 } = await db.rpc('nf_gravar_notas_entrada', { p: { cliente_id: ligada.cliente_id, notas: g.notas } });
+    if (e2) throw e2;
+    for (const k of NUMEROS_SEDIF) total[k] = Number((data || {})[k]) || 0;
+  }
+  return resposta({ ok: true, gravado: true, notas: g.notas.length, ...total,
+    recusadas: recusadas.slice(0, LIMITES_SEDIF.recusadas), total_recusadas: recusadas.length });
 }
 
 // as notas de uma empresa: a autorização conferida de novo aqui (o código do Domínio, o documento do cadastro e a
@@ -349,6 +377,11 @@ export function criarServidor({ criarDb, agora = () => Date.now(), enviar = (url
         const v = validarPacoteEntradas(corpo, hojeEmBrasilia(agora()));
         if (!v.ok) return resposta({ erro: 'Pacote das datas de entrada recusado: ' + v.erro + ' (' + v.campo + ').' }, 422);
         return await gravarEntradas(db, v);
+      }
+      if (corpo.tipo === 'sedif') {
+        const v = validarPacoteSedif(corpo, hojeEmBrasilia(agora()));
+        if (!v.ok) return resposta({ erro: 'Pacote das notas de entrada recusado: ' + v.erro + ' (' + v.campo + ').' }, 422);
+        return await gravarNotasSedif(db, v);
       }
       return resposta({ erro: 'Nada pra fazer com este pacote.' }, 422);
     } catch (e) {
