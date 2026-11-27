@@ -33,6 +33,13 @@ Confere, nos temas escuro e claro:
      "Falta importar" grava a marca (só a empresa e o mês) e leva a empresa pra "Sem nada a recolher", com quem marcou e o
      "Desmarcar"; a marca fica ao ler o mês de novo; a nota de entrada que chega vale mais que a marca; a marca que outra
      pessoa gravou no mesmo instante vale; desmarcar volta; a marca que não se lê não para a conferência;
+  3f. a lista da Domínio (26/11/2026, o "vai" do Samuel): a linha embaixo das abas (de quando é, quantas faltam, ou
+     conferida); as que faltam na linha da empresa, no detalhe e em "Falta importar", por empresa (a data de entrada da
+     Domínio, o número e a série, quem emitiu — o nome pelas notas dele, como texto; na NF-e avulsa, o CNPJ do Fisco —, a
+     emissão e a chave), com o "Copiar as chaves"; a que a Domínio não lista mais, não; a nota da base sem a data que a
+     Domínio pôs no mês conta nele, pela lista, sem gravar nada e sem o botão de mudar; a do fim do mês anterior que ela pôs
+     no anterior sai da virada; a empresa sem nada a recolher com nota faltando vai pra "Falta importar"; a sem notas na
+     base sem o "Não teve", e a marca dela não vale; a lista que não se lê não para a conferência;
   4. trocar o mês na aba "Com DIFAL": 08/2026 mostra só a nota de GO, com o DIFAL dela, e a aba fica; o item a 4% que o
      nome não decide fica fora do DIFAL, com o aviso;
   4b. a ração pet de outro NCM (28/10/2026, as notas da Thalia com 2309.90.10): a de gato entra no ST pelo nome, com a
@@ -73,9 +80,13 @@ def icms10(aliq, base, base_st, st):
     return (f'<ICMS10><orig>0</orig><CST>10</CST><modBC>3</modBC><vBC>{base:.2f}</vBC><pICMS>{aliq:.2f}</pICMS><vICMS>{base * aliq / 100:.2f}</vICMS>'
             f'<modBCST>4</modBCST><pMVAST>40.00</pMVAST><vBCST>{base_st:.2f}</vBCST><pICMSST>17.00</pICMSST><vICMSST>{st:.2f}</vICMSST></ICMS10>')
 
-def nfe(numero, uf, cnpj_emit, nome_emit, cnpj_dest, data, itens, tpnf=1):
-    chave = CUF[uf] + data[2:4] + data[5:7] + cnpj_emit + '55' + '001' + str(numero).zfill(9) + '1' + str(numero).zfill(8) + '0'
+def chave_de(numero, uf, cnpj_emit, data, serie='001'):   # a chave das notas daqui (o dígito verificador não é conferido)
+    chave = CUF[uf] + data[2:4] + data[5:7] + cnpj_emit + '55' + serie + str(numero).zfill(9) + '1' + str(numero).zfill(8) + '0'
     assert len(chave) == 44
+    return chave
+
+def nfe(numero, uf, cnpj_emit, nome_emit, cnpj_dest, data, itens, tpnf=1):
+    chave = chave_de(numero, uf, cnpj_emit, data)
     def det(i, it):   # (ncm, descrição, cfop, valor, icms[, cest])
         ncm, desc, cfop, valor, icms = it[:5]
         cest = f'<CEST>{it[5]}</CEST>' if len(it) > 5 else ''
@@ -198,6 +209,9 @@ N909 = "window.__mockDb.nf_documentos.find(d => d.numero === '909' && d.cliente_
 def campo(p, nome):   # um campo da nota 909 da d1 no banco falso (o que falta volta None)
     return db(p, '(' + N909 + '.' + nome + ' ?? null)')
 
+def campo_de(p, numero, nome):   # um campo de uma nota da d1 no banco falso
+    return db(p, "(window.__mockDb.nf_documentos.find(d => d.numero === '" + numero + "' && d.cliente_id === 'd1')." + nome + ' ?? null)')
+
 def valores(p, id_):   # o DIFAL e o ST na linha da empresa
     return p.eval_on_selector_all(f'.ds-emp[data-empresa="{id_}"] > .ds-emp-linha .ds-emp-val', 'els => els.map(e => e.innerText.replace(/\\s+/g, " ").trim())')
 
@@ -232,6 +246,7 @@ def msg_regra(p, id_):
 
 def fluxo(b, base, tema, erros):
     cx = b.new_context(viewport={'width': 1400, 'height': 900})
+    cx.grant_permissions(['clipboard-read', 'clipboard-write'], origin=base.rstrip('/'))   # o "Copiar as chaves" (3f)
     p = cx.new_page()
     p.on('pageerror', lambda e: erros.append(f'{tema}: {e}'))
     p.add_init_script(f"localStorage.setItem('mr_tema', '{tema}');")
@@ -601,6 +616,103 @@ def fluxo(b, base, tema, erros):
     abrir_aba(p, 'todas')
     p.evaluate("() => { document.getElementById('msgEnt').textContent = ''; }")
     ok(cards(p) == ['d1', 'd2'] and abas(p)['importar'] == '1', 'de volta a setembro, como estava')
+
+    print(f'[{tema}] 3f. A lista da Domínio (26/11/2026, o "vai" do Samuel: as notas de fora do RS que faltam)')
+    # o que a ponte guardou da Domínio (nf_entradas_dominio): da d1, a 202 (na base), duas que não estão aqui (uma do
+    # fornecedor com <img onerror>, de MG, e uma do de SC) e uma que a Domínio não lista mais; a 808, de agosto, que a
+    # Domínio pôs em setembro (está na base, sem a data); a 909, do fim de agosto, que ela pôs em agosto; da d3 (sem notas
+    # na base), uma do PR; e da padaria (nada a recolher nas dela), uma NF-e avulsa de SP
+    VISTO = '2026-10-27T10:05:00Z'
+    def ld(cliente, chave, entrada, **o):
+        return {'cliente_id': cliente, 'chave': chave, 'entrada': entrada, 'visto_em': VISTO, 'saiu_em': None, **o}
+    LISTA = [ld('d1', chave_de(202, 'SP', '82000000000100', '2026-09-12'), '2026-09-12'),
+             ld('d1', chave_de(111, 'MG', '84000000000100', '2026-09-03'), '2026-09-04'),
+             ld('d1', chave_de(112, 'SC', '81000000000100', '2026-09-10'), '2026-09-11'),
+             ld('d1', chave_de(113, 'SC', '81000000000100', '2026-09-10'), '2026-09-11', saiu_em='2026-10-27T10:05:00Z'),
+             ld('d1', chave_de(808, 'GO', '88000000000100', '2026-08-20'), '2026-09-01'),
+             ld('d1', chave_de(909, 'SC', '89000000000100', '2026-08-25'), '2026-08-28'),
+             ld('d3', chave_de(301, 'PR', '93000000000100', '2026-09-20'), '2026-09-21'),
+             ld('d5', chave_de(501, 'SP', '95000000000100', '2026-09-05', serie='890'), '2026-09-06')]
+    p.evaluate("l => { window.__mockDb.nf_entradas_dominio = l; }", LISTA)
+    trocar_mes(p, '2026-08'); trocar_mes(p, '2026-09')
+    ok(abas(p) == {'difal': '2', 'st': '1', 'nada': '0', 'importar': '3', 'todas': '4'},
+       f'os números: a padaria sai de "Sem nada a recolher" e, com a d1 e a d3, vai pra "Falta importar" ({abas(p)})')
+    dom = p.inner_text('#dominio')
+    ok(dom == 'Pela lista da Domínio (lida em 27/10, às 07h05), faltam 4 das 6 notas de fora do RS de 09/2026, de 3 empresas: veja em "Falta importar".'
+       and 'ds-warn' in p.get_attribute('#dominio', 'class'), f'embaixo das abas, a lista da Domínio: de quando é, e quantas faltam ({dom!r})')
+    ok(valores(p, 'd1') == ['DIFAL: R$ 221,00 2 notas', 'ICMS-ST a recolher: R$ 25,00 1 nota']
+       and '2 notas de fora do RS que a Domínio tem não estão aqui' in p.inner_text('.ds-emp[data-empresa="d1"] > .ds-emp-linha'),
+       f'a 808, que a Domínio pôs em setembro, já soma no DIFAL (130,00 + 91,00); a linha da d1 diz quantas faltam ({valores(p, "d1")})')
+    ok('Notas do fim de agosto sem a data de entrada' not in p.inner_text('#curtas'), 'a 909, que a Domínio pôs em agosto, sai da lista do fim de agosto')
+    curtas = p.inner_text('#curtas')
+    ok('Notas de fora do RS que a Domínio tem e não estão aqui (4, de 3 empresas)' in curtas and 'Sem nada a recolher' not in curtas
+       and 'Sem notas de entrada importadas de 09/2026 (1)' in curtas, 'em "Todas", a lista das que faltam, recolhida, em cima das outras')
+    abrir_empresa(p, 'd1')
+    c1 = p.inner_text('.ds-emp[data-empresa="d1"]')
+    ok('A Domínio tem 2 notas de fora do RS desta empresa em 09/2026 que não estão aqui: o DIFAL e o ICMS-ST do mês ficam sem elas.' in c1,
+       'aberta, a d1 diz as que faltam, em cima')
+    fal = linhas(p, '.ds-emp[data-empresa="d1"] table.ds-faltam tbody tr')
+    ok(fal == [['04/09/2026', '111 série 1', PERIGO_FORNECEDOR + ' 84.000.000/0001-00 · MG', '09/2026', chave_de(111, 'MG', '84000000000100', '2026-09-03')],
+               ['11/09/2026', '112 série 1', 'FORNECEDOR SC TESTE SA 81.000.000/0001-00 · SC', '09/2026', chave_de(112, 'SC', '81000000000100', '2026-09-10')]],
+       f'cada uma pela data de entrada da Domínio, o número, quem emitiu (o nome pelas notas dele aqui, como texto), a emissão e a chave; a que saiu da lista, não ({fal})')
+    d808 = [l for l in linhas(p, '.ds-emp[data-empresa="d1"] table.ds-dif tbody tr') if l[1] == '808']
+    ok(d808 == [['20/08/2026', '808', 'GOIAS TESTE SA GO entrou em 01/09/2026 · pela lista da Domínio', '1', '700,00', '700,00', '', '28,00', '91,00']],
+       f'no diferencial, a 808 com a entrada pela lista da Domínio ({d808})')
+    abrir_nota(p, 'd1', 'ds-dif', '808')
+    ok(texto(p, '.ds-emp[data-empresa="d1"] table.ds-dif tr.ds-ent:not([hidden])') == 'Entrou em 01/09/2026, pela lista da Domínio: a ponte grava a data na próxima leitura.'
+       and p.locator('.ds-emp[data-empresa="d1"] table.ds-dif tr.ds-ent:not([hidden]) [data-entrada]').count() == 0,
+       'aberta, a data é a da lista, sem o botão de mudar (a ponte grava a da Domínio)')
+    ok(campo_de(p, '808', 'data_entrada') is None, 'e nada foi gravado na nota: a data da lista é só da tela')
+    p.screenshot(path=str(FOTOS / f'{tema}-destda-faltam-empresa.png'), full_page=True)
+    p.click('.ds-emp[data-empresa="d1"] .ds-falta [data-copiar-chaves="d1"]')
+    esperar(p, "() => /chaves de acesso foram copiadas/.test(document.getElementById('msgEnt').textContent)")
+    copiado = p.evaluate('() => navigator.clipboard.readText()')
+    ok(copiado == chave_de(111, 'MG', '84000000000100', '2026-09-03') + '\n' + chave_de(112, 'SC', '81000000000100', '2026-09-10')
+       and p.inner_text('#msgEnt') == 'AGROPECUÁRIA TESTE LTDA: as 2 chaves de acesso foram copiadas, uma por linha.'
+       and texto(p, '.ds-emp[data-empresa="d1"] .ds-falta [data-copiar-chaves="d1"]') == '✓ Copiadas',
+       f'"Copiar as chaves" copia as chaves da empresa, uma por linha ({copiado!r})')
+    p.click('#btnFecharTudo')
+    abrir_aba(p, 'importar')
+    imp = p.inner_text('#lista')
+    ok(imp.startswith('Notas de fora do RS que a Domínio tem e não estão aqui (4, de 3 empresas)')
+       and 'AGROPECUÁRIA TESTE LTDA (AGRO TESTE) 2 notas' in imp and 'MERCADO SEM NOTAS LTDA 1 nota' in imp and 'PADARIA NADA A RECOLHER LTDA 1 nota' in imp,
+       f'"Falta importar": as que faltam, por empresa, em cima ({imp[:300]!r})')
+    pad = linhas(p, '#lista .ds-falta:has([data-copiar-chaves="d5"]) table.ds-faltam tbody tr')
+    ok(pad == [['06/09/2026', '501 série 890', '95.000.000/0001-00 (do Fisco: NF-e avulsa) SP', '09/2026', chave_de(501, 'SP', '95000000000100', '2026-09-05', serie='890')]],
+       f'a NF-e avulsa diz que o CNPJ da chave é o do Fisco ({pad})')
+    ok(p.locator('#lista [data-sem-notas="d3"]').count() == 0 and 'MERCADO SEM NOTAS LTDA\na Domínio tem 1 nota de fora do RS dela neste mês' in imp,
+       'a d3, sem notas na base, não tem o "Não teve notas de entrada no mês": a Domínio diz que teve')
+    p.screenshot(path=str(FOTOS / f'{tema}-destda-faltam.png'), full_page=True)
+    # a marca "sem notas" que alguém pôs não vale quando a Domínio tem nota no mês
+    p.evaluate("() => { window.__mockDb.destda_sem_notas.push({ cliente_id: 'd3', competencia: '2026-09', marcado_por: 'fiscal@macedoereis.com.br', marcado_em: '2026-10-27T14:00:00Z' }); }")
+    trocar_mes(p, '2026-08'); trocar_mes(p, '2026-09')
+    imp = p.inner_text('#lista')
+    ok(abas(p)['importar'] == '3' and abas(p)['nada'] == '0'
+       and 'MERCADO SEM NOTAS LTDA\nmarcada sem notas de entrada no mês por Thalia em 27/10, mas a Domínio tem 1 nota de fora do RS dela neste mês\nDesmarcar' in imp,
+       f'a marcada sem notas segue em "Falta importar", com o "Desmarcar" ({abas(p)})')
+    p.click('#lista [data-desmarcar="d3"]')
+    esperar(p, "() => /a marca saiu/.test(document.getElementById('msgEnt').textContent)")
+    ok(db(p, 'window.__mockDb.destda_sem_notas') == [], '"Desmarcar" tira a marca')
+    # a lista que não se lê não para a conferência
+    p.evaluate("() => { window.__mockErroTabela = { nf_entradas_dominio: 'permission denied for table nf_entradas_dominio' }; }")
+    trocar_mes(p, '2026-08'); trocar_mes(p, '2026-09')
+    ok(abas(p) == {'difal': '2', 'st': '1', 'nada': '1', 'importar': '1', 'todas': '4'}
+       and p.inner_text('#dominio') == 'Não consegui ler agora a lista das notas que a Domínio tem: a conferência segue sem ela.'
+       and 'permission denied' not in p.inner_text('body'),
+       f'sem ler a lista, a conferência segue como era, com o aviso ({abas(p)})')
+    p.evaluate("() => { window.__mockErroTabela = null; }")
+    # com todas as da lista aqui: conferida
+    p.evaluate("""() => { window.__mockDb.nf_entradas_dominio = window.__mockDb.nf_entradas_dominio.filter(l => ['d1'].includes(l.cliente_id)
+      && /^(35|52)/.test(l.chave)); }""")
+    trocar_mes(p, '2026-08'); trocar_mes(p, '2026-09')
+    dom = p.inner_text('#dominio')
+    ok(dom == 'Conferida com a lista da Domínio (lida em 27/10, às 07h05): as 2 notas de fora do RS de 09/2026 que ela tem estão todas aqui.'
+       and 'ds-ok' in p.get_attribute('#dominio', 'class') and abas(p)['importar'] == '1', f'com todas as da lista aqui, a linha diz que está conferida ({dom!r})')
+    p.evaluate("() => { window.__mockDb.nf_entradas_dominio = []; document.getElementById('msgEnt').textContent = ''; }")
+    trocar_mes(p, '2026-08'); trocar_mes(p, '2026-09')
+    abrir_aba(p, 'todas')
+    ok(p.inner_text('#dominio') == '' and cards(p) == ['d1', 'd2'] and abas(p) == {'difal': '2', 'st': '1', 'nada': '1', 'importar': '1', 'todas': '4'}
+       and valores(p, 'd1') == ['DIFAL: R$ 130,00 1 nota', 'ICMS-ST a recolher: R$ 25,00 1 nota'], 'sem a lista, a tela como era (e a linha some)')
 
     print(f'[{tema}] 4. Trocar o mês (na aba "Com DIFAL")')
     abrir_aba(p, 'difal')

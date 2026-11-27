@@ -11,7 +11,7 @@ import { validarPacote, empresasDaCarteira, documento, hojeEmBrasilia, sha256Hex
 import { criarServidor } from '../supabase/functions/ponte/servidor.js';
 import { validarPacoteDominio, LIMITES_DOMINIO, BLOCOS_DA_VERSAO, BLOCOS_DOMINIO, BLOCOS_DA_5 } from '../supabase/functions/ponte/dominio.js';
 import { validarPacoteNotas, empresasAutorizadas, destinosDaConfig, dvDaChave, pareceCpf, semCpf, LIMITES_NOTAS, SEM_DESTINO, SEM_AUTORIZACAO, DESTINO_FORA } from '../supabase/functions/ponte/notas.js';
-import { validarPacoteEntradas, janelaDasEntradas, empresasDasEntradas, notasParaGravar, LIMITES_ENTRADAS, SEM_SEDIF } from '../supabase/functions/ponte/entradas.js';
+import { validarPacoteEntradas, janelaDasEntradas, empresasDasEntradas, notasParaGravar, clientesParaVarrer, LIMITES_ENTRADAS, SEM_SEDIF } from '../supabase/functions/ponte/entradas.js';
 import { validarPacoteSedif, notasDaEmpresa, docNorm, avulsa, LIMITES_SEDIF, NAO_E_DA_EMPRESA } from '../supabase/functions/ponte/sedif.js';
 
 let falhas = 0;
@@ -1254,10 +1254,21 @@ console.log('A data de entrada das notas de compra de fora do RS (26/11/2026):')
     chk('pro banco: cada nota com o cliente do código; a empresa fora da lista fica de fora, com o porquê',
       g.notas.length === 2 && g.notas.every(n => n.cliente_id === 'a') && g.recusadas.length === 1 && g.recusadas[0].codigo === 904 && g.recusadas[0].erro === SEM_SEDIF, g);
   }
+  {
+    // a varredura da lista da Domínio (26/11/2026): só o cliente com todos os códigos dele no pacote e sem nota recusada
+    const emp = [{ codigo: 901, cliente_id: 'a' }, { codigo: 904, cliente_id: 'a' }, { codigo: 905, cliente_id: 'b' }, { codigo: 906, cliente_id: 'c' }, { codigo: 907, cliente_id: null }];
+    const pac = { empresas: [{ codigo: 901, notas: [] }, { codigo: 904, notas: [] }, { codigo: 905, notas: [] }] };
+    chk('varre o cliente com todos os códigos no pacote; o que não veio (o 906, sem nota ou com erro na leitura) fica como estava',
+      JSON.stringify(clientesParaVarrer(pac, emp, [])) === JSON.stringify(['a', 'b']), clientesParaVarrer(pac, emp, []));
+    chk('o cliente com um código fora do pacote não é varrido (a lista do outro código não veio)',
+      JSON.stringify(clientesParaVarrer({ empresas: [{ codigo: 901, notas: [] }, { codigo: 905, notas: [] }] }, emp, [])) === JSON.stringify(['b']));
+    chk('o cliente com nota recusada não é varrido (a recusada pode estar na Domínio)',
+      JSON.stringify(clientesParaVarrer(pac, emp, [{ codigo: 904, chave: 'X', campo: 'c', erro: 'e' }, { codigo: null }])) === JSON.stringify(['b']));
+  }
 
   // a porta de entrada, com um banco de mentira
   const AGORA_E = () => Date.parse('2026-11-26T07:30:00-03:00');
-  function dbEntradas({ rpcErro = null, semDestda = false } = {}) {
+  function dbEntradas({ rpcErro = null, semDestda = false, listaErro = null } = {}) {
     const t = {
       configuracoes_escritorio: [{ chave: 'ponte_chave_sha256', valor: h }],
       obrigacoes_fiscais: semDestda ? [{ id: 'o2', nome: 'PGDAS' }] : [{ id: 'o1', nome: 'SEDIF/DESTDA - SIMPLES NACIONAL' }, { id: 'o2', nome: 'PGDAS' }],
@@ -1285,10 +1296,15 @@ console.log('A data de entrada das notas de compra de fora do RS (26/11/2026):')
         chamadas.push({ nome, args });
         if (rpcErro) return { data: null, error: rpcErro };
         const n = args.p.notas.length;
+        if (nome === 'nf_entradas_dominio_gravar') {
+          if (listaErro) return { data: null, error: listaErro };
+          return { data: { listadas: n, novas: n, mudaram: 0, sairam: args.p.varrer ? 2 : 0 }, error: null };
+        }
         return { data: { recebidas: n, achadas: Math.max(0, n - 1), atualizadas: Math.max(0, n - 2) }, error: null };
       }
     };
   }
+  const daLista = dbe => dbe.chamadas.filter(c => c.nome === 'nf_entradas_dominio_gravar');
   const pedirE = async (db, corpo) => {
     const atender = criarServidor({ criarDb: () => db, agora: AGORA_E });
     const r2 = await atender(new Request('http://local/ponte', { method: 'POST', headers: { 'x-chave': 'segredo' }, body: JSON.stringify(corpo) }));
@@ -1302,16 +1318,35 @@ console.log('A data de entrada das notas de compra de fora do RS (26/11/2026):')
   let dbe = dbEntradas();
   re = await pedirE(dbe, PAC(p => { p.empresas.push({ codigo: 903, notas: [{ chave: chaveDe(7), entrada: '2026-10-05' }] }); p.empresas[0].notas.push({ chave: chaveDe(8, { uf: '43' }), entrada: '2026-10-05' }); }));
   chk('o pacote: grava as notas das empresas da lista, pelo cliente; a de fora da lista e a nota do RS voltam em recusadas',
-    re.status === 200 && re.corpo.ok && re.corpo.gravado && re.corpo.notas === 3 && re.corpo.empresas === 3 && dbe.chamadas.length === 1
+    re.status === 200 && re.corpo.ok && re.corpo.gravado && re.corpo.notas === 3 && re.corpo.empresas === 3
       && dbe.chamadas[0].nome === 'nf_gravar_entradas' && dbe.chamadas[0].args.p.notas.every(n => n.cliente_id === 'a' && Object.keys(n).join() === 'cliente_id,chave,entrada')
       && re.corpo.total_recusadas === 2 && re.corpo.recusadas.some(x => x.codigo === 903 && x.erro === SEM_SEDIF) && re.corpo.recusadas.some(x => /do RS/.test(x.erro))
       && re.corpo.recebidas === 3 && re.corpo.achadas === 2 && re.corpo.atualizadas === 1, re);
+  chk('e guarda a lista da Domínio, as mesmas notas, com o início da rodada; sem varrer (a empresa com nota recusada)',
+    dbe.chamadas.length === 2 && daLista(dbe).length === 1 && daLista(dbe)[0].args.p.visto === '2026-11-26T07:20:00-03:00'
+      && JSON.stringify(daLista(dbe)[0].args.p.notas) === JSON.stringify(dbe.chamadas[0].args.p.notas) && !('varrer' in daLista(dbe)[0].args.p)
+      && JSON.stringify(re.corpo.lista) === JSON.stringify({ listadas: 3, novas: 3, mudaram: 0, sairam: 0 }), { chamadas: dbe.chamadas.map(c => c.nome), lista: re.corpo.lista });
+  dbe = dbEntradas();
+  re = await pedirE(dbe, PAC());
+  chk('o pacote com a empresa inteira (os dois códigos do cliente, sem recusa): depois da lista, varre o cliente na janela',
+    re.status === 200 && daLista(dbe).length === 2 && JSON.stringify(daLista(dbe)[1].args.p) === JSON.stringify({ visto: '2026-11-26T07:20:00-03:00', notas: [],
+      varrer: { clientes: ['a'], desde: '2026-09-01', ate: HOJE } }) && JSON.stringify(re.corpo.lista) === JSON.stringify({ listadas: 3, novas: 3, mudaram: 0, sairam: 2 }),
+    { chamadas: dbe.chamadas.map(c => [c.nome, c.args.p]), lista: re.corpo.lista });
+  dbe = dbEntradas();
+  re = await pedirE(dbe, PAC(p => { p.empresas.pop(); }));
+  chk('sem o outro código do cliente no pacote, não varre', re.status === 200 && daLista(dbe).length === 1 && !daLista(dbe).some(c => c.args.p.varrer), dbe.chamadas.map(c => c.nome));
+  dbe = dbEntradas({ listaErro: { message: 'relation does not exist' } });
+  re = await pedirE(dbe, PAC());
+  chk('a lista que não grava não muda as datas: 200, com o lista_erro em português e sem o erro do banco',
+    re.status === 200 && re.corpo.ok && re.corpo.recebidas === 3 && !('lista' in re.corpo) && /lista das notas da Domínio/.test(re.corpo.lista_erro) && !/relation/.test(JSON.stringify(re.corpo)), re);
   dbe = dbEntradas();
   re = await pedirE(dbe, PAC(p => { p.empresas = [{ codigo: 901, notas: Array.from({ length: 4500 }, (_, i) => ({ chave: chaveDe(1000 + i), entrada: '2026-10-01' })) }]; }));
-  chk('em partes de ' + LIMITES_ENTRADAS.porVez + ', com os totais somados', re.status === 200 && dbe.chamadas.map(c => c.args.p.notas.length).join() === '2000,2000,500'
-    && re.corpo.recebidas === 4500 && re.corpo.achadas === 4497, { status: re.status, partes: dbe.chamadas.map(c => c.args.p.notas.length), corpo: re.corpo });
+  chk('em partes de ' + LIMITES_ENTRADAS.porVez + ', com os totais somados (as datas e a lista)',
+    re.status === 200 && dbe.chamadas.filter(c => c.nome === 'nf_gravar_entradas').map(c => c.args.p.notas.length).join() === '2000,2000,500'
+      && daLista(dbe).map(c => c.args.p.notas.length).join() === '2000,2000,500' && re.corpo.recebidas === 4500 && re.corpo.achadas === 4497 && re.corpo.lista.listadas === 4500,
+    { status: re.status, partes: dbe.chamadas.map(c => c.nome + ':' + c.args.p.notas.length), corpo: re.corpo });
   re = await pedirE(dbEntradas({ rpcErro: { message: 'caiu' } }), PAC());
-  chk('o banco falhou: 500 (a ponte manda de novo)', re.status === 500, re);
+  chk('o banco falhou nas datas: 500 (a ponte manda de novo)', re.status === 500, re);
   re = await pedirE(dbEntradas(), PAC(p => { p.rodada.id = 'x'; }));
   chk('o pacote fora do contrato: 422 com o campo', re.status === 422 && /rodada\.id/.test(re.corpo.erro), re);
   re = await pedirE(dbEntradas(), PAC(p => { p.versao = 2; }));

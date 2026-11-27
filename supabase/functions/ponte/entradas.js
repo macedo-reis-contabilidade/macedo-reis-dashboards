@@ -4,8 +4,10 @@
 // SEDIF/DeSTDA (fiscal-destda.html) punha em setembro, pela emissão — o XML só traz a emissão. A ponte do PC lê da
 // Domínio, das empresas da obrigação SEDIF/DeSTDA, a chave e a data de entrada (a do livro, `dent_ent`) de cada NF-e de
 // compra de fora do RS, e manda; a função grava a data nas notas que já estão na base (nf_documentos, pela
-// nf_gravar_entradas: só as de entrada, e só o que mudou). Só a chave e a data saem do PC — nada da nota, nem do
-// fornecedor; a nota de emitente pessoa física (o CPF no lugar do CNPJ, na chave) não vai.
+// nf_gravar_entradas: só as de entrada, e só o que mudou) e, desde a noite do mesmo dia (o "vai" do Samuel), guarda a
+// lista inteira (nf_entradas_dominio, pela nf_entradas_dominio_gravar): a Conferência mostra as que a Domínio tem e não
+// estão na base. Só a chave e a data saem do PC — nada da nota, nem do fornecedor; a nota de emitente pessoa física (o
+// CPF no lugar do CNPJ, na chave) não vai.
 // O contrato: docs/FILA-CODE-2026-11-26-ENTRADAS.md.
 //   { versao: 1, tipo: 'entradas', pedir: 'empresas' } → { empresas: [{ codigo }], desde, ate }: os códigos do Domínio
 //       das empresas com o vínculo ativo da SEDIF/DeSTDA e a janela das datas de entrada a ler (o mês de hoje e os dois
@@ -130,6 +132,22 @@ export function validarPacoteEntradas(p, hoje) {
     if (err instanceof Recusa) return { ok: false, campo: err.campo, erro: err.message };
     throw err;
   }
+}
+
+/** As empresas cuja lista da Domínio (nf_entradas_dominio, 26/11/2026) a função varre — o que a Domínio não listou mais
+ *  na janela sai da lista: só o cliente com todos os códigos do Domínio dele no pacote (a ponte não manda a empresa que
+ *  deu erro na leitura, nem a sem nota de fora do RS na janela: a lista dela fica como estava) e sem nota recusada (a
+ *  recusada não chegou aqui, mas pode estar na Domínio).
+ *  empresas: [{ codigo, cliente_id }] (as da SEDIF/DeSTDA) · recusadas: [{ codigo }] → [cliente_id] */
+export function clientesParaVarrer(pacote, empresas, recusadas) {
+  const noPacote = new Set(pacote.empresas.map(e => e.codigo));
+  const comRecusa = new Set((recusadas || []).filter(r => r && Number.isInteger(r.codigo)).map(r => r.codigo));
+  const codigos = new Map();
+  (empresas || []).filter(e => e && Number.isInteger(e.codigo) && e.cliente_id).forEach(e => {
+    if (!codigos.has(e.cliente_id)) codigos.set(e.cliente_id, []);
+    codigos.get(e.cliente_id).push(e.codigo);
+  });
+  return [...codigos].filter(([, cs]) => cs.every(c => noPacote.has(c) && !comRecusa.has(c))).map(([cliente]) => cliente);
 }
 
 /** O que vai pro banco: cada nota com o cliente do código do Domínio (só as empresas da SEDIF/DeSTDA, ligadas ao

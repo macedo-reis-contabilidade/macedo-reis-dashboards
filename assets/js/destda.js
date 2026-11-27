@@ -235,10 +235,12 @@ export const rotuloDoMes = comp => /^\d{4}-\d{2}$/.test(String(comp || '')) ? co
 // a situação da empresa no mês, pra ordenar e agrupar a tela: o que tem a recolher primeiro. A empresa sem nota de
 // entrada do mês na base falta importar, salvo quando alguém marcou que ela não teve notas de entrada no mês (26/11/2026,
 // pedido da Thalia: destda_sem_notas): aí não tem nada a recolher. Com nota de entrada do mês na base, a marca não vale
-export function situacaoDaEmpresa(conf, temNotas, marcadaSemNotas = false) {
-  if (!temNotas) return marcadaSemNotas ? 'nada' : 'sem_notas';
+// Com a lista da Domínio (26/11/2026, abaixo): a nota de fora do RS que a Domínio tem e não está na base (`faltam`)
+// também falta importar — a marca não vale, e a empresa sem nada a recolher nas notas que estão aqui fica em 'faltam'
+export function situacaoDaEmpresa(conf, temNotas, marcadaSemNotas = false, faltam = 0) {
+  if (!temNotas) return marcadaSemNotas && !faltam ? 'nada' : 'sem_notas';
   if (conf.diferencial.length || conf.st.length || (conf.conferir || []).length || conf.semAliquota.length) return 'a_conferir';
-  return 'nada';
+  return faltam ? 'faltam' : 'nada';
 }
 
 // ---------- a data de entrada (26/11/2026, o caso da Thalia) ----------
@@ -294,4 +296,74 @@ export function entradaSugerida(doc, { comp = null, hoje = null } = {}) {
   if (lim && lim.de > emissao) return lim.de;
   const seguinte = primeiroDoMesSeguinte(emissao);
   return seguinte && (!hoje || seguinte <= dia(hoje)) ? seguinte : emissao;
+}
+
+// ---------- a lista da Domínio (26/11/2026, o "vai" do Samuel) ----------
+// A ponte manda todo dia, de cada empresa da SEDIF/DeSTDA, a chave e a data de entrada de cada NF-e de compra de fora do
+// RS que a Domínio tem (nf_entradas_dominio). A da lista que não está na base falta importar: sem ela, o DIFAL e o ICMS-ST
+// do mês ficam incompletos. E a que está na base sem a data de entrada (importada depois da leitura da ponte) já conta no
+// mês da Domínio, pela data da lista: a ponte grava a data na leitura seguinte.
+const UF_DO_CODIGO = { 11: 'RO', 12: 'AC', 13: 'AM', 14: 'RR', 15: 'PA', 16: 'AP', 17: 'TO', 21: 'MA', 22: 'PI', 23: 'CE', 24: 'RN', 25: 'PB',
+  26: 'PE', 27: 'AL', 28: 'SE', 29: 'BA', 31: 'MG', 32: 'ES', 33: 'RJ', 35: 'SP', 41: 'PR', 42: 'SC', 43: 'RS', 50: 'MS', 51: 'MT', 52: 'GO', 53: 'DF' };
+const FORMATO_DA_CHAVE = /^[0-9]{6}[0-9A-Z]{12}[0-9]{26}$/;
+export const chaveDe = s => String(s == null ? '' : s).trim().toUpperCase();
+export const chaveDaNota = (clienteId, chave) => clienteId + '|' + chaveDe(chave);
+// o que a chave diz da nota: a UF de quem emitiu, o mês da emissão, o CNPJ (na NF-e avulsa, a série 890 a 899, o do
+// Fisco), a série e o número; null fora do formato
+export function dadosDaChave(chave) {
+  const c = chaveDe(chave);
+  if (!FORMATO_DA_CHAVE.test(c)) return null;
+  const serie = Number(c.slice(22, 25));
+  return { chave: c, uf: UF_DO_CODIGO[c.slice(0, 2)] || null, emissao: '20' + c.slice(2, 4) + '-' + c.slice(4, 6), cnpj: c.slice(6, 20),
+    serie, numero: Number(c.slice(25, 34)), avulsa: serie >= 890 && serie <= 899 };
+}
+export const cnpjFormatado = s => {
+  const c = String(s == null ? '' : s);
+  return c.length === 14 ? c.slice(0, 2) + '.' + c.slice(2, 5) + '.' + c.slice(5, 8) + '/' + c.slice(8, 12) + '-' + c.slice(12) : c;
+};
+// a data de entrada de cada nota da lista (as que a Domínio ainda lista): Map('cliente|chave' → 'AAAA-MM-DD')
+export function datasDaLista(linhas) {
+  const m = new Map();
+  (linhas || []).forEach(l => { if (l && !l.saiu_em && l.cliente_id && diaValido(dia(l.entrada))) m.set(chaveDaNota(l.cliente_id, l.chave), dia(l.entrada)); });
+  return m;
+}
+// a nota da base sem a data de entrada ganha a da lista (só na tela: entrada_origem 'lista'), e as notas do mês se
+// arrumam por ela: a do mês que a Domínio pôs noutro sai (vai pras que entraram noutro mês), a do fim do mês anterior que
+// ela pôs neste entra, a que ela pôs no anterior sai da lista da virada, e a da base que só a lista põe neste mês (extras)
+// entra. `entram`: as empresas que passaram a ter nota de entrada no mês por ela.
+//   lidas: { docs (as do mês), vira (as do fim do mês anterior sem a data), sairam, extras } · datas: datasDaLista
+export function aplicarLista({ docs = [], vira = [], sairam = [], extras = [] } = {}, datas, comp) {
+  const comData = d => {
+    if (d.data_entrada) return d;
+    const e = datas && datas.get(chaveDaNota(d.cliente_id, d.chave));
+    return e ? { ...d, data_entrada: e, entrada_origem: 'lista' } : d;
+  };
+  const vistas = new Set(sairam.map(d => d.id));
+  const out = { docs: [], vira: [], sairam: sairam.slice(), entram: new Set() };
+  const pega = (d, de) => {
+    if (!d || vistas.has(d.id)) return;
+    vistas.add(d.id);
+    const x = comData(d);
+    if (noMes(x, comp)) { out.docs.push(x); if (de !== 'docs') out.entram.add(x.cliente_id); return; }
+    if (saiuDoMes(x, comp)) { out.sairam.push(x); return; }
+    if (de === 'vira' && !x.data_entrada) out.vira.push(x);
+  };
+  docs.forEach(d => pega(d, 'docs'));
+  extras.forEach(d => pega(d, 'extras'));
+  vira.forEach(d => pega(d, 'vira'));
+  return out;
+}
+// as notas da lista que não estão na base, por empresa: Map(cliente_id → [{ cliente_id, entrada, ...dadosDaChave }]),
+// pela data de entrada e pelo emitente. naBase: Set de chaveDaNota (as notas da base daquelas empresas)
+export function faltamPorEmpresa(lista, naBase) {
+  const out = new Map();
+  (lista || []).forEach(l => {
+    if (!l || l.saiu_em || (naBase && naBase.has(chaveDaNota(l.cliente_id, l.chave)))) return;
+    const d = dadosDaChave(l.chave);
+    if (!d) return;
+    if (!out.has(l.cliente_id)) out.set(l.cliente_id, []);
+    out.get(l.cliente_id).push({ cliente_id: l.cliente_id, entrada: dia(l.entrada), ...d });
+  });
+  out.forEach(v => v.sort((a, b) => a.entrada.localeCompare(b.entrada) || a.cnpj.localeCompare(b.cnpj) || a.serie - b.serie || a.numero - b.numero));
+  return out;
 }

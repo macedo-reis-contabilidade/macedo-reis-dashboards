@@ -44,7 +44,9 @@
 //                                                              do RS dessas empresas, conferidas (entradas.js) e gravadas
 //                                                              nas notas que já estão na base (nf_gravar_entradas): a
 //                                                              Conferência SEDIF/DeSTDA põe a nota no mês da entrada,
-//                                                              como a Domínio
+//                                                              como a Domínio; e a lista inteira, guardada
+//                                                              (nf_entradas_dominio_gravar): a Conferência mostra as que
+//                                                              a Domínio tem e não estão na base
 //   { versao: 1, tipo: 'sedif', rodada, empresa: { codigo }, notas: [{ chave, entrada, doc, itens }] }
 //                                                            → as notas de entrada de uma empresa da SEDIF/DeSTDA, lidas
 //                                                              do XML que a Domínio guarda (26/11/2026, sedif.js):
@@ -61,7 +63,7 @@ import { validarPacoteNotas, empresasAutorizadas, autorizacaoAtiva, corpoDoDesti
 import { validarRelatorio, nomeDoRelatorio, pastaFiscal, pastaSituacao, idDaPasta, linkDoArquivo, PASTA_FISCAL, PASTA_SITUACAO,
   SEM_PASTA, SEM_CADASTRO, SEM_DRIVE, DRIVE_FORA } from './relatorio.js';
 import { criarDrive, ErroDrive } from './drive.js';
-import { validarPacoteEntradas, janelaDasEntradas, empresasDasEntradas, notasParaGravar, LIMITES_ENTRADAS, SEM_SEDIF } from './entradas.js';
+import { validarPacoteEntradas, janelaDasEntradas, empresasDasEntradas, notasParaGravar, clientesParaVarrer, LIMITES_ENTRADAS, SEM_SEDIF } from './entradas.js';
 import { validarPacoteSedif, notasDaEmpresa, LIMITES_SEDIF } from './sedif.js';
 
 const CABECALHOS = { 'Content-Type': 'application/json' };
@@ -120,8 +122,9 @@ async function empresasDaSedif(db) {
 
 // as datas de entrada (26/11/2026): só das empresas da lista, gravadas em partes; o banco grava só nas notas de entrada
 // que já estão na base, e só o que mudou (a ponte manda a janela inteira todo dia)
-async function gravarEntradas(db, v) {
-  const g = notasParaGravar(v.pacote, await empresasDaSedif(db));
+async function gravarEntradas(db, v, hoje) {
+  const empresas = await empresasDaSedif(db);
+  const g = notasParaGravar(v.pacote, empresas);
   const recusadas = [...v.recusadas, ...g.recusadas];
   const total = { recebidas: 0, achadas: 0, atualizadas: 0 };
   for (let i = 0; i < g.notas.length; i += LIMITES_ENTRADAS.porVez) {
@@ -129,8 +132,35 @@ async function gravarEntradas(db, v) {
     if (error) throw error;
     for (const k of Object.keys(total)) total[k] += Number((data || {})[k]) || 0;
   }
-  return resposta({ ok: true, gravado: true, empresas: v.pacote.empresas.length, notas: g.notas.length, ...total,
+  const lista = await gravarLista(db, v.pacote.rodada.inicio, g.notas, clientesParaVarrer(v.pacote, empresas, recusadas), janelaDasEntradas(hoje));
+  return resposta({ ok: true, gravado: true, empresas: v.pacote.empresas.length, notas: g.notas.length, ...total, ...lista,
     recusadas: recusadas.slice(0, LIMITES_ENTRADAS.recusadas), total_recusadas: recusadas.length });
+}
+
+// a lista da Domínio (26/11/2026, o "vai" do Samuel): as notas de fora do RS que ela tem, de cada empresa, pra Conferência
+// SEDIF/DeSTDA mostrar as que não estão na base (nf_entradas_dominio). Em partes, com o início da rodada como a marca de
+// quando a nota foi vista; depois, das empresas que vieram inteiras, o que a Domínio não listou mais na janela sai da
+// lista (saiu_em). O erro aqui não muda as datas, já gravadas: volta em lista_erro, e a rodada seguinte manda tudo de novo
+const NUMEROS_LISTA = ['listadas', 'novas', 'mudaram', 'sairam'];
+async function gravarLista(db, visto, notas, varrer, janela) {
+  const lista = Object.fromEntries(NUMEROS_LISTA.map(k => [k, 0]));
+  const somar = data => { for (const k of NUMEROS_LISTA) lista[k] += Number((data || {})[k]) || 0; };
+  try {
+    for (let i = 0; i < notas.length; i += LIMITES_ENTRADAS.porVez) {
+      const { data, error } = await db.rpc('nf_entradas_dominio_gravar', { p: { visto, notas: notas.slice(i, i + LIMITES_ENTRADAS.porVez) } });
+      if (error) throw error;
+      somar(data);
+    }
+    if (varrer.length) {
+      const { data, error } = await db.rpc('nf_entradas_dominio_gravar', { p: { visto, notas: [], varrer: { clientes: varrer, desde: janela.desde, ate: janela.ate } } });
+      if (error) throw error;
+      somar(data);
+    }
+    return { lista };
+  } catch (e) {
+    console.error('ponte: a lista das notas da Domínio', e);
+    return { lista_erro: 'Não gravei a lista das notas da Domínio agora (as datas de entrada foram); vai na próxima rodada.' };
+  }
 }
 
 // as notas de entrada de uma empresa da SEDIF/DeSTDA (26/11/2026): o código do Domínio tem de ser de uma empresa da lista,
@@ -376,7 +406,7 @@ export function criarServidor({ criarDb, agora = () => Date.now(), enviar = (url
       if (corpo.tipo === 'entradas') {
         const v = validarPacoteEntradas(corpo, hojeEmBrasilia(agora()));
         if (!v.ok) return resposta({ erro: 'Pacote das datas de entrada recusado: ' + v.erro + ' (' + v.campo + ').' }, 422);
-        return await gravarEntradas(db, v);
+        return await gravarEntradas(db, v, hojeEmBrasilia(agora()));
       }
       if (corpo.tipo === 'sedif') {
         const v = validarPacoteSedif(corpo, hojeEmBrasilia(agora()));

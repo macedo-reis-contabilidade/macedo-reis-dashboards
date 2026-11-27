@@ -4,7 +4,7 @@
 import { lerUfs, ncmDaRegra, ncmFormatado, ehQuatro, regraDoItem, notaDeFora, conferirEmpresa, mesAnterior, limitesDoMes,
   rotuloDoMes, situacaoDaEmpresa, difalDaNota, stDaNota, stRetido, stSemBase, agruparNotas, nomeTem, lerNomes, classificarItem,
   ALIQUOTA_INTERNA_RS, UFS, dataDoMes, noMes, entrouNoutroMes, saiuDoMes, viradaDoMes, DIAS_DA_VIRADA, primeiroDoMesSeguinte,
-  problemaDaEntrada, entradaSugerida } from '../assets/js/destda.js';
+  problemaDaEntrada, entradaSugerida, dadosDaChave, cnpjFormatado, chaveDaNota, datasDaLista, aplicarLista, faltamPorEmpresa } from '../assets/js/destda.js';
 
 let falhas = 0;
 const chk = (nome, cond, extra) => { if (!cond) falhas++; console.log((cond ? '  ✓ ' : '  ✗ ') + nome + (!cond && extra !== undefined ? ' → ' + JSON.stringify(extra) : '')); };
@@ -238,6 +238,78 @@ chk('o mês seguinte que ainda não chegou: a emissão', entradaSugerida(nota('x
 // a conferência do mês com a nota que mudou de mês: a mesma conta, só que no mês da entrada
 const daVirada = conferirEmpresa([virou], new Map([['v1', [item(1)]]]), [], EMPRESA);
 chk('a nota que entrou no mês seguinte entra na conta como qualquer outra', daVirada.diferencial.length === 1 && daVirada.totais.diferencial.difal === 130);
+
+console.log('A lista da Domínio (26/11/2026: as notas de fora do RS que ela tem e não estão aqui):');
+{
+  // uma chave inventada: SC, 10/2026, o CNPJ do fornecedor (o dígito errado de propósito), modelo 55, série 1, número 123
+  const ch = (numero, { uf = '42', aamm = '2610', cnpj = FORNECEDOR, serie = '001' } = {}) =>
+    uf + aamm + cnpj + '55' + serie + String(numero).padStart(9, '0') + '1' + '00004321' + '0';
+  const d = dadosDaChave(ch(123));
+  chk('o que a chave diz: a UF, o mês da emissão, o CNPJ, a série e o número',
+    d && d.uf === 'SC' && d.emissao === '2026-10' && d.cnpj === FORNECEDOR && d.serie === 1 && d.numero === 123 && d.avulsa === false, d);
+  chk('a NF-e avulsa (série 890 a 899): o CNPJ da chave é o do Fisco', dadosDaChave(ch(5, { serie: '890' })).avulsa === true && dadosDaChave(ch(5, { serie: '889' })).avulsa === false);
+  chk('o CNPJ com letras, em minúscula, e com espaço em volta: vale', dadosDaChave('  ' + ch(7, { cnpj: 'AB12CD34EF5601' }).toLowerCase() + ' ').cnpj === 'AB12CD34EF5601');
+  chk('fora do formato: nada', dadosDaChave('123') === null && dadosDaChave(null) === null && dadosDaChave(ch(1).slice(0, 43) + 'X') === null);
+  chk('a UF que não existe na tabela do IBGE fica sem nome', dadosDaChave(ch(1, { uf: '99' })).uf === null);
+  chk('o CNPJ formatado', cnpjFormatado(FORNECEDOR) === '44.555.666/0001-00' && cnpjFormatado('123') === '123');
+  const lista = [
+    { cliente_id: 'a', chave: ch(3), entrada: '2026-10-05' },
+    { cliente_id: 'a', chave: ch(1), entrada: '2026-10-01' },
+    { cliente_id: 'a', chave: ch(2), entrada: '2026-10-01', saiu_em: '2026-11-27T10:00:00Z' },
+    { cliente_id: 'a', chave: ch(4), entrada: '2026-10-02' },
+    { cliente_id: 'b', chave: ch(9), entrada: '2026-10-03' },
+    { cliente_id: 'b', chave: 'x', entrada: '2026-10-03' },
+  ];
+  const f = faltamPorEmpresa(lista, new Set([chaveDaNota('a', ch(4).toLowerCase())]));
+  chk('faltam: as da lista que não estão na base, por empresa e pela data de entrada; a que saiu da lista e a chave errada não',
+    f.size === 2 && f.get('a').map(n => n.numero).join() === '1,3' && f.get('b').map(n => n.numero).join() === '9' && f.get('a')[0].entrada === '2026-10-01',
+    [...f].map(([k, v]) => [k, v.map(n => n.numero)]));
+  chk('a nota da base de outra empresa, com a mesma chave, não conta como a desta', faltamPorEmpresa(lista, new Set([chaveDaNota('b', ch(1))])).get('a').length === 3);
+  const datas = datasDaLista(lista);
+  chk('as datas da lista: a que saiu da lista e a data que não existe ficam de fora',
+    datas.get(chaveDaNota('a', ch(1))) === '2026-10-01' && !datas.has(chaveDaNota('a', ch(2))) && datasDaLista([{ cliente_id: 'a', chave: ch(1), entrada: '2026-02-30' }]).size === 0);
+  // as notas do mês com a lista: só a nota sem a data de entrada ganha a da lista
+  let seqN = 100;
+  const n = (id, o) => nota(id, { cliente_id: 'a', chave: ch(++seqN), data_entrada: null, entrada_origem: null, ...o });
+  const doMesComData = n('d1', { data_emissao: '2026-10-03', data_entrada: '2026-10-04', entrada_origem: 'dominio' });
+  const doMesSemData = n('d2', { data_emissao: '2026-10-10' });
+  const doMesQueSaiu = n('d3', { data_emissao: '2026-10-30' });
+  const daVira = n('v1', { data_emissao: '2026-09-29' });
+  const daViraFica = n('v2', { data_emissao: '2026-09-28' });
+  const daViraSemLista = n('v3', { data_emissao: '2026-09-27' });
+  const extra = n('x1', { data_emissao: '2026-08-20' });
+  const extraNoutroMes = n('x2', { data_emissao: '2026-09-02', data_entrada: '2026-09-05', entrada_origem: 'manual' });
+  const saiu = n('s1', { data_emissao: '2026-10-29', data_entrada: '2026-11-02', entrada_origem: 'dominio' });
+  const dl = new Map([
+    [chaveDaNota('a', doMesComData.chave), '2026-10-20'],     // a data da base vale: a da lista não passa por cima
+    [chaveDaNota('a', doMesSemData.chave), '2026-10-12'],
+    [chaveDaNota('a', doMesQueSaiu.chave), '2026-11-03'],
+    [chaveDaNota('a', daVira.chave), '2026-10-01'],
+    [chaveDaNota('a', daViraFica.chave), '2026-09-30'],
+    [chaveDaNota('a', extra.chave), '2026-10-02'],
+    [chaveDaNota('a', extraNoutroMes.chave), '2026-10-06'],
+  ]);
+  const ap = aplicarLista({ docs: [doMesComData, doMesSemData, doMesQueSaiu], vira: [daVira, daViraFica, daViraSemLista], sairam: [saiu], extras: [extra, extraNoutroMes] }, dl, '2026-10');
+  const ids = l => l.map(x => x.id).sort().join();
+  chk('do mês: a com a data da base, a sem a data com a da lista, a do fim do mês anterior que a Domínio pôs neste e a da base que só a lista põe neste',
+    ids(ap.docs) === 'd1,d2,v1,x1', ids(ap.docs));
+  chk('a data da base vale mais que a da lista', ap.docs.find(x => x.id === 'd1').data_entrada === '2026-10-04' && ap.docs.find(x => x.id === 'd1').entrada_origem === 'dominio');
+  chk('a da lista fica marcada como da lista (só na tela)', ap.docs.find(x => x.id === 'd2').entrada_origem === 'lista' && ap.docs.find(x => x.id === 'd2').data_entrada === '2026-10-12'
+    && doMesSemData.data_entrada === null);
+  chk('a emitida no mês que a Domínio pôs no seguinte vai pras que entraram noutro mês', ids(ap.sairam) === 'd3,s1', ids(ap.sairam));
+  chk('na virada fica só a do fim do mês anterior que a lista não tem; a que a Domínio pôs no mês anterior sai dela', ids(ap.vira) === 'v3', ids(ap.vira));
+  chk('a nota da base com a data de outro mês (marcada à mão) fica onde a base diz', !ap.docs.some(x => x.id === 'x2') && !ap.sairam.some(x => x.id === 'x2'));
+  chk('as empresas que passam a ter nota de entrada no mês pela lista', [...ap.entram].join() === 'a');
+  const sem = aplicarLista({ docs: [doMesSemData], vira: [daVira] }, new Map(), '2026-10');
+  chk('sem a lista, tudo como era', ids(sem.docs) === 'd2' && ids(sem.vira) === 'v1' && sem.entram.size === 0 && sem.docs[0].entrada_origem === null);
+  chk('a nota repetida (nas do mês e nas extras) entra uma vez', aplicarLista({ docs: [doMesSemData], extras: [doMesSemData] }, dl, '2026-10').docs.length === 1);
+  // a situação com as que faltam
+  const vazio = { diferencial: [], st: [], conferir: [], semAliquota: [] };
+  chk('sem nota na base e com a lista dizendo que teve: falta importar, mesmo marcada sem notas', situacaoDaEmpresa(vazio, false, true, 2) === 'sem_notas'
+    && situacaoDaEmpresa(vazio, false, true, 0) === 'nada' && situacaoDaEmpresa(vazio, false, false, 0) === 'sem_notas');
+  chk('com nota na base, nada a recolher nela e nota de fora do RS faltando: "faltam", não "nada"', situacaoDaEmpresa(vazio, true, false, 1) === 'faltam' && situacaoDaEmpresa(vazio, true) === 'nada');
+  chk('com algo a recolher, a conferir (e a que falta aparece em "Falta importar" também)', situacaoDaEmpresa({ ...vazio, diferencial: [1] }, true, false, 3) === 'a_conferir');
+}
 
 console.log(falhas ? '\n' + falhas + ' falha(s).' : '\nTudo certo.');
 process.exit(falhas ? 1 : 0);
