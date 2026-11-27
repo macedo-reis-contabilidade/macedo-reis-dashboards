@@ -1097,6 +1097,51 @@ def main():
         ok(qg3.input_value(PZ) == '40' and qg3.get_attribute(OZ, 'data-fonte') == 'digitado', 'a alíquota zero que a equipe digitou fica como está')
         qg3.close()
 
+        print('17. A conta do INSS da folha à vista')
+        # 27/11/2026, a Thalia no estudo de uma pizzaria: "não está considerando na folha os 20% do patronal? puxou só 8,8, mas
+        # o correto é 28,8%" — os campos são o RAT, o FAP, os terceiros e a CPRB; os 20% entram sempre, e a linha embaixo da
+        # folha diz a conta inteira
+        def abrir17(cliente, nome, objetivo):
+            q = cx.new_page()
+            q.on('pageerror', lambda e: erros.append('inss: ' + str(e)))
+            q.add_init_script(TOUR); q.add_init_script(SEMEAR)
+            q.clock.set_fixed_time('2026-11-01T12:00:00')
+            q.goto(base + 'fiscal-comparativo.html?cliente=' + cliente)
+            q.wait_for_function("n => document.querySelector('#escolhida h3') && document.querySelector('#escolhida h3').textContent === n", arg=nome, timeout=8000)
+            comparativo(q, objetivo)
+            q.wait_for_selector('#folhaInss', timeout=5000)
+            return q
+        BASE17 = 'No Presumido e no Real, o INSS da empresa é 20% fixo + RAT 2% + terceiros 5,8% = 27,8% da folha, e 20% do pró-labore. Os 20% não têm campo: entram sempre (Lei 8.212, art. 22, I e III).'
+        q = abrir17('c1', 'COMÉRCIO MODELO ME', 'todos')
+        q.wait_for_selector('#resultado table.ct', timeout=5000)
+        li = texto(q, '#folhaInss')
+        ok(li == BASE17 + ' No Simples, o INSS da empresa está no DAS.', f'embaixo da folha, a conta inteira do INSS, com os 20%, e onde ele fica no Simples ({li})')
+        ok(q.inner_text('#folhaInss b') == '20% fixo + RAT 2% + terceiros 5,8% = 27,8% da folha', 'a conta em negrito')
+        # o RAT de 3%: a linha e a conta acompanham (a folha de R$ 100 mil: R$ 28.800,00 de INSS patronal no Presumido)
+        q.fill('#f_folha', '100000')
+        q.fill('#f_rat', '3')
+        q.wait_for_function("() => document.getElementById('folhaInss').textContent.includes('20% fixo + RAT 3% + terceiros 5,8% = 28,8% da folha')", timeout=3000)
+        inss = q.evaluate("""() => { const h = [...document.querySelectorAll('details.ct-det h4')].find(x => x.textContent === 'Lucro Presumido');
+          const tr = h && [...h.nextElementSibling.querySelectorAll('tr')].find(t => t.cells[0].textContent.startsWith('INSS patronal')); return tr ? tr.cells[1].textContent : null; }""")
+        ok(inss == '28.800,00', f'o RAT de 3%: a linha diz 28,8%, e o INSS patronal do Presumido é 28,8% da folha de R$ 100 mil ({inss})')
+        q.fill('#f_fap', '1,5')
+        q.wait_for_function("() => document.getElementById('folhaInss').textContent.includes('20% fixo + RAT 3% × FAP 1,5 + terceiros 5,8% = 30,3% da folha')", timeout=3000)
+        ok(True, 'o FAP multiplica o RAT: 30,3%')
+        q.fill('#f_cprb', '4,5')
+        q.wait_for_function("() => document.getElementById('folhaInss').textContent.includes('10% fixo + RAT 3% × FAP 1,5 + terceiros 5,8% = 20,3% da folha em 2026, 25,3% em 2027 (15% fixo) e 30,3% em 2028 (20% fixo)')", timeout=3000)
+        ok('a CPRB de 4,5% da receita' in texto(q, '#folhaInss') and 'A CPRB é de 2,7% da receita em 2026 e 1,8% em 2027, e acaba em 2028' in texto(q, '#folhaInss'),
+           'com a CPRB, a parte fixa de cada ano da transição e a CPRB que fica')
+        q.close()
+        # o Presumido × Real da empresa do Presumido: a conta, sem o Simples; com o regime de hoje trocado pro Simples, ele entra
+        q = abrir17('c7', 'INDUSTRIA DE TESTE LTDA', 'presumido_real')
+        ok(texto(q, '#folhaInss') == BASE17, f'no Presumido × Real da empresa do Presumido, a conta sem nada do Simples ({texto(q, "#folhaInss")[-60:]})')
+        q.select_option('#regimeAtual', 'simples')
+        q.wait_for_function("() => document.getElementById('folhaInss').textContent.endsWith('No Simples, o INSS da empresa está no DAS.')", timeout=3000)
+        q.select_option('#regimeAtual', 'presumido')
+        q.wait_for_function("t => document.getElementById('folhaInss').textContent === t", arg=BASE17, timeout=3000)
+        ok(True, 'o regime de hoje no Simples põe a frase do DAS, e de volta ao Presumido ela sai')
+        q.close()
+
         ok(not erros, 'nenhum erro de JavaScript' + ('' if not erros else ': ' + ' | '.join(erros[:3])))
         b.close()
     srv.shutdown()

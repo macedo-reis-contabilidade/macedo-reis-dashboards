@@ -158,6 +158,9 @@
     details.ct-ajuste > summary { cursor:pointer; color:var(--brand-light); }
     .ct-total-rec { font-size:13px; color:var(--brand-pale); margin:2px 0 8px; }
     .ct-total-rec b { color:var(--text); font-variant-numeric:tabular-nums; }
+    /* a conta do INSS da empresa, embaixo dos campos da folha */
+    .ct-inss { font-size:12.5px; line-height:1.5; color:var(--brand-pale); margin:10px 0 0; max-width:86ch; }
+    .ct-inss b { color:var(--text); font-weight:600; font-variant-numeric:tabular-nums; }
     details.ct-mais > summary { cursor:pointer; font-size:13px; font-weight:600; color:var(--brand-light); margin-bottom:8px; }
     /* o resultado */
     .ct-frase { font-size:15px; line-height:1.55; color:var(--text); margin:0 0 6px; }
@@ -307,6 +310,7 @@
       perguntaDaConfirmacao, pedirConfirmacao } from './assets/js/comparativo-estudo.js';
     import { oQueConferiu } from './assets/js/simples-vedacoes.js';
     import { PESO_DA_PRECISAO, NIVEL_DA_PRECISAO } from './assets/js/comparativo-roteiro.js';
+    import { textoDoInss } from './assets/js/comparativo-folha.js';
     import { assistenteDaTela } from './assets/js/assistente-escritorio.js';
     import { lerRelatorio, consolidar, lerPlanilha, perfilAtividade } from './assets/js/dominio-relatorios.js';
     import { paginasDoPdf, abasDaPlanilha, rotuloRel } from './assets/js/relatorios-arquivos.js';
@@ -681,6 +685,11 @@
       const sel = $('f_lucroAte');
       definirPeriodo(jan, e.lucroDe === jan.de && e.lucroAte ? e.lucroAte : sel && sel.value ? sel.value : jan.ate);
     }
+    // a conta do INSS da empresa embaixo dos campos da folha (27/11/2026, a Thalia: "não está considerando na folha os 20%
+    // do patronal? puxou só 8,8"): os campos são o RAT, o FAP, os terceiros e a CPRB, e os 20% entram sempre — a linha diz a
+    // conta inteira, com os números do motor (assets/js/comparativo-folha.js); o Simples, só quando faz parte do estudo
+    const htmlDoInss = () => textoDoInss(st.entrada, { comSimples: simplesNoEstudo(st.entrada.objetivo, st.entrada.regimeAtual) })
+      .map(p => (typeof p === 'string' ? esc(p) : '<b>' + esc(p.b) + '</b>')).join('');
     function renderForm() {
       const e = st.entrada;
       const totalRec = e.atividades.reduce((s, a) => s + (Number(a.receita) || 0), 0);
@@ -701,7 +710,7 @@
         (geral ? '' : blocoLucro()) +
         '<fieldset class="ct-grupo"><legend>Folha</legend><div class="ct-campos">' +
           campo('folha') + campo('proLabore') + campo('rat') + campo('fap') + campo('terceiros') + campo('cprb') +
-        '</div></fieldset>' +
+        '</div><p class="ct-inss" id="folhaInss">' + htmlDoInss() + '</p></fieldset>' +
         '<fieldset class="ct-grupo"><legend>Projeção</legend><div class="ct-campos">' +
           campo('crescimentoReceita') + campo('crescimentoFolha') +
           '<label class="ct-campo"><span><input type="checkbox" data-campo="semLc224"' + (e.semLc224 ? ' checked' : '') + '> Empresa com liminar contra o aumento do Presumido (LC 224/2025)</span><small class="ct-orig">o aumento vale na parte da receita acima de R$ 5 milhões por ano</small></label>' +
@@ -819,6 +828,8 @@
       // sem o comparativo escolhido, a tela ainda está na pergunta: nada de conta
       if (!st.entrada || !st.entrada.objetivo) { ultimo = null; box.innerHTML = ''; return; }
       if ($('grupoSit')) { const tg = textoGrupo(); $('grupoSit').textContent = tg.txt; $('grupoSit').classList.toggle('ct-alerta', tg.alerta); }
+      // a conta do INSS acompanha o RAT, o FAP, os terceiros, a CPRB e o regime de hoje
+      if ($('folhaInss')) $('folhaInss').innerHTML = htmlDoInss();
       // a conta inteira (a mesma do assistente do escritório): comparar, as premissas, o roteiro, os prazos, o que muda e os avisos
       const conta = contaDoEstudo({ entrada: st.entrada, origens: st.origens, conferencia: st.conferencia, notas: st.notas, notasSimples: st.notasSimples, serie: st.serie,
         grupoSeries: st.grupoSeries, grupoFora: st.grupoFora, socios: st.socios, aliq2027, hoje: hojeLocal(), vedacoes: st.vedacoes, contabil: st.contabil, atividade: st.atividade,
@@ -1084,8 +1095,12 @@
 
     // ---------- gravar (sem botão: cada mudança grava um instante depois) ----------
     let gravando = null;
-    // a gravação marcada pra daqui a pouco, já (antes de trocar de empresa)
-    async function gravarPendente() { if (tGravar) { clearTimeout(tGravar); tGravar = null; await gravar(); } }
+    // a gravação marcada pra daqui a pouco, já (antes de trocar de empresa); e a que já saiu, até ela acabar (a pergunta ao
+    // assistente que sai no meio dela levaria o estudo de antes)
+    async function gravarPendente() {
+      if (tGravar) { clearTimeout(tGravar); tGravar = null; await gravar(); }
+      else if (gravando) await gravando.catch(() => {});
+    }
     async function gravar() {
       tGravar = null;
       if (!st.entrada || !st.entrada.objetivo || (!st.cliente && !st.nome)) return;
