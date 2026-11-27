@@ -53,3 +53,6 @@ Commit deste arquivo (o registro preenchido) e `git push origin fila-26-11-entra
 ## Registro de progresso
 | Data | Item | O que aconteceu |
 |---|---|---|
+| 26/11/2026 | 1 | Feito às 22h38, pelo plantão das 22h38: `git fetch --prune`, `main` atualizada (em `d891844`), a branch `fila-26-11-entradas-lista`. A ponte instalada é a `0.7.0`. |
+| 26/11/2026 | 2 | Da pasta da ponte instalada: `py -3 -m ponte entradas rodar`, código **0**, das **22h38m48s às 22h39m28s** (o maior tempo de uma empresa, 4,5 s; nenhuma com erro na leitura). `entradas: 35 empresa(s) da SEDIF/DeSTDA, de 01/09/2026 a 26/11/2026` · `entradas: 372 nota(s) de 25 empresa(s)` (sem "de fora"). O pacote: **1 de 1**, foi (HTTP 200); o sistema **recebeu 372**, **achou 303 na base** e **0 ficaram com a data nova**; **deixou de fora: nenhuma**. (Às 15h43, a mesma etapa achou 242 na base; as outras entraram com as notas da SEDIF/DeSTDA desta tarde, que já trouxeram a data de entrada.) |
+| 26/11/2026 | 3 | Feito: este registro, o commit (só este arquivo) e `git push origin fila-26-11-entradas-lista`. |
