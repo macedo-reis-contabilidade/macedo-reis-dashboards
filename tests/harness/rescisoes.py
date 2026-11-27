@@ -190,7 +190,16 @@ def modulo(b, base, tema, erros):
     ok('30/09/2026' in dt and '45 dias que faltariam' in dt and 'art. 479' in dt and '40% do FGTS' in dt, '2. trocando o prazo pra 30+60: 15/10 fica antes do fim (faltam 45 dias)')
     p.fill('#fiData', '2026-08-20'); p.wait_for_timeout(100)
     ok('depois da admissão' in p.inner_text('#fiDatas'), '2. último dia antes da admissão: pede pra completar o caso')
+    # o FGTS do 13º na rescisão de dezembro (27/11/2026, a Nota Orientativa FGTS Digital nº 13/2026)
+    p.fill('#fiData', '2026-12-03'); p.wait_for_timeout(100)
+    f13 = p.inner_text('#fiDatas')
+    ok('O FGTS do 13º vai junto' in f13 and 'até 11/12/2026' in f13 and 'FGTS 11 (mensal)' in f13 and 'Nota Orientativa FGTS Digital nº 13/2026' in f13,
+       '2. o último dia em dezembro: o aviso do FGTS do 13º na ficha, com o pagamento (13/12 é domingo → 11/12) e a rubrica da 1ª parcela')
+    p.select_option('#fiStatus', 'cancelada'); p.wait_for_timeout(100)
+    ok('O FGTS do 13º' not in p.inner_text('#fiDatas'), '2. a cancelada não tem o aviso')
+    p.select_option('#fiStatus', 'em_andamento'); p.wait_for_timeout(100)
     p.fill('#fiData', '2026-10-15'); p.wait_for_timeout(100)
+    ok('O FGTS do 13º' not in p.inner_text('#fiDatas'), '2. o último dia em outubro: sem o aviso')
     p.click('#fiSalvar'); p.wait_for_timeout(400)
     r5 = db(p, "window.__mockDb.rescisoes.find(r => r.id === 'r5')")
     ok(r5['prazo_experiencia'] == '30+60' and r5['data_admissao'] == '2026-09-01' and r5['aviso'] is None and r5['data_base'] == '2026-10-15'

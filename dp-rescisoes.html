@@ -226,6 +226,7 @@
     import { supabase, getCurrentUser, signOut } from './assets/js/supabase.js';
     import { hojeLocal, formatDocumento } from './assets/js/utils.js';   // dia no fuso local (toISOString é UTC)
     import { PERGUNTAS, calcularRescisao, resumoDatas, resumoCaso, perguntaData, fmtData, diaSemana, pedeDescontoExperiencia } from './assets/js/rescisao-datas.js';
+    import { fgts13NaRescisao } from './assets/js/rescisao-fgts13.js';
 
     // ---------------------------------------------------------------------------------------------
     // Textos do formulário (rescisao_modelos). As perguntas são fixas (assets/js/rescisao-datas.js, a mesma conta das
@@ -483,9 +484,12 @@
       const aberta = ABERTAS.includes($('fiStatus').value);
       const d = diasAte(calc.limite);
       const flag = !aberta ? '' : d < 0 ? ' <span class="rs-mini er">venceu</span>' : d === 0 ? ' <span class="rs-mini er">hoje</span>' : d <= 5 ? ` <span class="rs-mini p">em ${d} dia${d === 1 ? '' : 's'}</span>` : '';
+      // o FGTS do 13º na rescisão de dezembro e de janeiro (27/11/2026, a Nota Orientativa FGTS Digital nº 13/2026)
+      const f13 = fgts13NaRescisao({ ultimo_dia: calc.ultimoDia, data_acerto: calc.limite, status: $('fiStatus').value });
       $('fiDatas').innerHTML = (res.alerta ? `<div class="rs-alerta" style="margin:2px 0 6px">⚠ ${esc(res.alerta)}</div>` : '')
         + linhas.map(l => `<div class="lin${l.destaque ? ' dest' : ''}"><span>${esc(l.rotulo)}</span><b>${fmtData(l.data)} · ${diaSemana(l.data)}${l.destaque ? flag : ''}</b></div>`).join('')
-        + '<ul>' + res.notas.map(n => `<li>${esc(n)}</li>`).join('') + '</ul>';
+        + '<ul>' + res.notas.map(n => `<li>${esc(n)}</li>`).join('') + '</ul>'
+        + (f13 ? `<div class="rs-alerta" id="fiFgts13" style="margin:8px 0 2px">${f13.linhas.map((t, i) => (i ? '<br>' : '⚠ ') + esc(t)).join('')}</div>` : '');
     }
 
     function pintarVinculo(r) {
