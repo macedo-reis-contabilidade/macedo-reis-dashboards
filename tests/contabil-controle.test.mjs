@@ -5,7 +5,7 @@ import { mesValido, diaValido, somaMes, mesesEntre, rotuloMes, mesPorExtenso, ul
   alvoDaEmpresa, resumoDaEmpresa, faixas, textoDasFaixas, mesesAteAqui, linhasParaMarcar, desfazerDe, dominioPorMes, textoDoDominio,
   dicaDoDominio, avisosDaEmpresa, limparPendencia, textoDaPendencia, ordenarPendencias, nomeDaEmpresa, semAcento, focosDaEmpresa,
   anosDoControle, inicioSugerido, feitoNoMes, textoDeMeses, andamentoDaEmpresa, folhaCalculada, problemasDoMes, mesesQueDiscordam,
-  textoDoAndamento, FOCOS, encerramentoDaEmpresa, textoDasOrigens, compensaNoVizinho, causaDaReceita, aberturaNoMes } from '../assets/js/contabil-controle.js';
+  textoDoAndamento, FOCOS, encerramentoDaEmpresa, textoDasOrigens, compensaNoVizinho, causaDaReceita, aberturaNoMes, aberturaQueCobre } from '../assets/js/contabil-controle.js';
 
 let falhas = 0;
 const chk = (nome, cond, extra) => { if (!cond) falhas++; console.log((cond ? '  ✓ ' : '  ✗ ') + nome + (!cond && extra !== undefined ? ' → ' + JSON.stringify(extra) : '')); };
@@ -229,6 +229,25 @@ console.log('O andamento das contabilidades no Domínio (a versão 3 da ponte, 0
     return aberturaNoMes(d2, '2026-08') === null && problemasDoMes(d2.get('2026-08'), '2026-08', null, d2).every(p => p.forte === true);
   })());
   chk('um mês de antes que a ponte não leu: não é abertura', (() => { const d2 = new Map(domA); d2.delete('2026-02'); return aberturaNoMes(d2, '2026-08') === null; })());
+  // os meses que vieram na abertura: a folha de julho, que o DP já calculou aqui, está na abertura de agosto
+  const pj = problemasDoMes(domA.get('2026-07'), '2026-07', null, domA);
+  chk('o mês que veio na abertura: a folha calculada aqui fica leve, com o porquê', aberturaQueCobre(domA, '2026-07') === '2026-08'
+    && aberturaQueCobre(domA, '2026-01') === '2026-08' && aberturaQueCobre(domA, '2026-08') === null && aberturaQueCobre(domA, '2026-09') === null && aberturaQueCobre(null, '2026-07') === null
+    && pj.length === 1 && pj[0].tipo === 'folha' && pj[0].forte === false && pj[0].abertura === true && pj[0].coberta === '2026-08'
+    && pj[0].texto === 'a folha (R$ 6.100,00) não entrou na contabilidade: a contabilidade deste mês é a do escritório anterior e veio na abertura de 08/2026. Não é pendência daqui', pj);
+  chk('o mês que veio na abertura: a escrita fiscal e o faturamento de lá também ficam leves', (() => {
+    const d2 = new Map(domA); d2.set('2026-07', { ...d2.get('2026-07'), notas_saida: 5 });
+    const d3 = new Map(domA); d3.set('2026-07', { ...d3.get('2026-07'), receita_bruta: 12000 });
+    const f = problemasDoMes(d2.get('2026-07'), '2026-07', null, d2).find(p => p.tipo === 'fiscal');
+    const r = problemasDoMes(d3.get('2026-07'), '2026-07', null, d3).find(p => p.tipo === 'receita');
+    return !!f && f.forte === false && f.abertura === true && !!r && r.forte === false && r.coberta === '2026-08'
+      && r.texto.startsWith('o faturamento (R$ 12.000,00) não entrou na contabilidade: a contabilidade deste mês é a do escritório anterior');
+  })());
+  chk('sem a receita nem a folha a mais no mês de depois, não é abertura: a folha de julho segue forte (a contabilidade está atrasada)', (() => {
+    const d2 = new Map(domA); d2.set('2026-08', { ...d2.get('2026-08'), receita_lancada: 100000, folha_lancada: 6000 });
+    return aberturaQueCobre(d2, '2026-07') === null && problemasDoMes(d2.get('2026-07'), '2026-07', null, d2).find(p => p.tipo === 'folha').forte === true;
+  })());
+  chk('o mês que veio na abertura, marcado como feito: sem o "conferir"', dicaDoDominio(feito, domA.get('2026-07'), '2026-07', HOJE, null, domA) === null);
   chk('dois códigos: a devolução e o Simples entram no mês (o maior de cada)', (() => { const mm = dominioPorMes([{ competencia: '2026-03', devolucoes: 500, receita_simples_propria: 9500 }, { competencia: '2026-03', devolucoes: 20 }]).get('2026-03'); return mm.devolucoes === 500 && mm.receita_simples_propria === 9500; })());
   chk('o foco "O Domínio discorda"', FOCOS.some(([k]) => k === 'discorda') && focosDaEmpresa(empD, resumoDaEmpresa(empD, mapaD, HOJE), 0, HOJE, 2).has('discorda')
     && !focosDaEmpresa(empD, resumoDaEmpresa(empD, mapaD, HOJE), 0, HOJE).has('discorda'));

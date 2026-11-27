@@ -260,8 +260,30 @@ export function aberturaNoMes(meses, c) {
   if (!antes.every(m => { const x = meses.get(m); return !!x && x.lancamentos != null && +x.lancamentos === 0; })) return null;
   return { de: antes[0], ate: antes[antes.length - 1] };
 }
+/**
+ * O mês da abertura (aberturaNoMes) que traz a contabilidade do mês `c` (27/11/2026: a folha de julho que o DP já
+ * calculou aqui aparecia como "não entrou na contabilidade" no Comparativo, e a contabilidade de julho é a do escritório
+ * anterior, que veio na abertura de agosto): `c` sem nenhum lançamento no Domínio, no mesmo ano e antes da abertura, e a
+ * abertura com a receita ou a folha lançada a mais (a de janeiro até ali) — sem isso, a contabilidade dos meses de antes
+ * está só atrasada. Volta o mês da abertura ('AAAA-MM') ou null.
+ */
+export function aberturaQueCobre(meses, c) {
+  if (!meses || typeof meses.get !== 'function' || !mesValido(c)) return null;
+  const d = meses.get(c);
+  if (!d || d.lancamentos == null || +d.lancamentos !== 0) return null;
+  for (let m = somaMes(c, 1); m.slice(0, 4) === c.slice(0, 4); m = somaMes(m, 1)) {
+    const x = meses.get(m);
+    if (!x || x.lancamentos == null) return null;
+    if (!(+x.lancamentos > 0)) continue;
+    const a = aberturaNoMes(meses, m);
+    const aMais = s => s != null && s > 1;
+    return a && c >= a.de && c <= a.ate && (aMais(sobraDaReceita(x)) || aMais(sobraDaFolha(x))) ? m : null;
+  }
+  return null;
+}
 const deAte = a => (a.de === a.ate ? 'de ' + rotuloMes(a.de) : 'de ' + rotuloMes(a.de) + ' a ' + rotuloMes(a.ate));
 const daAbertura = (oQue, a) => ': é a abertura do ano, com ' + oQue + ' ' + deAte(a) + ' da contabilidade do escritório anterior (os meses antes deste não têm lançamento no Domínio). Não é diferença: confira só se o valor é o de lá';
+const naAbertura = m => ': a contabilidade deste mês é a do escritório anterior e veio na abertura de ' + rotuloMes(m) + '. Não é pendência daqui';
 
 /** O mês do lado (o de antes, senão o de depois) em que a diferença do mês `c` se compensa: as duas com mais de R$ 1,00,
  * de sinais contrários, e a soma até R$ 1,00. null sem os meses ou sem compensação. */
@@ -337,11 +359,15 @@ export function problemasDoMes(d, c, and, meses = null) {
   if (d) {
     const notas = somaOuNull(d.notas_saida, d.notas_entrada);
     const fiscalFora = notas > 0 && n(d.lanc_fiscal) === 0;
-    if (fiscalFora) out.push({ tipo: 'fiscal', forte: true, texto: 'a escrita fiscal (' + inteiro(notas) + (notas === 1 ? ' nota' : ' notas') + ') não entrou na contabilidade' });
+    // o mês que veio na abertura de um mês depois (aberturaQueCobre): o que não entrou nele está lá — aviso leve
+    const coberta = aberturaQueCobre(meses, c);
+    const daCoberta = coberta ? { forte: false, abertura: true, coberta } : { forte: true };
+    const fimCoberta = coberta ? naAbertura(coberta) : '';
+    if (fiscalFora) out.push({ tipo: 'fiscal', ...daCoberta, texto: 'a escrita fiscal (' + inteiro(notas) + (notas === 1 ? ' nota' : ' notas') + ') não entrou na contabilidade' + fimCoberta });
     const folha = folhaCalculada(d);
     // a abertura do ano (aberturaNoMes): a receita e a folha lançadas a mais no mês são as de janeiro até ali — aviso leve
     const abertura = aberturaNoMes(meses, c);
-    if (folha > 0 && n(d.folha_lancada) === 0) out.push({ tipo: 'folha', forte: true, texto: 'a folha (' + dinheiro(folha) + ') não entrou na contabilidade' });
+    if (folha > 0 && n(d.folha_lancada) === 0) out.push({ tipo: 'folha', ...daCoberta, texto: 'a folha (' + dinheiro(folha) + ') não entrou na contabilidade' + fimCoberta });
     else if (folha > 0 && n(d.folha_lancada) > 0 && Math.abs(folha - d.folha_lancada) > 1) {
       if (abertura && d.folha_lancada - folha > 1) out.push({ tipo: 'folha_difere', forte: false, abertura: true, texto: 'a folha lançada (' + dinheiro(d.folha_lancada) + ') é maior que a calculada ('
         + dinheiro(folha) + ') em ' + dinheiro(Math.round((d.folha_lancada - folha) * 100) / 100) + daAbertura('a folha', abertura) });
@@ -352,7 +378,8 @@ export function problemasDoMes(d, c, and, meses = null) {
       }
     }
     if (!fiscalFora && n(d.receita_bruta) > 0 && d.receita_lancada != null && Math.abs(d.receita_bruta - d.receita_lancada) > 1) {
-      if (abertura && d.receita_lancada - d.receita_bruta > 1) out.push({ tipo: 'receita', forte: false, causa: 'abertura', abertura: true, texto: 'a receita lançada (' + dinheiro(d.receita_lancada)
+      if (coberta) out.push({ tipo: 'receita', causa: 'abertura', ...daCoberta, texto: 'o faturamento (' + dinheiro(d.receita_bruta) + ') não entrou na contabilidade' + fimCoberta });
+      else if (abertura && d.receita_lancada - d.receita_bruta > 1) out.push({ tipo: 'receita', forte: false, causa: 'abertura', abertura: true, texto: 'a receita lançada (' + dinheiro(d.receita_lancada)
         + ') é maior que o faturamento (' + dinheiro(d.receita_bruta) + ') em ' + dinheiro(Math.round((d.receita_lancada - d.receita_bruta) * 100) / 100) + daAbertura('a receita', abertura) });
       else {
         const causa = causaDaReceita(d);

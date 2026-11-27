@@ -10,6 +10,7 @@
 // quanto o lucro teria de andar pra decisão virar entre o Presumido e o Real (viradaDoLucro).
 // Rodar com: node tests/comparativo-estudo.test.mjs
 import { comparar } from '../assets/js/comparativo-motor.js';
+import { sinaisDaContabilidade } from '../assets/js/comparativo-roteiro.js';
 import { PADROES, comPadroes, ORIGENS_PADRAO, CAMPOS, erroSemTabela, entradaDoMotor, carregarEstudo, estudoGravado, contaDoEstudo, situacaoComGrupo,
   oQueMuda, avisosDoEstudo, alertaDoLimite, resumoParaGravar, aplicarESe, E_SE, objetivoDoEstudo, opcoesDeObjetivo, alertaDasVedacoes, contabilDoEstudo,
   perguntaDaConfirmacao, pedirConfirmacao, ERRO_AO_PERGUNTAR, viradaDoLucro, ESTOQUE_PLAUSIVEL, METODO_DO_SISTEMA, atualizarDoSistema } from '../assets/js/comparativo-estudo.js';
@@ -637,6 +638,10 @@ console.log('A empresa que veio de outro escritório: os meses de antes e o estu
   chk('o lucro pela ponte: de jan a set (o resultado de agosto traz jan a jul), com a receita desses meses', est.entrada.lucroContabil === 230000 && est.entrada.lucroDe === '2026-01' && est.entrada.lucroAte === '2026-09' && est.entrada.lucroReceita === 910000
     && /veio na abertura de balanço de ago\/26/.test(est.origens.lucroContabil.texto), JSON.stringify([est.entrada.lucroContabil, est.entrada.lucroDe, est.entrada.lucroReceita]));
   chk('a abertura em agosto não é "o Domínio discorda" pra confirmação: a receita e a folha a mais ficam fora dos problemas do mês', !est.contabil.meses.find(m => m.competencia === '2026-08').problemas.some(p => p.tipo === 'receita' || p.tipo === 'folha_difere'));
+  // a folha de julho, que o DP já calculou aqui, está na abertura de agosto: não é "a folha não entrou em jul/26"
+  chk('julho, que veio na abertura: sem problema no mês, e a confirmação de jan a set sem a folha',
+    est.contabil.meses.find(m => m.competencia === '2026-07').problemas.length === 0
+    && !sinaisDaContabilidade(est.contabil, '2026-01', '2026-09').itens.some(t => /folha/.test(t)), JSON.stringify([est.contabil.meses.find(m => m.competencia === '2026-07'), sinaisDaContabilidade(est.contabil, '2026-01', '2026-09')]));
   const conta = contaDoEstudo({ ...est, entrada: { ...est.entrada, objetivo: 'todos' }, aliq2027: ALIQ, hoje: '2026-11-27' });
   chk('a conta leva o lucro aos 12 meses pela receita de jan a set', perto(conta.dre.fator, 1180000 / 910000, 1e-9) && conta.dre.de === '2026-01' && conta.lucroPonte.lucro === 230000, JSON.stringify(conta.dre));
 
