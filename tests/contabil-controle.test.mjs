@@ -5,7 +5,7 @@ import { mesValido, diaValido, somaMes, mesesEntre, rotuloMes, mesPorExtenso, ul
   alvoDaEmpresa, resumoDaEmpresa, faixas, textoDasFaixas, mesesAteAqui, linhasParaMarcar, desfazerDe, dominioPorMes, textoDoDominio,
   dicaDoDominio, avisosDaEmpresa, limparPendencia, textoDaPendencia, ordenarPendencias, nomeDaEmpresa, semAcento, focosDaEmpresa,
   anosDoControle, inicioSugerido, feitoNoMes, textoDeMeses, andamentoDaEmpresa, folhaCalculada, problemasDoMes, mesesQueDiscordam,
-  textoDoAndamento, FOCOS, encerramentoDaEmpresa, textoDasOrigens, compensaNoVizinho, causaDaReceita } from '../assets/js/contabil-controle.js';
+  textoDoAndamento, FOCOS, encerramentoDaEmpresa, textoDasOrigens, compensaNoVizinho, causaDaReceita, aberturaNoMes } from '../assets/js/contabil-controle.js';
 
 let falhas = 0;
 const chk = (nome, cond, extra) => { if (!cond) falhas++; console.log((cond ? '  ✓ ' : '  ✗ ') + nome + (!cond && extra !== undefined ? ' → ' + JSON.stringify(extra) : '')); };
@@ -206,6 +206,29 @@ console.log('O andamento das contabilidades no Domínio (a versão 3 da ponte, 0
     && problemasDoMes({ ...dfs, receita_simples_propria: 9000 }, '2026-03').find(x => x.tipo === 'receita').texto === 'a receita lançada (R$ 9.500,00) é maior que o faturamento (R$ 9.000,00) exatamente na devolução de venda do mês (R$ 500,00): o faturamento a desconta, mas ela não entrou na contabilidade');
   chk('a diferença com causa não vira "mês do lado"; a sem causa, sim (como antes)', causaDaReceita(domV.get('2026-08')) === null
     && problemasDoMes(domV.get('2026-08'), '2026-08', null, domV).find(x => x.tipo === 'receita').causa === null);
+  // a abertura do ano (27/11/2026): a empresa que veio de outro escritório em agosto, com a receita e a folha de janeiro a
+  // julho lançadas em 01/08 (números inventados)
+  const vazio = c => ({ competencia: c, lancamentos: 0, notas_saida: 0, receita_bruta: 0, receita_lancada: 0, folha_lancada: 0, salarios: 0, decimo_terceiro: 0, pro_labore_valor: 0, lanc_fiscal: 0 });
+  const domA = dominioPorMes([...['01', '02', '03', '04', '05', '06'].map(m => vazio('2026-' + m)), { ...vazio('2026-07'), salarios: 4100, pro_labore_valor: 2000 },
+    { competencia: '2026-08', lancamentos: 900, notas_saida: 30, lanc_fiscal: 100, receita_bruta: 100000, valor_saidas: 100000, devolucoes: 0, receita_lancada: 800000,
+      folha_lancada: 50000, salarios: 4000, decimo_terceiro: 0, pro_labore_valor: 2000 },
+    { competencia: '2026-09', lancamentos: 800, notas_saida: 28, lanc_fiscal: 90, receita_bruta: 95000, receita_lancada: 95000, folha_lancada: 6100, salarios: 4100, pro_labore_valor: 2000 }]);
+  const pa = problemasDoMes(domA.get('2026-08'), '2026-08', null, domA);
+  chk('a abertura do ano: o mês com lançamento e os meses do ano antes dele sem nenhum', JSON.stringify(aberturaNoMes(domA, '2026-08')) === '{"de":"2026-01","ate":"2026-07"}'
+    && aberturaNoMes(domA, '2026-09') === null && aberturaNoMes(domA, '2026-07') === null && aberturaNoMes(domA, '2026-01') === null && aberturaNoMes(null, '2026-08') === null);
+  chk('na abertura, a receita e a folha a mais: leves, com o porquê e quanto',
+    pa.length === 2 && pa.every(p => p.forte === false && p.abertura === true)
+    && pa.find(p => p.tipo === 'receita').texto === 'a receita lançada (R$ 800.000,00) é maior que o faturamento (R$ 100.000,00) em R$ 700.000,00: é a abertura do ano, com a receita de 01/2026 a 07/2026 da contabilidade do escritório anterior (os meses antes deste não têm lançamento no Domínio). Não é diferença: confira só se o valor é o de lá'
+    && pa.find(p => p.tipo === 'folha_difere').texto.startsWith('a folha lançada (R$ 50.000,00) é maior que a calculada (R$ 6.000,00) em R$ 44.000,00: é a abertura do ano, com a folha de 01/2026 a 07/2026'), pa);
+  chk('o mês feito da abertura: sem o "conferir", e a empresa fora do "O Domínio discorda"', dicaDoDominio(feito, domA.get('2026-08'), '2026-08', HOJE, null, domA) === null
+    && mesesQueDiscordam({ cliente_id: 'e1', inicio: '2026-08', fim: null, faz: true }, mapaDosMeses([feita('2026-08'), feita('2026-09')]), domA, null, HOJE).length === 0);
+  chk('na abertura, a receita a menos que o faturamento segue forte (não é abertura)',
+    problemasDoMes({ ...domA.get('2026-08'), receita_lancada: 90000 }, '2026-08', null, domA).find(p => p.tipo === 'receita').forte === true);
+  chk('um mês de antes com lançamento: não é abertura (a diferença segue forte)', (() => {
+    const d2 = new Map(domA); d2.set('2026-03', { ...d2.get('2026-03'), lancamentos: 12 });
+    return aberturaNoMes(d2, '2026-08') === null && problemasDoMes(d2.get('2026-08'), '2026-08', null, d2).every(p => p.forte === true);
+  })());
+  chk('um mês de antes que a ponte não leu: não é abertura', (() => { const d2 = new Map(domA); d2.delete('2026-02'); return aberturaNoMes(d2, '2026-08') === null; })());
   chk('dois códigos: a devolução e o Simples entram no mês (o maior de cada)', (() => { const mm = dominioPorMes([{ competencia: '2026-03', devolucoes: 500, receita_simples_propria: 9500 }, { competencia: '2026-03', devolucoes: 20 }]).get('2026-03'); return mm.devolucoes === 500 && mm.receita_simples_propria === 9500; })());
   chk('o foco "O Domínio discorda"', FOCOS.some(([k]) => k === 'discorda') && focosDaEmpresa(empD, resumoDaEmpresa(empD, mapaD, HOJE), 0, HOJE, 2).has('discorda')
     && !focosDaEmpresa(empD, resumoDaEmpresa(empD, mapaD, HOJE), 0, HOJE).has('discorda'));

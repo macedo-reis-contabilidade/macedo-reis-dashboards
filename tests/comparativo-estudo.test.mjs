@@ -12,7 +12,7 @@
 import { comparar } from '../assets/js/comparativo-motor.js';
 import { PADROES, comPadroes, ORIGENS_PADRAO, CAMPOS, erroSemTabela, entradaDoMotor, carregarEstudo, estudoGravado, contaDoEstudo, situacaoComGrupo,
   oQueMuda, avisosDoEstudo, alertaDoLimite, resumoParaGravar, aplicarESe, E_SE, objetivoDoEstudo, opcoesDeObjetivo, alertaDasVedacoes, contabilDoEstudo,
-  perguntaDaConfirmacao, pedirConfirmacao, ERRO_AO_PERGUNTAR, viradaDoLucro, ESTOQUE_PLAUSIVEL } from '../assets/js/comparativo-estudo.js';
+  perguntaDaConfirmacao, pedirConfirmacao, ERRO_AO_PERGUNTAR, viradaDoLucro, ESTOQUE_PLAUSIVEL, METODO_DO_SISTEMA, atualizarDoSistema } from '../assets/js/comparativo-estudo.js';
 
 let falhas = 0;
 const brl = v => (Number(v) || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
@@ -387,7 +387,7 @@ console.log('Qual comparativo, os impedimentos do Simples, a contabilidade e a p
   chk('contabilDoEstudo: feita até fevereiro, os problemas fortes de cada mês e só os meses que dá pra fechar', cDir.faz === true && cDir.feitaAte === '2026-02' && cDir.responsavel === 'Adaini' && cDir.bancoAte === null
     && cDir.meses.map(m => m.competencia + ':' + m.estado + ':' + m.problemas.map(p => p.tipo).join('+')).join(' ') === '2026-01:feita:fiscal+folha 2026-02:feita:caixa 2026-03:andamento:'
     && cDir.meses[0].problemas[1].valor === 2000, JSON.stringify(cDir));
-  chk('contabilDoEstudo: fora do escritório e fora do Controle', contabilDoEstudo(null) === null && JSON.stringify(contabilDoEstudo({ faz: false, responsavel: null })) === '{"faz":false,"feitaAte":null,"responsavel":null,"meses":[],"bancoAte":null}');
+  chk('contabilDoEstudo: fora do escritório e fora do Controle', contabilDoEstudo(null) === null && JSON.stringify(contabilDoEstudo({ faz: false, responsavel: null })) === '{"faz":false,"feitaAte":null,"inicio":null,"responsavel":null,"meses":[],"bancoAte":null}');
 
   // o "e se" com o lucro da contabilidade
   const e1 = aplicarESe(est.entrada, est.origens, { lucro_contabil_12_meses: 30000 }, { aliq2027: ALIQ });
@@ -611,6 +611,53 @@ console.log('O PIS/Cofins pela apuração do Domínio e quanto falta pro resulta
     return v && v.alerta === false && / ou lançamento de outro ano\.$/.test(v.txt); })());
   chk('com o Simples entre os dois primeiros, ou sem a decisão: sem a linha', virada(null) === null && virada(comparar({ ...comPadroes({ atividades: [{ tipo: 'comercio', receita: 1000000 }], compras: 500000, regimeAtual: 'simples' }), lucroContabil: 40000, ajustesLalur: 0 })) === null);
   chk('a linha entra no "O que muda o resultado", depois do empate', (() => { const m = oQueMuda(cPerto, []); const i = m.findIndex(x => /^O Real empata com o Presumido/.test(x.txt)); return i >= 0 && m[i + 1] === undefined ? false : /^Pra o Presumido ficar mais barato que o Real em 2027/.test(m[i + 1].txt) && m[i + 1].alerta === true; })());
+}
+
+console.log('A empresa que veio de outro escritório: os meses de antes e o estudo gravado antes da regra (27/11/2026)');
+{
+  // veio em agosto de 2026: o Domínio daqui não tem nada de nov/25 a jun/26, a folha começa em julho, as notas em agosto,
+  // e o lançamento de 01/08 traz a receita (700 mil) e o resultado de janeiro a julho; o PGDAS de out/26, o RBT12
+  const VEIO = { id: 'c8', nome_principal: 'VEIO DE OUTRO LTDA', nome_fantasia: null, documento: '88888888000188', tipo_pessoa: 'PJ', regime_tributario: 'Simples Nacional', cnae_principal: '4711-3/02', cidade: 'Igrejinha', uf: 'RS', data_abertura: '2019-03-01' };
+  const z = c => ({ codigo: 800, cliente_id: 'c8', competencia: c, receita_bruta: 0, receita_simples: null, notas_saida: 0, notas_entrada: 0, receita_lancada: 0, folha_lancada: 0, salarios: 0, decimo_terceiro: 0, pro_labore_valor: 0,
+    compras: 0, servicos_tomados: 0, ativo_e_consumo: 0, lancamentos: 0, lanc_resultado: 0, resultado_antes_ir: null });
+  const linhas = ['2025-11', '2025-12', '2026-01', '2026-02', '2026-03', '2026-04', '2026-05', '2026-06'].map(z);
+  linhas.push({ ...z('2026-07'), salarios: 5000, pro_labore_valor: 2000 });
+  linhas.push({ ...z('2026-08'), receita_bruta: 100000, receita_simples: 100000, notas_saida: 30, receita_lancada: 800000, salarios: 4000, pro_labore_valor: 2000, compras: 40000, lancamentos: 900, lanc_resultado: 80, resultado_antes_ir: 200000, folha_lancada: 50000 });
+  linhas.push({ ...z('2026-09'), receita_bruta: 110000, receita_simples: 110000, notas_saida: 32, receita_lancada: 110000, salarios: 4000, pro_labore_valor: 2000, compras: 44000, lancamentos: 800, lanc_resultado: 70, resultado_antes_ir: 30000, folha_lancada: 6000 });
+  linhas.push({ ...z('2026-10'), receita_bruta: 90000, receita_simples: 90000, notas_saida: 28, receita_lancada: 90000, salarios: 4000, pro_labore_valor: 2000, compras: 36000, lancamentos: 700, lanc_resultado: 60, resultado_antes_ir: 25000, folha_lancada: 6000 });
+  const pgdas = [{ cliente_id: 'c8', competencia: '2026-09', receita_mes: 110000, receita_12_meses: 1060000 }, { cliente_id: 'c8', competencia: '2026-10', receita_mes: 90000, receita_12_meses: 1180000 }];
+  const extras = { dominio_mensal: linhas, contabil_empresas: [{ cliente_id: 'c8', faz: true, inicio: '2026-08', fim: null, responsavel: 'Adaini' }],
+    contabil_meses: [{ cliente_id: 'c8', competencia: '2026-08', situacao: 'feita', feita_em: '2026-11-20' }, { cliente_id: 'c8', competencia: '2026-09', situacao: 'feita', feita_em: '2026-11-20' }],
+    dominio_andamento: [], receita_empresas: [] };
+  const abrir = async (comparativos = []) => { const b = banco({ socios: [{ cliente_id: 'c8', nome: 'SOCIO NOVO', cpf: '987.654.321-00' }], pgdas, extras, comparativos }); return { est: await carregarEstudo({ ler: b.ler, cliente: VEIO, hoje: '2026-11-27' }), log: b.log }; };
+  const { est, log } = await abrir();
+  chk('a leitura pede o RBT12 do PGDAS', log.some(x => x.t === 'receita_pgdas' && /\breceita_12_meses\b/.test(x.o.cols)));
+  chk('a receita dos 12 meses com os meses de antes (1,18 mi), a folha desde julho, as compras desde agosto', perto(est.entrada.atividades[0].receita, 1180000) && est.entrada.folha === 51000 && est.entrada.proLabore === 24000 && est.entrada.compras === 480000,
+    JSON.stringify([est.entrada.atividades[0].receita, est.entrada.folha, est.entrada.compras]));
+  chk('o lucro pela ponte: de jan a set (o resultado de agosto traz jan a jul), com a receita desses meses', est.entrada.lucroContabil === 230000 && est.entrada.lucroDe === '2026-01' && est.entrada.lucroAte === '2026-09' && est.entrada.lucroReceita === 910000
+    && /veio na abertura de balanço de ago\/26/.test(est.origens.lucroContabil.texto), JSON.stringify([est.entrada.lucroContabil, est.entrada.lucroDe, est.entrada.lucroReceita]));
+  chk('a abertura em agosto não é "o Domínio discorda" pra confirmação: a receita e a folha a mais ficam fora dos problemas do mês', !est.contabil.meses.find(m => m.competencia === '2026-08').problemas.some(p => p.tipo === 'receita' || p.tipo === 'folha_difere'));
+  const conta = contaDoEstudo({ ...est, entrada: { ...est.entrada, objetivo: 'todos' }, aliq2027: ALIQ, hoje: '2026-11-27' });
+  chk('a conta leva o lucro aos 12 meses pela receita de jan a set', perto(conta.dre.fator, 1180000 / 910000, 1e-9) && conta.dre.de === '2026-01' && conta.lucroPonte.lucro === 230000, JSON.stringify(conta.dre));
+
+  // o estudo gravado antes da regra: a receita anualizada de ago a out, a folha e as compras com zeros, o lucro de ago a set
+  const velho = (metodo, origemFolha = 'ponte') => [{ id: 'e8', cliente_id: 'c8', atualizado_em: '2026-11-26T20:00:00Z', atualizado_por: 'fiscal@macedoereis.com.br', entrada: { v: 1, ...(metodo ? { metodo } : {}),
+    entrada: { atividades: [{ tipo: 'comercio', receita: 1200000, aliqIcms: 17 }], regimeAtual: 'simples', objetivo: 'todos', folha: 17000, proLabore: 8000, compras: 120000, rat: 2,
+      lucroContabil: 230000, lucroDe: '2026-08', lucroAte: '2026-09', lucroReceita: 210000 },
+    origens: { 'atividades.0.receita': { fonte: 'ponte', texto: 'Domínio, pela ponte: a receita da apuração do Simples de ago/26 a out/26 (3 meses, anualizado)' }, 'atividades.0.aliqIcms': { fonte: 'digitado', texto: 'digitado' },
+      folha: { fonte: origemFolha, texto: 'x' }, proLabore: { fonte: 'ponte', texto: 'x' }, compras: { fonte: 'ponte', texto: 'x' }, rat: { fonte: 'confirmado', texto: 'conferido' },
+      lucroContabil: { fonte: 'ponte', texto: 'Domínio, pela ponte: o resultado da contabilidade de ago/26 a set/26' } } } }];
+  const g = (await abrir(velho(null))).est;
+  chk('o gravado antes da regra troca, uma vez, o que veio do sistema: a receita, a folha, o pró-labore, as compras e o lucro (a tela grava de novo)',
+    perto(g.entrada.atividades[0].receita, 1180000) && g.entrada.meses && g.entrada.meses.length === 12 && g.entrada.folha === 51000 && g.entrada.proLabore === 24000 && g.entrada.compras === 480000
+    && g.entrada.lucroDe === '2026-01' && g.entrada.lucroReceita === 910000 && g.pelaPonte.includes('metodo') && METODO_DO_SISTEMA === 2,
+    JSON.stringify([g.entrada.atividades[0].receita, g.entrada.folha, g.entrada.compras, g.entrada.lucroDe, g.pelaPonte]));
+  chk('o que foi digitado ou conferido fica', g.entrada.atividades[0].aliqIcms === 17 && g.origens['atividades.0.aliqIcms'].fonte === 'digitado' && g.entrada.rat === 2 && g.origens.rat.fonte === 'confirmado');
+  const g2 = (await abrir(velho(null, 'digitado'))).est;
+  chk('a folha digitada no estudo de antes não muda (o resto do sistema, sim)', g2.entrada.folha === 17000 && g2.origens.folha.fonte === 'digitado' && g2.entrada.compras === 480000);
+  const g3 = (await abrir(velho(METODO_DO_SISTEMA))).est;
+  chk('o gravado com a regra de agora não muda sozinho', g3.entrada.atividades[0].receita === 1200000 && g3.entrada.folha === 17000 && g3.entrada.lucroDe === '2026-08' && !g3.pelaPonte.includes('metodo'));
+  chk('atualizarDoSistema sem nada a trocar: false', atualizarDoSistema({ folha: 1 }, { folha: { fonte: 'digitado' } }, { entrada: { folha: 2 }, origens: { folha: { fonte: 'ponte' } } }) === false);
 }
 
 console.log('\n' + (falhas ? falhas + ' falha(s)' : 'tudo certo'));

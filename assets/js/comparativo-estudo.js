@@ -109,14 +109,14 @@ export function opcoesDeObjetivo(regimeAtual, vedacoes = null) {
 // ---------- abrir a empresa: o que o sistema sabe e o estudo gravado ----------
 // ler(tabela, { cols, eq: { coluna: valor }, em: { coluna: [valores] }, ordem: { coluna, desc }, limite }) → { data, error }
 // (a tela, pelo supabase-js; o assistente, pelo PostgREST com o login de quem pergunta). cliente: a linha do cadastro
-// ({ id, nome_principal, nome_fantasia, documento, regime_tributario, cnae_principal, cidade, uf }). cadastroDe(ids) →
-// Map(id → { id, nome_principal, nome_fantasia }) (opcional: a tela já tem a lista; sem ela, lê do banco). chamar(nome,
+// ({ id, nome_principal, nome_fantasia, documento, regime_tributario, cnae_principal, cidade, uf, data_abertura }). cadastroDe(ids) →
+// Map(id → { id, nome_principal, nome_fantasia, data_abertura }) (opcional: a tela já tem a lista; sem ela, lê do banco). chamar(nome,
 // args) → { data, error } (opcional: as funções do banco, pra pergunta da confirmação da contabilidade).
 // Volta o estudo como a tela abre — o gravado (o que a equipe digitou e conferiu) ou, sem ele, os números do sistema —, o
 // que o sistema sabe hoje (sistema: o "Recomeçar com os números do sistema") e as outras empresas dos mesmos sócios. O CPF
 // dos sócios só casa as empresas: não sai daqui (nem na volta, nem pro assistente).
 async function lerCadastro(ler, ids) {
-  const r = await ler('clientes', { cols: 'id, nome_principal, nome_fantasia', em: { id: ids } });
+  const r = await ler('clientes', { cols: 'id, nome_principal, nome_fantasia, data_abertura', em: { id: ids } });
   return new Map(((r && r.data) || []).map(k => [k.id, k]));
 }
 // o dia de hoje em Brasília ('AAAA-MM-DD'), pros meses fechados do Domínio
@@ -166,7 +166,7 @@ export async function carregarEstudo({ ler, cliente, cadastroDe = null, hoje = n
   const [rCaso, rFr, rPg, rEst, rDom, rRec, rCtb, rCtbM, rFoto, pergunta] = await Promise.all([
     ler('rt_casos', { cols: 'id, anexo, rbt12, receita_mensal, sim_obs, atualizado_em', eq: { cliente_id: c.id }, ordem: { coluna: 'atualizado_em', desc: true }, limite: 1 }),
     ler('fr_empresas', { cols: 'id', eq: { cliente_id: c.id }, limite: 1 }),
-    ler('receita_pgdas', { cols: 'competencia, receita_mes', eq: { cliente_id: c.id }, ordem: { coluna: 'competencia', desc: true }, limite: 12 }),
+    ler('receita_pgdas', { cols: 'competencia, receita_mes, receita_12_meses', eq: { cliente_id: c.id }, ordem: { coluna: 'competencia', desc: true }, limite: 12 }),
     ler('comparativos', { cols: 'id, entrada, atualizado_em, atualizado_por', eq: { cliente_id: c.id }, ordem: { coluna: 'atualizado_em', desc: true }, limite: 1 }),
     ler('dominio_mensal', { cols: 'codigo, competencia, ' + colsDominio, eq: { cliente_id: c.id }, ordem: { coluna: 'competencia', desc: true }, limite: 48 }),
     // o que o cadastro não diz das vedações do Simples (as pendências na Receita) e a contabilidade feita até que mês
@@ -204,9 +204,10 @@ export async function carregarEstudo({ ler, cliente, cadastroDe = null, hoje = n
       const ids = empresas.map(x => x.cliente_id);
       const [rC, rP, cad, rD] = await Promise.all([
         ler('rt_casos', { cols: 'cliente_id, receita_mensal, sim_obs, atualizado_em', em: { cliente_id: ids }, ordem: { coluna: 'atualizado_em', desc: true } }),
-        ler('receita_pgdas', { cols: 'cliente_id, competencia, receita_mes', em: { cliente_id: ids } }),
+        ler('receita_pgdas', { cols: 'cliente_id, competencia, receita_mes, receita_12_meses', em: { cliente_id: ids } }),
         cadastroDe ? cadastroDe(ids) : lerCadastro(ler, ids),
-        ler('dominio_mensal', { cols: 'cliente_id, competencia, receita_bruta, receita_simples', em: { cliente_id: ids } })
+        // a receita e, pros meses de antes de a empresa vir pro escritório (antesDoEscritorio), o que diz se ela já estava aqui
+        ler('dominio_mensal', { cols: 'cliente_id, competencia, receita_bruta, receita_simples, receita_lancada, lancamentos, lanc_resultado, notas_saida, notas_entrada', em: { cliente_id: ids } })
       ]);
       const domGrupo = soFechados(rD && !rD.error ? rD.data : [], fechado);
       empresas.forEach(x => {
@@ -277,6 +278,10 @@ export async function carregarEstudo({ ler, cliente, cadastroDe = null, hoje = n
       const k = 'atividades.' + i + '.tipo', antes = est.origens[k], hoje = sis.origens[k], aSis = sis.entrada.atividades[i];
       if ((!antes || ['cadastro', 'padrao'].includes(antes.fonte)) && hoje && sis.divisao && ['ponte', 'reforma'].includes(hoje.fonte) && aSis && aSis.tipo === a.tipo) est.origens[k] = hoje;
     });
+    // O estudo gravado antes da regra dos meses de antes do escritório (27/11/2026, METODO_DO_SISTEMA): os números que
+    // vieram do sistema e ninguém digitou nem conferiu passam a ser os de hoje (atualizarDoSistema), uma vez
+    if (!(num(salvo.entrada.metodo) >= METODO_DO_SISTEMA)
+      && atualizarDoSistema(est.entrada, est.origens, sis, { contabil, resultado, serie: est.serie })) est.pelaPonte.push('metodo');
     // O que a versão 5 da ponte traz e o estudo gravado ainda não tem (pelaPonte diz o que entrou: a tela grava de novo).
     // O lucro da contabilidade: entra no estudo sem lucro — salvo no que escolheu "Seguir com a estimativa" (a origem
     // conferida); o digitado, o do relatório e o que já veio da ponte ficam (a missão do lucro oferece o de hoje).
@@ -302,12 +307,56 @@ export async function carregarEstudo({ ler, cliente, cadastroDe = null, hoje = n
   }
   return est;
 }
+// ---------- o estudo gravado com os números do sistema de hoje (27/11/2026) ----------
+// Pela Thalia, com uma empresa que veio de outro escritório: o estudo gravado tinha a receita anualizada de ago a out, a folha e as compras com os
+// meses de antes do escritório como zero e o lucro de agosto (com o de janeiro a julho) como o de um mês só — a regra
+// nova (antesDoEscritorio e a DRE pela abertura do ano, em comparativo-dados.js) muda o que o sistema dá. O estudo gravado
+// antes dela (sem o `metodo`, ou com um menor que METODO_DO_SISTEMA) troca, uma vez, os números que vieram do sistema —
+// a ponte ou o PGDAS, o que ninguém digitou nem conferiu — pelos de hoje: a receita de cada atividade (com as mesmas
+// atividades) e os meses dela, as compras, as despesas com crédito, a folha, o pró-labore, a receita das empresas dos
+// mesmos sócios e o lucro da contabilidade que veio da ponte, quando a DRE começa noutro mês. A tela grava de novo, com o
+// metodo de agora.
+// Volta true se mudou alguma coisa
+export const METODO_DO_SISTEMA = 2;
+const DA_PONTE_OU_PGDAS = ['ponte', 'pgdas'];
+export function atualizarDoSistema(entrada, origens, sis, { contabil = null, resultado = null, serie = null } = {}) {
+  if (!entrada || !origens || !sis || !sis.entrada) return false;
+  const s = sis.entrada, so = sis.origens || {};
+  const doSistema = (k, hoje) => !!(origens[k] && DA_PONTE_OU_PGDAS.includes(origens[k].fonte) && hoje && DA_PONTE_OU_PGDAS.includes(hoje.fonte));
+  const difere = (a, b) => b != null && Number.isFinite(Number(b)) && Math.abs(num(a) - Number(b)) >= 0.005;
+  let mudou = false;
+  ['compras', 'despesasCredito', 'folha', 'proLabore'].forEach(k => {
+    if (doSistema(k, so[k]) && difere(entrada[k], s[k])) { entrada[k] = Number(s[k]); origens[k] = so[k]; mudou = true; }
+  });
+  const at = entrada.atividades || [], ats = s.atividades || [];
+  let receita = false;
+  if (at.length === ats.length && at.every((a, i) => a.tipo === ats[i].tipo)) at.forEach((a, i) => {
+    const k = 'atividades.' + i + '.receita';
+    if (doSistema(k, so[k]) && difere(a.receita, ats[i].receita)) { a.receita = Number(ats[i].receita); origens[k] = so[k]; receita = mudou = true; }
+  });
+  if (receita) entrada.meses = s.meses || null;
+  (entrada.grupo || []).forEach((g, i) => {
+    const k = 'grupo.' + i + '.receita', j = (s.grupo || []).findIndex(x => x && g && x.cliente_id && x.cliente_id === g.cliente_id);
+    if (j < 0) return;
+    const hoje = so['grupo.' + j + '.receita'];
+    if (doSistema(k, hoje) && difere(g.receita, s.grupo[j].receita)) { g.receita = Number(s.grupo[j].receita); g.meses = s.grupo[j].meses || null; origens[k] = hoje; mudou = true; }
+  });
+  // o lucro: só quando a DRE começa noutro mês (a regra nova: o janeiro da abertura do ano, ou o começo da contabilidade
+  // daqui) — o número que mudou no mesmo período segue com a missão, que reabre com o "Atualizar pelo Domínio"
+  const o = origens.lucroContabil;
+  if (o && o.fonte === 'ponte' && resultado) {
+    const lp = lucroDaPonte(serie, contabil, resultado);
+    if (lp && lp.lucro != null && lp.de !== entrada.lucroDe) { aplicarLucroDaPonte(entrada, origens, lp); mudou = true; }
+  }
+  return mudou;
+}
+
 // ---------- a contabilidade da empresa, pro lucro do Real ----------
 // O Controle das contabilidades diz até que mês ela está feita e quem cuida; o Domínio (a versão 3 da ponte) diz o que
 // cada mês mostra. O Samuel, 11/11/2026: "eu ainda confirmaria com a Adaini se é confiável usar esse número até essa
 // data" — o sistema faz a primeira leitura, pra pergunta chegar a ela com o que olhar.
 // emp: a linha de contabil_empresas · linhasMeses: as de contabil_meses · linhasDominio: as de dominio_mensal (com as
-// colunas de CAMPOS_DOMINIO) · linhasFoto: as de dominio_andamento. Volta { faz, feitaAte, responsavel, meses, bancoAte }
+// colunas de CAMPOS_DOMINIO) · linhasFoto: as de dominio_andamento. Volta { faz, feitaAte, inicio (o início do controle), responsavel, meses, bancoAte }
 // (o carregarEstudo põe junto a `pergunta`, o estado da pergunta da confirmação no vigia de quem cuida):
 // meses: [{ competencia, estado, problemas: [{ tipo, valor }] }] — os que o Domínio leu, até o último que dá pra fechar,
 // só com os problemas fortes (problemasDoMes, a regra do Controle das contabilidades) · bancoAte: o dia até onde a conta de
@@ -316,7 +365,7 @@ const COLS_FOTO = 'banco_contas, banco_ate, banco_ultimo, banco_ultimo_geral, ca
 export function contabilDoEstudo(emp, linhasMeses = [], linhasDominio = [], linhasFoto = [], hoje = null) {
   if (!emp) return null;
   const responsavel = String(emp.responsavel || '').trim() || null;
-  if (emp.faz === false) return { faz: false, feitaAte: null, responsavel, meses: [], bancoAte: null };
+  if (emp.faz === false) return { faz: false, feitaAte: null, inicio: emp.inicio || null, responsavel, meses: [], bancoAte: null };
   const dia = hoje || hojeEmBrasilia();
   const mapa = mapaDosMeses(linhasMeses);
   const dom = dominioPorMes(linhasDominio);
@@ -328,7 +377,7 @@ export function contabilDoEstudo(emp, linhasMeses = [], linhasDominio = [], linh
     return { competencia: c, estado: estadoDoMes(emp, mapa, c, dia).tipo,
       problemas: problemasDoMes(d, c, foto, dom).filter(p => p.forte).map(p => ({ tipo: p.tipo, valor: valorDe(p.tipo, d) })) };
   });
-  return { faz: true, feitaAte: resumoDoControle(emp, mapa, dia).feitaAte, responsavel, meses, bancoAte: foto && foto.banco_contas > 0 ? foto.banco_ate || null : null };
+  return { faz: true, feitaAte: resumoDoControle(emp, mapa, dia).feitaAte, inicio: emp.inicio || null, responsavel, meses, bancoAte: foto && foto.banco_contas > 0 ? foto.banco_ate || null : null };
 }
 
 // o estudo de uma empresa sem cadastro (só o que foi gravado: a linha de comparativos, com o nome)

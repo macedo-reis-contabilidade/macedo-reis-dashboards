@@ -60,8 +60,10 @@ const COMO = { reforma: 'veio do caso da Reforma', dominio: 'veio do relatório 
 
 // ---------- o crescimento que o sistema mediu ----------
 // os 3 últimos meses da série contra os 3 primeiros (de até 12): quanto a receita andou no período
+// — só os meses de verdade: os de antes de a empresa vir pro escritório, estimados pela abertura de balanço ou pelo RBT12
+// (antesDoEscritorio), são por igual e não medem nada (27/11/2026)
 export function crescimentoMedido(serie) {
-  const s = (serie || []).filter(m => m && num(m.total) > 0).slice(-12);
+  const s = (serie || []).filter(m => m && num(m.total) > 0 && !m.estimado).slice(-12);
   if (s.length < 9) return null;
   const a = s.slice(0, 3), b = s.slice(-3);
   const ini = a.reduce((t, m) => t + num(m.total), 0), fim = b.reduce((t, m) => t + num(m.total), 0);
@@ -258,8 +260,9 @@ export function ponteDoLucro({ entrada = {}, origens = {}, serie = null, contabi
   let oferta = null, reabre = false;
   if (!informado(e.lucroContabil)) { if (temHoje) oferta = { ...hoje, motivo: 'usar', rotulo: 'Usar o do Domínio' }; }
   else if (origens && origens.lucroContabil && origens.lucroContabil.fonte === 'ponte') {
-    // o mesmo período do estudo, relido hoje: só quando a DRE começa no primeiro mês da receita (é assim que a ponte soma)
-    const doPeriodo = dre && dre.janela && dre.de === dre.janela.de && dre.ate <= dre.janela.ate ? lucroDaPonte(serie, contabil, resultadoPonte, dre.ate) : null;
+    // o mesmo período do estudo, relido hoje: só quando a DRE começa onde a ponte começa a soma (o primeiro mês da DRE da
+    // janela, janela.dre: o da receita, ou o janeiro da abertura de balanço na empresa que veio de outro escritório)
+    const doPeriodo = dre && dre.janela && dre.de === (dre.janela.dre || dre.janela.de) && dre.ate <= dre.janela.ate ? lucroDaPonte(serie, contabil, resultadoPonte, dre.ate) : null;
     if (temHoje && dre && hoje.ate > dre.ate) oferta = { ...hoje, motivo: 'andou', rotulo: 'Atualizar pelo Domínio' };
     else if (doPeriodo && doPeriodo.lucro != null && !igual(doPeriodo)) { oferta = { ...doPeriodo, motivo: 'mudou', rotulo: 'Atualizar pelo Domínio' }; reabre = true; }
   } else if (temHoje && !igual(hoje)) oferta = { ...hoje, motivo: 'comparar', rotulo: 'Usar o do Domínio' };
@@ -297,7 +300,7 @@ export function lucroDoEstudo({ entrada = {}, origens = {}, serie = null, contab
   const perg = contabil && contabil.faz !== false ? perguntaDaContabilidade(contabil.pergunta, ate) : null;
   const manual = !!(conf && conf.vale), pelaPergunta = !manual && !!(perg && perg.estado === 'sim' && perg.cobre);
   // o resultado do Domínio no período usado, mês a mês: os meses em que ele passa da receita do mês (atipicos)
-  const doPeriodo = ate && jan && de === jan.de && resultadoPonte ? lucroDaPonte(serie, contabil, resultadoPonte, ate) : null;
+  const doPeriodo = ate && jan && de === jan.dre && resultadoPonte ? lucroDaPonte(serie, contabil, resultadoPonte, ate) : null;
   return { jan, sug, dre, de, ate, sinais: sinaisDaContabilidade(contabil, de, ate), conf, perg, confirmado: manual || pelaPergunta, pelaPergunta, quem, responsavel: resp,
     ponte: ponteDoLucro({ entrada: e, origens, serie, contabil, resultadoPonte, dre }), atipicos: (doPeriodo && doPeriodo.atipicos) || [] };
 }

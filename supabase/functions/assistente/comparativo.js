@@ -29,7 +29,7 @@ const moeda = v => (fin(v) ? Number(v).toLocaleString('pt-BR', { minimumFraction
 const pct = (v, d = 2) => (Number(v) || 0).toLocaleString('pt-BR', { maximumFractionDigits: d });
 const momento = iso => { const d = new Date(iso || ''); return iso && !isNaN(d) ? new Intl.DateTimeFormat('pt-BR', { timeZone: 'America/Sao_Paulo', dateStyle: 'short', timeStyle: 'short' }).format(d) : '—'; };
 const COLS_ESTUDO = 'id,cliente_id,nome,entrada,atualizado_em,atualizado_por';
-const COLS_CLIENTE = 'id,nome_principal,nome_fantasia,documento,tipo_pessoa,regime_tributario,cnae_principal,cnaes_secundarios,natureza_juridica,cidade,uf,status';
+const COLS_CLIENTE = 'id,nome_principal,nome_fantasia,documento,tipo_pessoa,regime_tributario,cnae_principal,cnaes_secundarios,natureza_juridica,cidade,uf,status,data_abertura';
 
 // ---------- a leitura do estudo (a mesma da tela, pelo PostgREST com o login de quem pergunta) ----------
 export function lerDoBanco(banco) {

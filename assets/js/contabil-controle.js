@@ -244,6 +244,25 @@ const sobraDaFolha = d => {
   const f = d ? folhaCalculada(d) : null;
   return d && d.folha_lancada != null && f != null ? +d.folha_lancada - f : null;
 };
+/**
+ * A abertura do ano no mês `c` (27/11/2026, pela Adaini e pela Thalia: a empresa que veio de outro
+ * escritório no meio do ano tem, no primeiro mês aqui, o resultado de janeiro até ali — a receita, a folha, as despesas —
+ * num lançamento só, a "abertura de balanço"): o mês com lançamento cujos meses do mesmo ano antes dele estão todos no
+ * Domínio sem nenhum lançamento (a contabilidade deles foi do escritório anterior). `meses`: o Map do dominioPorMes. Volta
+ * { de, ate } — os meses que a abertura traz, de janeiro ao mês antes de `c` — ou null (janeiro, o mês sem lançamento, um
+ * mês de antes com lançamento ou que a ponte não leu).
+ */
+export function aberturaNoMes(meses, c) {
+  if (!meses || typeof meses.get !== 'function' || !mesValido(c) || c.slice(5, 7) === '01') return null;
+  const d = meses.get(c);
+  if (!d || !(+d.lancamentos > 0)) return null;
+  const antes = mesesEntre(c.slice(0, 4) + '-01', somaMes(c, -1));
+  if (!antes.every(m => { const x = meses.get(m); return !!x && x.lancamentos != null && +x.lancamentos === 0; })) return null;
+  return { de: antes[0], ate: antes[antes.length - 1] };
+}
+const deAte = a => (a.de === a.ate ? 'de ' + rotuloMes(a.de) : 'de ' + rotuloMes(a.de) + ' a ' + rotuloMes(a.ate));
+const daAbertura = (oQue, a) => ': é a abertura do ano, com ' + oQue + ' ' + deAte(a) + ' da contabilidade do escritório anterior (os meses antes deste não têm lançamento no Domínio). Não é diferença: confira só se o valor é o de lá';
+
 /** O mês do lado (o de antes, senão o de depois) em que a diferença do mês `c` se compensa: as duas com mais de R$ 1,00,
  * de sinais contrários, e a soma até R$ 1,00. null sem os meses ou sem compensação. */
 export function compensaNoVizinho(meses, c, sobra) {
@@ -309,6 +328,8 @@ function textoDaReceita(d, causa, viz) {
  * lado (as duas diferenças somam até R$ 1,00) vira aviso leve, com o mês em que compensa (06/11/2026, decisão do Samuel:
  * quase sempre é o lançamento no mês errado — mostrar leve, sem esconder). A diferença da receita que os números do mês
  * explicam (`causaDaReceita`: as saídas que não são venda, a devolução) sai com a causa e o que acertar, e a força dela.
+ * No mês da abertura do ano (aberturaNoMes, com os meses: a empresa que veio de outro escritório no meio do ano), a receita
+ * e a folha lançadas a mais são as de janeiro até ali: leves, com `abertura: true` e o porquê (27/11/2026).
  */
 export function problemasDoMes(d, c, and, meses = null) {
   const out = [];
@@ -318,16 +339,26 @@ export function problemasDoMes(d, c, and, meses = null) {
     const fiscalFora = notas > 0 && n(d.lanc_fiscal) === 0;
     if (fiscalFora) out.push({ tipo: 'fiscal', forte: true, texto: 'a escrita fiscal (' + inteiro(notas) + (notas === 1 ? ' nota' : ' notas') + ') não entrou na contabilidade' });
     const folha = folhaCalculada(d);
+    // a abertura do ano (aberturaNoMes): a receita e a folha lançadas a mais no mês são as de janeiro até ali — aviso leve
+    const abertura = aberturaNoMes(meses, c);
     if (folha > 0 && n(d.folha_lancada) === 0) out.push({ tipo: 'folha', forte: true, texto: 'a folha (' + dinheiro(folha) + ') não entrou na contabilidade' });
     else if (folha > 0 && n(d.folha_lancada) > 0 && Math.abs(folha - d.folha_lancada) > 1) {
-      const viz = compensaNoVizinho(meses, c, sobraDaFolha);
-      out.push({ tipo: 'folha_difere', forte: !viz, texto: 'a folha lançada (' + dinheiro(d.folha_lancada) + ') é diferente da calculada (' + dinheiro(folha) + ')'
-        + (viz ? ', e a diferença se compensa em ' + rotuloMes(viz) + ' (lançamento no mês errado?)' : '') });
+      if (abertura && d.folha_lancada - folha > 1) out.push({ tipo: 'folha_difere', forte: false, abertura: true, texto: 'a folha lançada (' + dinheiro(d.folha_lancada) + ') é maior que a calculada ('
+        + dinheiro(folha) + ') em ' + dinheiro(Math.round((d.folha_lancada - folha) * 100) / 100) + daAbertura('a folha', abertura) });
+      else {
+        const viz = compensaNoVizinho(meses, c, sobraDaFolha);
+        out.push({ tipo: 'folha_difere', forte: !viz, texto: 'a folha lançada (' + dinheiro(d.folha_lancada) + ') é diferente da calculada (' + dinheiro(folha) + ')'
+          + (viz ? ', e a diferença se compensa em ' + rotuloMes(viz) + ' (lançamento no mês errado?)' : '') });
+      }
     }
     if (!fiscalFora && n(d.receita_bruta) > 0 && d.receita_lancada != null && Math.abs(d.receita_bruta - d.receita_lancada) > 1) {
-      const causa = causaDaReceita(d);
-      const viz = causa ? null : compensaNoVizinho(meses, c, sobraDaReceita);
-      out.push({ tipo: 'receita', forte: causa ? causa.forte : !viz, causa: causa ? causa.tipo : null, texto: textoDaReceita(d, causa, viz) });
+      if (abertura && d.receita_lancada - d.receita_bruta > 1) out.push({ tipo: 'receita', forte: false, causa: 'abertura', abertura: true, texto: 'a receita lançada (' + dinheiro(d.receita_lancada)
+        + ') é maior que o faturamento (' + dinheiro(d.receita_bruta) + ') em ' + dinheiro(Math.round((d.receita_lancada - d.receita_bruta) * 100) / 100) + daAbertura('a receita', abertura) });
+      else {
+        const causa = causaDaReceita(d);
+        const viz = causa ? null : compensaNoVizinho(meses, c, sobraDaReceita);
+        out.push({ tipo: 'receita', forte: causa ? causa.forte : !viz, causa: causa ? causa.tipo : null, texto: textoDaReceita(d, causa, viz) });
+      }
     }
     if (n(d.caixa_negativo) > 0) out.push({ tipo: 'caixa', forte: true, texto: 'o caixa fechou o mês negativo' });
     if (n(d.transitorias) > 0) out.push({ tipo: 'transitoria', forte: true, texto: (d.transitorias === 1 ? 'uma conta transitória ou a classificar' : d.transitorias + ' contas transitórias ou a classificar') + ' com saldo no fim do mês' + (n(d.transitorias_valor) > 0 ? ' (' + dinheiro(d.transitorias_valor) + ')' : '') });

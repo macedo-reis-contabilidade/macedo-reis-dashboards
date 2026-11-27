@@ -226,12 +226,15 @@ export const CAMPOS_APURACAO = ['base_pis_cofins', 'pis_apurado', 'cofins_apurad
 export const CAMPOS_PONTE = ['receita_bruta', 'receita_mercadorias', 'receita_servicos', 'receita_simples', 'receita_st', 'receita_monofasica', 'receita_exportacao',
   'receita_anexo_1', 'receita_anexo_2', 'receita_anexo_3', 'receita_anexo_4', 'receita_anexo_5', 'compras', 'servicos_tomados', 'ativo_e_consumo',
   'salarios', 'decimo_terceiro', 'pro_labore_valor', 'base_inss', 'inss_rat', 'inss_terceiros', ...CAMPOS_PISCOFINS, ...CAMPOS_APURACAO];
+// os que dizem se a empresa já estava no escritório no mês (27/11/2026, antesDoEscritorio): os lançamentos, as notas, a
+// receita lançada na contabilidade e os lançamentos em conta de resultado
+const CAMPOS_ANTES = ['lancamentos', 'notas_saida', 'notas_entrada', 'receita_lancada', 'lanc_resultado'];
 export function mesesDaPonte(linhas) {
   const por = new Map();
   (linhas || []).forEach(l => {
     if (!l || !/^\d{4}-\d{2}$/.test(String(l.competencia))) return;
     const m = por.get(l.competencia) || { competencia: l.competencia };
-    CAMPOS_PONTE.forEach(c => { const v = l[c] == null ? null : Number(l[c]); if (v != null && Number.isFinite(v) && (m[c] == null || v > m[c])) m[c] = v; });
+    [...CAMPOS_PONTE, ...CAMPOS_ANTES].forEach(c => { const v = l[c] == null ? null : Number(l[c]); if (v != null && Number.isFinite(v) && (m[c] == null || v > m[c])) m[c] = v; });
     por.set(l.competencia, m);
   });
   return [...por.values()].sort((a, b) => (a.competencia < b.competencia ? -1 : 1));
@@ -260,9 +263,17 @@ export function seriePonte(meses) {
 // em que a empresa estava no Simples (a que saiu ou entrou no meio da janela), ou o faturamento
 const oQueDaPonte = s => (s.simples === 'todos' ? 'a receita da apuração do Simples' : s.simples === 'parte' ? 'o faturamento, com a apuração do Simples nos meses em que a empresa estava nele,' : 'o faturamento');
 // a soma de 12 meses de uns campos pela ponte: os 12 meses mais recentes em que algum deles veio (os zeros contam),
-// anualizada; com menos de 3 meses, null (pouco pra anualizar)
-export function somaDaPonte(meses, campos) {
-  const com = (meses || []).filter(m => campos.some(c => m[c] != null)).slice(-12);
+// anualizada; com menos de 3 meses, null (pouco pra anualizar). Os meses do começo em que o Domínio não tem nada da
+// empresa — nenhum lançamento e nada no bloco (`ativo`: os campos que dizem que aquele setor já estava aqui) — são de
+// antes de ela vir pro escritório (ou de antes de abrir) e não contam como zero, quando o bloco aparece depois (27/11/2026,
+// a empresa que veio de outro escritório em agosto: a folha e as compras de antes entravam como zero)
+export const ATIVO_FISCAL = ['notas_saida', 'notas_entrada', 'receita_bruta', 'receita_simples', 'compras', 'servicos_tomados', 'ativo_e_consumo'];
+export const ATIVO_FOLHA = ['salarios', 'decimo_terceiro', 'pro_labore_valor'];
+export function somaDaPonte(meses, campos, ativo = campos) {
+  let com = (meses || []).filter(m => campos.some(c => m[c] != null)).slice(-12);
+  const temAlgo = m => ativo.some(c => num(m[c]) > 0);
+  const k = com.findIndex(temAlgo);
+  if (k > 0 && com.slice(0, k).every(m => m.lancamentos != null && num(m.lancamentos) === 0)) com = com.slice(k);
   if (com.length < 3) return null;
   const soma = com.reduce((s, m) => s + campos.reduce((t, c) => t + num(m[c]), 0), 0) * 12 / com.length;
   return { soma, n: com.length, de: com[0].competencia, ate: com[com.length - 1].competencia };
@@ -409,6 +420,15 @@ export function entradaDoSistema({ cliente = null, caso = null, fatorR = [], pgd
   if (pgdasVale) {
     receita = sPgdas.receita; meses = sPgdas.meses; fonteRec = 'pgdas'; textoRec = 'PGDAS na Receita, de ' + periodo(sPgdas) + (divisao ? ' (a divisão mercadoria × serviço é a ' + divisao + ')' : '');
   }
+  // os meses de antes de a empresa vir pro escritório (27/11/2026, antesDoEscritorio): a receita é a dos 12 meses da série
+  // com eles — a abertura de balanço e o RBT12 do PGDAS —, e não a dos meses daqui anualizada
+  const sd = serieDaEmpresa({ caso, pgdas, dominio: mp, cliente });
+  let dicaRec;
+  const sAntes = sd && sd.antes && sd.antes.estimados.size && (fonteRec === 'ponte' || fonteRec === 'pgdas') ? serieDosMeses(sd.serie) : null;
+  if (sAntes) {
+    receita = sAntes.receita; meses = sAntes.meses; dicaRec = DICA_ANTES;
+    textoRec = (fonteRec === 'ponte' ? 'Domínio, pela ponte: ' + oQueDaPonte(sPonte) + ' de ' + periodoCurto(sPonte) : 'PGDAS na Receita, de ' + periodoCurto(sPgdas)) + '; ' + textoDeAntes(sd.antes, sAntes.de);
+  }
   if (!receita && num(inp.receita) > 0) { receita = num(inp.receita) * 12; fonteRec = 'reforma'; textoRec = 'caso da Reforma: receita mensal de ' + brl(num(inp.receita)) + ' × 12'; }
   if (!receita && caso && num(caso.receita_mensal) > 0) { receita = num(caso.receita_mensal) * 12; fonteRec = 'reforma'; textoRec = 'caso da Reforma: receita mensal × 12'; }
   // sem divisão medida, o anexo (ou o CNAE) diz se é mercadoria ou serviço
@@ -434,7 +454,7 @@ export function entradaDoSistema({ cliente = null, caso = null, fatorR = [], pgd
       : tipoAnexo && (a.tipo === tipoAnexo) ? origem('reforma', 'Anexo ' + anexoPgdas + ' do PGDAS (caso da Reforma)')
       : medida ? pelasNotas(a)
       : tipoCnae && a.tipo === tipoCnae ? origem('cadastro', 'pelo CNAE do cadastro (' + cnaeTxt + ') — confira', 'o sistema não tem as notas desta empresa: confira se a receita é venda de mercadoria (no Presumido, presume 8% no IRPJ e 12% na CSLL) ou serviço (32% nos dois)') : origem('padrao');
-    origens['atividades.' + i + '.receita'] = receita > 0 ? origem(fonteRec, textoRec) : origem('padrao', 'falta no sistema: digite os 12 meses');
+    origens['atividades.' + i + '.receita'] = receita > 0 ? origem(fonteRec, textoRec, dicaRec) : origem('padrao', 'falta no sistema: digite os 12 meses');
   });
   // a atividade com presunção própria pelo CNAE principal: a que vale pra receita toda (o transporte) já entra na conta
   const especial = presuncaoPeloCnae(cnaeTxt);
@@ -527,7 +547,7 @@ export function entradaDoSistema({ cliente = null, caso = null, fatorR = [], pgd
     if (Math.abs(soma - 100) > 0.5) { delete e.mix; } else origens.mix = origem('reforma', 'caso da Reforma: alíquotas da Reforma nas vendas');
   }
   // as compras e as despesas com crédito pela ponte (os 12 meses fechados do Domínio, pelo CFOP): valem sobre o % do caso
-  const cp = somaDaPonte(mp, ['compras']), dp = somaDaPonte(mp, ['servicos_tomados', 'ativo_e_consumo']);
+  const cp = somaDaPonte(mp, ['compras'], ATIVO_FISCAL), dp = somaDaPonte(mp, ['servicos_tomados', 'ativo_e_consumo'], ATIVO_FISCAL);
   if (cp) {
     e.compras = cp.soma;
     origens.compras = origem('ponte', 'Domínio, pela ponte: compras de mercadorias e insumos de ' + periodo(cp), 'pelo CFOP das entradas: revenda, industrialização e as mesmas com ST; fora remessa, retorno, devolução e transferência');
@@ -547,7 +567,7 @@ export function entradaDoSistema({ cliente = null, caso = null, fatorR = [], pgd
   // 12 meses fechados) quando tem pelo menos os meses do Fator R; senão o Fator R (os últimos 12 meses lançados); senão
   // em branco
   const fr = (fatorR || []).filter(l => l && l.competencia).sort((a, b) => a.competencia < b.competencia ? 1 : -1).slice(0, 12);
-  const fp = somaDaPonte(mp, ['salarios', 'decimo_terceiro']), pp = somaDaPonte(mp, ['pro_labore_valor']);
+  const fp = somaDaPonte(mp, ['salarios', 'decimo_terceiro'], ATIVO_FOLHA), pp = somaDaPonte(mp, ['pro_labore_valor'], ATIVO_FOLHA);
   if (fp && fp.n >= fr.length) {
     e.folha = fp.soma;
     e.proLabore = pp ? pp.soma : 0;
@@ -572,7 +592,7 @@ export function entradaDoSistema({ cliente = null, caso = null, fatorR = [], pgd
   // INSS do RAT (já com o FAP) e o de terceiros sobre a base do INSS dos empregados, nos 12 meses. No Simples a guia não tem
   // (a CPP está no DAS) e fica o padrão. Só o que parece RAT (até 6%: 3% com o FAP em 2) e terceiros (até 8%)
   const regimeHoje = cliente ? regimeDoCadastro(cliente.regime_tributario) : null;
-  const bi = somaDaPonte(mp, ['base_inss']), ri = somaDaPonte(mp, ['inss_rat']), ti = somaDaPonte(mp, ['inss_terceiros']);
+  const bi = somaDaPonte(mp, ['base_inss'], ATIVO_FOLHA), ri = somaDaPonte(mp, ['inss_rat'], ATIVO_FOLHA), ti = somaDaPonte(mp, ['inss_terceiros'], ATIVO_FOLHA);
   if ((regimeHoje === 'presumido' || regimeHoje === 'real') && origens.folha.fonte === 'ponte' && bi && bi.soma > 0 && ri && ti) {
     const rat = Math.round(ri.soma / bi.soma * 10000) / 100, terc = Math.round(ti.soma / bi.soma * 10000) / 100;
     if (rat > 0 && rat <= 6 && terc >= 0 && terc <= 8) {
@@ -637,34 +657,161 @@ export function entradaDoSistema({ cliente = null, caso = null, fatorR = [], pgd
   // a conferência do Simples: a alíquota efetiva do último PGDAS lido na Reforma
   const pg = dom.pgdas || null;
   const conferencia = pg && num(pg.aliquotaEfetiva) > 0 ? { competencia: pg.competencia, aliquota: num(pg.aliquotaEfetiva), das: num(pg.dasTotal), fonte: 'reforma' } : null;
-  const sd = serieDaEmpresa({ caso, pgdas, dominio: mp });
   // divisao: a medida da venda de mercadoria × serviço (as notas); especial: a presunção própria do CNAE principal; lida:
-  // a ponte do Domínio leu a empresa (com ou sem nota nos meses fechados)
+  // a ponte do Domínio leu a empresa (com ou sem nota nos meses fechados); antes: os meses de antes de a empresa vir pro
+  // escritório que a série ganhou (antesDoEscritorio)
   return { entrada: e, origens, notas, notasSimples, conferencia, serie: sd ? sd.serie : null, ponte: sPonte ? { de: sPonte.de, ate: sPonte.ate, n: sPonte.n } : null,
-    divisao: medida, especial, lida: mp.length > 0 };
+    divisao: medida, especial, lida: mp.length > 0, antes: sd && sd.antes ? sd.antes : null };
 }
 
 // junta duas séries datadas ([{ competencia 'AAAA-MM', total }]) — a de b vale no mês que as duas têm —, em ordem. É o que a
 // tela faz com o faturamento solto nela: os meses do relatório entram na série do sistema (o ano do limite, o crescimento
 // medido e o "até quando" de cada fase passam a contar com eles), e a parte do relatório fica gravada no estudo (serieRel)
+// As marcas dos meses de antes do escritório (serieComAntes) ficam com o mês da série do sistema; o mês que o relatório
+// traz é o de verdade: perde a marca de estimado, mas segue coberto pela abertura do ano (o resultado dele está nela).
 export function mesclarSerie(a, b) {
   const m = new Map();
-  [...(a || []), ...(b || [])].forEach(x => { if (x && /^\d{4}-\d{2}$/.test(x.competencia) && num(x.total) > 0) m.set(x.competencia, { competencia: x.competencia, total: num(x.total) }); });
+  const marcas = x => ({ ...(x.estimado ? { estimado: x.estimado } : {}), ...(x.coberto ? { coberto: x.coberto } : {}), ...(x.aberturaDe ? { aberturaDe: x.aberturaDe } : {}) });
+  (a || []).forEach(x => { if (x && /^\d{4}-\d{2}$/.test(x.competencia) && num(x.total) > 0) m.set(x.competencia, { competencia: x.competencia, total: num(x.total), ...marcas(x) }); });
+  (b || []).forEach(x => {
+    if (!x || !/^\d{4}-\d{2}$/.test(x.competencia) || !(num(x.total) > 0)) return;
+    const antes = m.get(x.competencia);
+    m.set(x.competencia, { competencia: x.competencia, total: num(x.total), ...(antes && antes.coberto ? { coberto: antes.coberto } : {}), ...(antes && antes.aberturaDe ? { aberturaDe: antes.aberturaDe } : {}) });
+  });
   const l = [...m.values()].sort((x, y) => (x.competencia < y.competencia ? -1 : 1));
   return l.length ? l : null;
 }
+
+// ---------- os meses de antes de a empresa vir pro escritório (27/11/2026) ----------
+// Pela Thalia, com uma empresa que veio de outro escritório em agosto: o Domínio daqui não tem janeiro a julho (a ponte
+// leu, e deu zero). O sistema a lia como aberta em agosto: anualizava a receita de ago a out (bem acima do RBT12
+// declarado), contava como zero a folha e as compras de antes e somava o resultado de agosto — que traz o de janeiro a
+// julho, a "abertura de balanço" — como o de um mês só. O que o sistema tem desses meses:
+//  - a abertura do ano (aberturaDaPonte): o mês A, fora janeiro, com lançamento, cujos meses do mesmo ano antes dele estão
+//    todos no Domínio sem nenhum lançamento (a regra do Controle das contabilidades, aberturaNoMes) e com a receita lançada
+//    acima do faturamento do mês: a receita a mais é a de janeiro até ali, da contabilidade do escritório anterior (com o
+//    mês, quando o faturamento dele também não está aqui: a abertura no último mês de lá). O resultado de A traz o de
+//    janeiro a A − 1.
+//  - o RBT12 do PGDAS mais recente: a receita dos 12 meses antes dele.
+// antesDoEscritorio estima a receita de cada mês que falta, por igual entre os meses: a da abertura nos meses que ela cobre
+// (os sem faturamento aqui) e o que sobra do RBT12 nos meses antes da primeira receita daqui — só os depois da abertura da
+// empresa no cadastro (a empresa nova não ganha mês que não existiu; sem a data, o RBT12 não entra).
+// meses: as linhas de mesesDaPonte. Volta [{ competencia: A, de (janeiro), ate (A − 1), receita (a lançada a mais), cobre
+// (os meses que ela cobre: sem faturamento aqui), resto (a receita deles: a lançada a mais menos a dos meses do período que
+// têm faturamento aqui) }], em ordem
+export function aberturaDaPonte(meses) {
+  const por = new Map((meses || []).filter(m => m && RE_COMP.test(String(m.competencia))).map(m => [m.competencia, m]));
+  const rec = c => num(receitaDaPonte(por.get(c) || {}));
+  const out = [];
+  for (const [c, m] of por) {
+    if (c.slice(5, 7) === '01' || !(num(m.lancamentos) > 0) || m.receita_lancada == null) continue;
+    const antes = mesesDeAte(c.slice(0, 4) + '-01', mesAntes(c));
+    if (!antes.every(x => { const y = por.get(x); return !!y && y.lancamentos != null && num(y.lancamentos) === 0; })) continue;
+    const sobra = Math.round((num(m.receita_lancada) - rec(c)) * 100) / 100;
+    if (!(sobra > 1)) continue;
+    const periodo = rec(c) > 0 ? antes : [...antes, c];
+    const cobre = periodo.filter(x => !(rec(x) > 0));
+    const resto = Math.round((sobra - periodo.reduce((t, x) => t + rec(x), 0)) * 100) / 100;
+    out.push({ competencia: c, de: antes[0], ate: antes[antes.length - 1], receita: sobra, cobre, resto: resto > 1 && cobre.length ? resto : 0 });
+  }
+  return out.sort((a, b) => (a.competencia < b.competencia ? -1 : 1));
+}
+// um valor dividido em n partes iguais, em centavos: a última leva o que sobra da divisão (a soma fecha)
+function partesIguais(total, n) {
+  const c = Math.round(num(total) * 100), q = Math.floor(c / n);
+  return Array.from({ length: n }, (_, i) => (i === n - 1 ? c - q * (n - 1) : q) / 100);
+}
+// a data da abertura da empresa no cadastro ('AAAA-MM-DD') → o mês; null sem ela
+const mesDaData = d => { const s = String(d || '').slice(0, 7); return RE_COMP.test(s) ? s : null; };
+// meses: as linhas de dominio_mensal (ou já as de mesesDaPonte); pgdas: as de receita_pgdas (receita_mes e
+// receita_12_meses); abertura: a data da abertura da empresa no cadastro. Volta { estimados: Map(mês → { total, estimado:
+// 'abertura' | 'rbt12', abertura? }), aberturas, rbt12: { competencia, valor, meses, resto } | null }
+export function antesDoEscritorio({ meses = [], pgdas = [], abertura = null } = {}) {
+  const mp = mesesDaPonte(meses);
+  const conhecidos = new Map();
+  mp.forEach(m => { const v = num(receitaDaPonte(m)); if (v > 0) conhecidos.set(m.competencia, v); });
+  (pgdas || []).forEach(p => { const v = num(p && p.receita_mes); if (p && RE_COMP.test(String(p.competencia)) && v > 0 && !conhecidos.has(p.competencia)) conhecidos.set(p.competencia, v); });
+  const estimados = new Map();
+  const aberturas = aberturaDaPonte(mp);
+  aberturas.forEach(a => {
+    // o mês que o PGDAS declarou entra pelo valor dele, e a abertura fica com o resto
+    const faltam = a.cobre.filter(c => !conhecidos.has(c) && !estimados.has(c));
+    const resto = Math.round((a.resto - a.cobre.filter(c => conhecidos.has(c)).reduce((t, c) => t + conhecidos.get(c), 0)) * 100) / 100;
+    if (!faltam.length || !(resto > 1)) return;
+    const v = partesIguais(resto, faltam.length);
+    faltam.forEach((c, i) => estimados.set(c, { total: v[i], estimado: 'abertura', abertura: a.competencia }));
+  });
+  let rbt12 = null;
+  const ult = (pgdas || []).filter(p => p && RE_COMP.test(String(p.competencia)) && num(p.receita_12_meses) > 0).sort((x, y) => (x.competencia < y.competencia ? -1 : 1)).pop();
+  const desde = mesDaData(abertura), primeiro = [...conhecidos.keys()].sort()[0];
+  if (ult && desde && primeiro) {
+    let ini = ult.competencia;
+    for (let i = 0; i < 12; i++) ini = mesAntes(ini);
+    const janela = mesesDeAte(ini, mesAntes(ult.competencia));
+    const tem = c => (conhecidos.has(c) ? conhecidos.get(c) : estimados.has(c) ? estimados.get(c).total : 0);
+    const resto = Math.round((num(ult.receita_12_meses) - janela.reduce((t, c) => t + tem(c), 0)) * 100) / 100;
+    const faltam = janela.filter(c => !conhecidos.has(c) && !estimados.has(c) && c >= desde && c < primeiro);
+    if (faltam.length && resto > Math.max(1000, 0.01 * num(ult.receita_12_meses))) {
+      const v = partesIguais(resto, faltam.length);
+      faltam.forEach((c, i) => estimados.set(c, { total: v[i], estimado: 'rbt12' }));
+      rbt12 = { competencia: ult.competencia, valor: num(ult.receita_12_meses), meses: faltam, resto };
+    }
+  }
+  return { estimados, aberturas, rbt12 };
+}
+// a série datada com os meses de antes do escritório: os estimados entram com `estimado` ('abertura' ou 'rbt12'); os meses
+// que o resultado de uma abertura traz (janeiro a A − 1) ganham `coberto` (o mês da abertura) e o mês da abertura,
+// `aberturaDe` (o janeiro) — é por eles que a DRE começa em janeiro (janelaDaReceita) e que esses meses, sem lançamento
+// próprio, contam pelo resultado da abertura (lucroDaPonte)
+export function serieComAntes(serie, antes) {
+  const m = new Map((serie || []).filter(x => x && RE_COMP.test(String(x.competencia)) && num(x.total) > 0).map(x => [x.competencia, { competencia: x.competencia, total: num(x.total) }]));
+  if (antes) {
+    antes.estimados.forEach((v, c) => { if (!m.has(c)) m.set(c, { competencia: c, total: v.total, estimado: v.estimado }); });
+    antes.aberturas.forEach(a => {
+      mesesDeAte(a.de, a.ate).forEach(c => { if (m.has(c)) m.get(c).coberto = a.competencia; });
+      if (m.has(a.competencia)) m.get(a.competencia).aberturaDe = a.de;
+    });
+  }
+  const l = [...m.values()].sort((x, y) => (x.competencia < y.competencia ? -1 : 1));
+  return l.length ? l : null;
+}
+// o que a série tem de antes do escritório, em texto, a partir de `de` (o primeiro mês da janela): "antes de a empresa vir
+// pro escritório, jan/26 a jul/26 pela abertura de balanço de ago/26 (R$ 1.400.000,00 de receita lançada pelo escritório
+// anterior) e nov/25 a dez/25 pelo RBT12 do PGDAS de out/26, por igual em cada mês"; '' sem nada estimado
+export function textoDeAntes(antes, de = null) {
+  if (!antes || !antes.estimados || !antes.estimados.size) return '';
+  const ms = [...antes.estimados.keys()].filter(c => !de || c >= de).sort();
+  if (!ms.length) return '';
+  const faixa = l => (l.length === 1 ? rotuloComp(l[0]) : rotuloComp(l[0]) + ' a ' + rotuloComp(l[l.length - 1]));
+  const partes = [];
+  const ab = ms.filter(c => antes.estimados.get(c).estimado === 'abertura');
+  if (ab.length) {
+    const a = antes.aberturas.find(x => x.competencia === antes.estimados.get(ab[0]).abertura);
+    partes.push(faixa(ab) + ' pela abertura de balanço de ' + rotuloComp(a.competencia) + ' (' + brl(a.receita) + ' de receita lançada pelo escritório anterior)');
+  }
+  const rb = ms.filter(c => antes.estimados.get(c).estimado === 'rbt12');
+  if (rb.length && antes.rbt12) partes.push(faixa(rb) + ' pelo RBT12 do PGDAS de ' + rotuloComp(antes.rbt12.competencia) + ' (' + brl(antes.rbt12.valor) + ')');
+  return 'antes de a empresa vir pro escritório, ' + partes.join(' e ') + ', por igual em cada mês';
+}
+const DICA_ANTES = 'o Domínio daqui não tem os meses de antes de a empresa vir pro escritório: a receita deles vem da abertura de balanço (a receita lançada a mais no primeiro mês, a de janeiro até ali, da contabilidade do escritório anterior) e do RBT12 do PGDAS mais recente (o que sobra dos 12 meses), dividida por igual entre os meses';
 
 // ---------- as outras empresas dos mesmos sócios ----------
 // a série datada da receita: o PGDAS da Receita (o declarado) ou o Domínio pela ponte — o que tem mais meses dos 12;
 // empatados, o PGDAS —, senão o faturamento do caso da Reforma — [{ competencia, total }]. dominio: as linhas de
 // dominio_mensal da empresa (os meses fechados)
-export function serieDaEmpresa({ caso = null, pgdas = [], dominio = [] } = {}) {
+// Com o cadastro (cliente: a data da abertura), a série ganha os meses de antes de a empresa vir pro escritório
+// (antesDoEscritorio, serieComAntes: 27/11/2026), e `antes` diz o que entrou.
+export function serieDaEmpresa({ caso = null, pgdas = [], dominio = [], cliente = null } = {}) {
   const ok = m => m && /^\d{4}-\d{2}$/.test(m.competencia) && num(m.total) > 0;
   const ordem = l => l.sort((a, b) => a.competencia < b.competencia ? -1 : 1);
   const pg = ordem((pgdas || []).map(p => ({ competencia: p && p.competencia, total: num(p && p.receita_mes) })).filter(ok));
-  const sp = seriePonte(mesesDaPonte(dominio));
-  if (pg.length && (!sp || pg.slice(-12).length >= sp.npos)) return { fonte: 'pgdas', serie: pg };
-  if (sp) return { fonte: 'ponte', serie: sp.serie, ponte: sp };
+  const mp = mesesDaPonte(dominio);
+  const sp = seriePonte(mp);
+  const antes = pg.length || sp ? antesDoEscritorio({ meses: mp, pgdas, abertura: cliente && cliente.data_abertura }) : null;
+  const tem = !!(antes && (antes.estimados.size || antes.aberturas.length));
+  const comAntes = s => (tem ? serieComAntes(s, antes) : s);
+  if (pg.length && (!sp || pg.slice(-12).length >= sp.npos)) return { fonte: 'pgdas', serie: comAntes(pg), antes: tem ? antes : null };
+  if (sp) return { fonte: 'ponte', serie: comAntes(sp.serie), ponte: sp, antes: tem ? antes : null };
   const sim = lerSim(caso), dom = (sim && sim.dominio) || {};
   const ms = ordem((dom.meses || (dom.vendas && dom.vendas.meses) || []).map(m => ({ competencia: m && m.competencia, total: num(m && m.total) })).filter(ok));
   return ms.length ? { fonte: 'reforma', serie: ms } : null;
@@ -672,15 +819,18 @@ export function serieDaEmpresa({ caso = null, pgdas = [], dominio = [] } = {}) {
 // a receita de 12 meses de uma empresa do grupo, como o motor lê ({ nome, receita, meses }), com a série e a origem
 export function receitaDaEmpresa({ cliente = null, caso = null, pgdas = [], dominio = [] } = {}) {
   const nome = cliente ? (cliente.nome_principal || cliente.nome_fantasia || 'outra empresa') + (cliente.nome_fantasia && cliente.nome_principal && cliente.nome_fantasia !== cliente.nome_principal ? ' (' + cliente.nome_fantasia + ')' : '') : 'outra empresa';
-  const sd = serieDaEmpresa({ caso, pgdas, dominio });
+  const sd = serieDaEmpresa({ caso, pgdas, dominio, cliente });
+  // os meses de antes de a empresa vir pro escritório (sd.antes): a receita é a dos 12 meses da série com eles
+  const comAntes = sd && sd.antes && sd.antes.estimados.size ? serieDosMeses(sd.serie) : null;
+  const deAntes = s => (comAntes ? '; ' + textoDeAntes(sd.antes, comAntes.de) : '');
   if (sd && sd.fonte === 'ponte') {
-    const sp = sd.ponte;
-    return { nome, cliente_id: cliente ? cliente.id : null, receita: sp.receita, meses: sp.meses, serie: sd.serie,
-      origem: origem('ponte', 'Domínio, pela ponte: ' + oQueDaPonte(sp) + ' de ' + periodo(sp)) };
+    const sp = sd.ponte, s = comAntes || sp;
+    return { nome, cliente_id: cliente ? cliente.id : null, receita: s.receita, meses: s.meses, serie: sd.serie,
+      origem: origem('ponte', 'Domínio, pela ponte: ' + oQueDaPonte(sp) + ' de ' + (comAntes ? periodoCurto(sp) : periodo(sp)) + deAntes(), comAntes ? DICA_ANTES : undefined) };
   }
   const s = sd ? serieDosMeses(sd.serie) : null;
   if (s) return { nome, cliente_id: cliente ? cliente.id : null, receita: s.receita, meses: s.meses, serie: sd.serie,
-    origem: origem(sd.fonte, (sd.fonte === 'pgdas' ? 'PGDAS na Receita, de ' : 'caso da Reforma: faturamento do Domínio de ') + periodo(s)) };
+    origem: origem(sd.fonte, (sd.fonte === 'pgdas' ? 'PGDAS na Receita, de ' : 'caso da Reforma: faturamento do Domínio de ') + periodo(s) + deAntes(), comAntes ? DICA_ANTES : undefined) };
   if (caso && num(caso.receita_mensal) > 0) return { nome, cliente_id: cliente ? cliente.id : null, receita: num(caso.receita_mensal) * 12, meses: null, serie: null,
     origem: origem('reforma', 'caso da Reforma: receita mensal × 12') };
   return { nome, cliente_id: cliente ? cliente.id : null, receita: 0, meses: null, serie: null, origem: origem('padrao', 'falta no sistema: digite os 12 meses') };
@@ -1019,8 +1169,13 @@ export function mesesDeAte(de, ate) {
   return out;
 }
 // a janela da receita do estudo, pela série do sistema ([{ competencia, total }], os meses com receita): os 12 meses do
-// calendário até o último com receita, a partir do primeiro com receita. Volta { de, ate, meses, porMes, receita, anual }
-// (anual: a receita levada a 12 meses quando a janela tem menos, a empresa nova), ou null sem a série
+// calendário até o último com receita, a partir do primeiro com receita. Volta { de, ate, meses, porMes, receita, anual,
+// dre, cobertos, estimados } (anual: a receita levada a 12 meses quando a janela tem menos, a empresa nova), ou null sem a
+// série. dre: o primeiro mês da DRE que a contabilidade daqui tem (27/11/2026) — os meses de antes de a empresa vir pro
+// escritório que só o RBT12 diz (estimado 'rbt12') ficam fora; a abertura do ano na janela (aberturaDe, de serieComAntes)
+// leva o começo a janeiro, porque o resultado dela traz os meses de antes (cobertos: mês → o mês da abertura), e a abertura
+// que traz meses de antes da janela fica fora (a DRE começa depois dela). estimados: os meses da janela com a receita
+// estimada (antesDoEscritorio); aberturas: os meses de abertura do ano na janela
 export function janelaDaReceita(serie) {
   const ult = (serie || []).filter(m => m && RE_COMP.test(String(m.competencia)) && num(m.total) > 0).sort((a, b) => (a.competencia < b.competencia ? -1 : 1));
   if (!ult.length) return null;
@@ -1032,7 +1187,18 @@ export function janelaDaReceita(serie) {
   const meses = mesesDeAte(de, ate);
   const porMes = new Map(dentro.map(m => [m.competencia, num(m.total)]));
   const receita = [...porMes.values()].reduce((s, v) => s + v, 0);
-  return { de, ate, meses, porMes, receita, anual: receita * 12 / meses.length };
+  const marca = new Map(dentro.map(m => [m.competencia, m]));
+  const cobertos = new Map(dentro.filter(m => m.coberto).map(m => [m.competencia, m.coberto]));
+  const estimados = meses.filter(c => marca.has(c) && marca.get(c).estimado);
+  let dre = meses.find(c => !(marca.has(c) && marca.get(c).estimado === 'rbt12')) || de;
+  const aberturas = meses.filter(c => marca.has(c) && marca.get(c).aberturaDe);
+  const abertura = aberturas[aberturas.length - 1];
+  if (abertura) {
+    const desde = marca.get(abertura).aberturaDe;
+    const inicio = desde >= de ? desde : abertura < ate ? mesDepois(abertura) : abertura;
+    if (inicio > dre) dre = inicio;
+  }
+  return { de, ate, meses, porMes, receita, anual: receita * 12 / meses.length, dre, cobertos, estimados, aberturas };
 }
 // o período da DRE do estudo e o fator que leva o lucro dela aos 12 meses da receita.
 // entrada: lucroDe e lucroAte ('AAAA-MM': o período que o número cobre — sem eles, a DRE é a dos meses da janela),
@@ -1052,28 +1218,40 @@ export function periodoDaDre(serie, entrada = {}) {
     const doze = (e.atividades || []).reduce((s, a) => s + num(a && a.receita), 0);
     return { de, ate, meses: mesesDeAte(de, ate).length, receita: guardadaRec, fator: guardadaRec && doze > 0 ? doze / guardadaRec : 1, completo: null, faltam: [], janela: null, guardada: true };
   }
-  const janela = { de: j.de, ate: j.ate, meses: j.meses.length };
+  const janela = { de: j.de, ate: j.ate, meses: j.meses.length, dre: j.dre };
   if (e.lucroAnual) return { de: j.de, ate: j.ate, meses: j.meses.length, receita: j.receita, fator: 1, completo: true, faltam: [], janela, guardada: false, anual: true };
-  if (!ate || (de && de > ate)) { de = j.de; ate = j.ate; }
-  if (!de) de = j.de;
+  // sem o período, a DRE é a que a contabilidade daqui tem: do começo dela (j.dre) ao fim da janela
+  if (!ate || (de && de > ate)) { de = j.dre; ate = j.ate; }
+  if (!de) de = j.dre;
   const lista = mesesDeAte(de, ate);
   const dentro = de >= j.de && ate <= j.ate;
   const receita = dentro ? lista.reduce((s, c) => s + (j.porMes.get(c) || 0), 0) : guardadaRec;
+  // faltam: os meses da janela fora da DRE — os de depois dela e, na empresa que veio de outro escritório, os de antes do
+  // começo da contabilidade daqui (entram pela margem, como os outros)
+  const antesDela = dentro && de > j.de ? mesesDeAte(j.de, mesAntes(de)) : [];
   return { de, ate, meses: lista.length, receita: receita > 0 ? receita : null,
     fator: receita > 0 ? j.anual / receita : 12 / Math.max(1, lista.length),
-    completo: de <= j.de && ate >= j.ate, faltam: ate < j.ate ? mesesDeAte(mesDepois(ate), j.ate) : [], janela, guardada: !dentro };
+    completo: de <= j.de && ate >= j.ate, faltam: [...antesDela, ...(ate < j.ate ? mesesDeAte(mesDepois(ate), j.ate) : [])], janela, guardada: !dentro };
 }
-// a DRE que o estudo pede: do primeiro mês da janela até onde a contabilidade está feita (o Controle das contabilidades),
-// dentro da janela — sem o Controle (ou com a contabilidade fora do escritório), a janela inteira. Volta { de, ate, meses,
-// total, faltam, antes } (antes: a contabilidade para antes da janela, nenhum mês da receita está feito), ou null sem a série
+// a DRE que o estudo pede: do primeiro mês da DRE (j.dre: o começo da contabilidade daqui, ou o janeiro da abertura do ano)
+// até onde a contabilidade está feita (o Controle das contabilidades), dentro da janela — sem o Controle (ou com a
+// contabilidade fora do escritório), a janela inteira. Volta { de, ate, meses, total, faltam, antes } (antes: a
+// contabilidade para antes da DRE, nenhum mês dela está feito), ou null sem a série. A abertura do ano de antes do início
+// do Controle (a empresa que veio com o acumulado até o último mês do escritório anterior: contabil.inicio) conta como
+// feita até ela — é a contabilidade de lá (27/11/2026)
 export function dreSugerida(serie, contabil = null) {
   const j = janelaDaReceita(serie);
   if (!j) return null;
   const semControle = !contabil || contabil.faz === false;
-  const feitaAte = !semControle && RE_COMP.test(String(contabil.feitaAte || '')) ? contabil.feitaAte : null;
-  if (!semControle && (!feitaAte || feitaAte < j.de)) return { de: j.de, ate: null, meses: 0, total: j.meses.length, faltam: j.meses.slice(), antes: true };
+  let feitaAte = !semControle && RE_COMP.test(String(contabil.feitaAte || '')) ? contabil.feitaAte : null;
+  if (!semControle && RE_COMP.test(String(contabil.inicio || ''))) {
+    const ab = j.aberturas.filter(c => c < contabil.inicio && c >= j.dre).pop();
+    if (ab && (!feitaAte || feitaAte < ab)) feitaAte = ab;
+  }
+  if (!semControle && (!feitaAte || feitaAte < j.dre)) return { de: j.dre, ate: null, meses: 0, total: j.meses.length, faltam: mesesDeAte(j.dre, j.ate), antes: true };
   const ate = semControle || feitaAte >= j.ate ? j.ate : feitaAte;
-  return { de: j.de, ate, meses: mesesDeAte(j.de, ate).length, total: j.meses.length, faltam: ate < j.ate ? mesesDeAte(mesDepois(ate), j.ate) : [], antes: false };
+  const antesDela = j.dre > j.de ? mesesDeAte(j.de, mesAntes(j.dre)) : [];
+  return { de: j.dre, ate, meses: mesesDeAte(j.dre, ate).length, total: j.meses.length, faltam: [...antesDela, ...(ate < j.ate ? mesesDeAte(mesDepois(ate), j.ate) : [])], antes: false };
 }
 
 // ---------- o resultado da contabilidade pela ponte do Domínio (11/11/2026, a versão 5 do pacote) ----------
@@ -1118,32 +1296,42 @@ export function lucroDaPonte(serie, contabil, resultado, ate = null) {
   if (!res.size) return null;
   const j = janelaDaReceita(serie);
   if (!j) return null;
-  let fim = RE_COMP.test(String(ate || '')) && ate >= j.de && ate <= j.ate ? String(ate) : null;
+  // a DRE começa onde a contabilidade daqui começa (j.dre: a empresa que veio de outro escritório; o janeiro, com a
+  // abertura do ano) — 27/11/2026
+  let fim = RE_COMP.test(String(ate || '')) && ate >= j.dre && ate <= j.ate ? String(ate) : null;
   if (!fim) {
     if (ate || !contabil || contabil.faz === false) return null;
     const sug = dreSugerida(serie, contabil);
     if (!sug || sug.antes || !sug.ate) return null;
     fim = sug.ate;
   }
-  const meses = mesesDeAte(j.de, fim);
-  const base = { de: j.de, ate: fim, meses: meses.length };
+  const meses = mesesDeAte(j.dre, fim);
+  const base = { de: j.dre, ate: fim, meses: meses.length };
   const temReceita = c => (j.porMes.get(c) || 0) > 0;
+  // o mês que a abertura do ano traz (janeiro até ela) não tem lançamento próprio: o resultado dele está no da abertura,
+  // que tem de estar na DRE
+  const coberto = c => { const a = j.cobertos.get(c); return !!a && a <= fim; };
   // o mês com lançamento em conta de resultado e sem o número não foi lido inteiro; o sem lançamento e sem receita é zero
   const naoLido = meses.filter(c => !res.has(c) || (res.get(c).lancamentos > 0 && res.get(c).resultado == null));
   if (naoLido.length) return { ...base, falta: 'nao_lido', quais: naoLido };
-  const semLanc = meses.filter(c => res.get(c).lancamentos === 0 && temReceita(c));
+  const semLanc = meses.filter(c => res.get(c).lancamentos === 0 && temReceita(c) && !coberto(c));
   if (semLanc.length) return { ...base, falta: 'sem_lancamento', quais: semLanc };
   const soma = k => Math.round(meses.reduce((t, c) => t + num(res.get(c)[k]), 0) * 100) / 100;
   const receita = meses.reduce((t, c) => t + (j.porMes.get(c) || 0), 0);
   const media = receita / meses.length;
-  const atipicos = meses.map(c => ({ competencia: c, resultado: num(res.get(c).resultado), receita: j.porMes.get(c) || 0 }))
+  // a receita que o resultado do mês traz: a dele e, na abertura, a dos meses que ela cobre
+  const daAbertura = c => meses.filter(x => j.cobertos.get(x) === c).reduce((t, x) => t + (j.porMes.get(x) || 0), 0);
+  const atipicos = meses.filter(c => !coberto(c)).map(c => ({ competencia: c, resultado: num(res.get(c).resultado), receita: (j.porMes.get(c) || 0) + daAbertura(c) }))
     .filter(x => Math.abs(x.resultado) > x.receita && Math.abs(x.resultado) > 0.5 * media && media > 0);
+  const aberturas = meses.filter(c => meses.some(x => j.cobertos.get(x) === c));
   return { ...base, lucro: soma('resultado'), receita: receita > 0 ? receita : null, ircs: soma('ircs'), financeiras: soma('financeiras'),
-    lancamentos: meses.reduce((t, c) => t + res.get(c).lancamentos, 0), atipicos };
+    lancamentos: meses.reduce((t, c) => t + res.get(c).lancamentos, 0), atipicos, ...(aberturas.length ? { aberturas } : {}) };
 }
 // a origem do lucro que veio da ponte (o período vai junto, pra tela e pro assistente dizerem de quando é)
-export const origemDoLucroDaPonte = lp => ({ ...origem('ponte', 'Domínio, pela ponte: o resultado da contabilidade de ' + rotuloComp(lp.de) + ' a ' + rotuloComp(lp.ate),
-  'a soma do resultado de cada mês no Domínio: o que foi lançado nas contas de resultado, antes do IRPJ e da CSLL e sem o zeramento do exercício' + (lp.lancamentos ? ' (' + lp.lancamentos.toLocaleString('pt-BR') + ' lançamentos)' : '')), de: lp.de, ate: lp.ate });
+export const origemDoLucroDaPonte = lp => ({ ...origem('ponte', 'Domínio, pela ponte: o resultado da contabilidade de ' + rotuloComp(lp.de) + ' a ' + rotuloComp(lp.ate)
+  + (lp.aberturas && lp.aberturas.length ? ' (o de ' + rotuloComp(lp.de) + ' a ' + rotuloComp(mesAntes(lp.aberturas[0])) + ' veio na abertura de balanço de ' + rotuloComp(lp.aberturas[0]) + ')' : ''),
+  'a soma do resultado de cada mês no Domínio: o que foi lançado nas contas de resultado, antes do IRPJ e da CSLL e sem o zeramento do exercício' + (lp.lancamentos ? ' (' + lp.lancamentos.toLocaleString('pt-BR') + ' lançamentos)' : '')
+  + (lp.aberturas && lp.aberturas.length ? '. A empresa veio de outro escritório: o primeiro mês daqui traz, na abertura de balanço, o resultado de janeiro até ali' : '')), de: lp.de, ate: lp.ate });
 // põe o lucro da ponte no estudo: o número, o período da DRE (lucroDe a lucroAte), a receita desses meses (é ela que
 // leva o lucro aos 12 meses: periodoDaDre) e a origem. Volta true se pôs (o lucro da ponte tem de ter o número)
 export function aplicarLucroDaPonte(entrada, origens, lp) {

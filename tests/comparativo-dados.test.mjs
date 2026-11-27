@@ -8,7 +8,7 @@ import { entradaDoSistema, aplicarRelatorios, premissasParaTestar, prazosDaEscol
   pareceFolha, cnpjsDoCabecalho, juntarFolha, folhaDoAno, aplicarFolha, mesesDaPonte, seriePonte, somaDaPonte, objetivoSugerido, porQueDoObjetivo, objetivoValido, doRegimeGeral, simplesNoEstudo,
   presuncaoPeloCnae, periodoCurto, mesesDeAte, janelaDaReceita, periodoDaDre, dreSugerida,
   CAMPOS_PONTE, CAMPOS_PISCOFINS, CAMPOS_RESULTADO, pisCofinsDaPonte, cstVale, resultadoDaPonte, listaDoResultado, lucroDaPonte, aplicarLucroDaPonte, origemDoLucroDaPonte,
-  CAMPOS_APURACAO, apuracaoPisCofins, MES_LC224 } from '../assets/js/comparativo-dados.js';
+  CAMPOS_APURACAO, apuracaoPisCofins, MES_LC224, aberturaDaPonte, antesDoEscritorio, serieComAntes } from '../assets/js/comparativo-dados.js';
 import { comparar, testarPremissas } from '../assets/js/comparativo-motor.js';
 
 let falhas = 0, total = 0;
@@ -698,6 +698,98 @@ console.log('=== o PIS/Cofins pela apuração do Domínio, quando o CST das nota
   const gc = entradaDoSistema({ cliente: ind, dominio: lc.map(m => ({ ...m, pc_tributada: 12500, pc_aliquota_zero: 37500, pc_outras: 0 })) });
   ok('com o CST em toda a venda, vale a medida das notas (75%), não a da apuração', gc.entrada.atividades[0].pctAliqZero === 75 && gc.origens['atividades.0.pctAliqZero'].cst === true && !gc.origens['atividades.0.pctAliqZero'].apuracao);
   ok('dois códigos do Domínio na mesma empresa: o maior de cada número (como o resto da ponte)', mesesDaPonte([...lc, ...lc.map(m => ({ ...m, codigo: 2, pis_cofins_a_recolher: m.pis_cofins_a_recolher / 2, icms_saidas: 1000 }))]).find(m => m.competencia === '2026-05').pis_cofins_a_recolher === 164.25);
+}
+
+console.log('=== os meses de antes de a empresa vir pro escritório (27/11/2026): a abertura de balanço e o RBT12 ===');
+{
+  // a empresa que veio de outro escritório em agosto de 2026: o Domínio daqui não tem nada de nov/25 a jun/26; a folha
+  // começa em julho, as notas em agosto, e o lançamento de 01/08 traz a receita e o resultado de janeiro a julho
+  const z = c => ({ competencia: c, receita_bruta: 0, receita_simples: null, notas_saida: 0, notas_entrada: 0, receita_lancada: 0, salarios: 0, decimo_terceiro: 0, pro_labore_valor: 0,
+    compras: 0, servicos_tomados: 0, ativo_e_consumo: 0, lancamentos: 0, lanc_resultado: 0, resultado_antes_ir: null });
+  const linhas = ['2025-11', '2025-12', '2026-01', '2026-02', '2026-03', '2026-04', '2026-05', '2026-06'].map(z);
+  linhas.push({ ...z('2026-07'), salarios: 5000, pro_labore_valor: 2000 });
+  linhas.push({ ...z('2026-08'), receita_bruta: 100000, receita_simples: 100000, notas_saida: 30, receita_lancada: 800000, salarios: 4000, pro_labore_valor: 2000, compras: 40000, lancamentos: 900, lanc_resultado: 80, resultado_antes_ir: 200000 });
+  linhas.push({ ...z('2026-09'), receita_bruta: 110000, receita_simples: 110000, notas_saida: 32, receita_lancada: 110000, salarios: 4000, pro_labore_valor: 2000, compras: 44000, lancamentos: 800, lanc_resultado: 70, resultado_antes_ir: 30000 });
+  linhas.push({ ...z('2026-10'), receita_bruta: 90000, receita_simples: 90000, notas_saida: 28, receita_lancada: 90000, salarios: 4000, pro_labore_valor: 2000, compras: 36000, lancamentos: 700, lanc_resultado: 60, resultado_antes_ir: 25000 });
+  // o PGDAS de out/26: o RBT12 (out/25 a set/26) com out/25 a dez/25 a 90 mil por mês
+  const pgdas = [{ competencia: '2026-09', receita_mes: 110000, receita_12_meses: 1060000 }, { competencia: '2026-10', receita_mes: 90000, receita_12_meses: 1180000 }];
+  const cli = { id: 'v1', nome_principal: 'VEIO DE OUTRO LTDA', regime_tributario: 'Simples Nacional', cnae_principal: '4711-3/02', uf: 'RS', data_abertura: '2019-03-01' };
+  const ab = aberturaDaPonte(mesesDaPonte(linhas));
+  ok('a abertura do ano: agosto, com a receita de janeiro a julho (700 mil) nos 7 meses sem faturamento aqui', ab.length === 1 && ab[0].competencia === '2026-08' && ab[0].de === '2026-01' && ab[0].ate === '2026-07'
+    && ab[0].receita === 700000 && ab[0].cobre.join() === mesesDeAte('2026-01', '2026-07').join() && ab[0].resto === 700000, ab);
+  const an = antesDoEscritorio({ meses: linhas, pgdas, abertura: cli.data_abertura });
+  ok('antes do escritório: jan a jul pela abertura (100 mil cada) e out a dez/25 pelo que sobra do RBT12 (90 mil cada)',
+    mesesDeAte('2026-01', '2026-07').every(c => an.estimados.get(c).total === 100000 && an.estimados.get(c).estimado === 'abertura' && an.estimados.get(c).abertura === '2026-08')
+    && ['2025-10', '2025-11', '2025-12'].every(c => an.estimados.get(c).total === 90000 && an.estimados.get(c).estimado === 'rbt12') && an.estimados.size === 10
+    && an.rbt12.competencia === '2026-10' && an.rbt12.resto === 270000, [...an.estimados]);
+  ok('a divisão fecha no centavo: a última parte leva a sobra', (() => { const a2 = antesDoEscritorio({ meses: linhas.map(m => (m.competencia === '2026-08' ? { ...m, receita_lancada: 800000.10 } : m)) });
+    const v = mesesDeAte('2026-01', '2026-07').map(c => a2.estimados.get(c).total); return v.slice(0, 6).every(x => x === 100000.01) && v[6] === 100000.04; })());
+  ok('sem a data da abertura no cadastro, o RBT12 não entra (só a abertura de balanço)', (() => { const a3 = antesDoEscritorio({ meses: linhas, pgdas }); return a3.estimados.size === 7 && a3.rbt12 === null; })());
+  ok('a empresa aberta em dez/25: o RBT12 só nos meses depois da abertura dela', (() => { const a4 = antesDoEscritorio({ meses: linhas, pgdas, abertura: '2025-12-10' }); return a4.estimados.get('2025-12').total === 270000 && !a4.estimados.has('2025-11') && !a4.estimados.has('2025-10'); })());
+  ok('a empresa de sempre (o Domínio tem todos os meses e o RBT12 bate): nada estimado', (() => {
+    const sempre = mesesDeAte('2025-10', '2026-10').map(c => ({ ...z(c), receita_simples: 100000, receita_bruta: 100000, notas_saida: 10, receita_lancada: 100000, lancamentos: 50, lanc_resultado: 20, resultado_antes_ir: 10000 }));
+    const a5 = antesDoEscritorio({ meses: sempre, pgdas: [{ competencia: '2026-10', receita_mes: 100000, receita_12_meses: 1200000 }], abertura: '2010-01-01' });
+    return a5.estimados.size === 0 && a5.aberturas.length === 0;
+  })());
+  ok('janeiro, um mês de antes com lançamento ou sem a receita lançada a mais: não é abertura', aberturaDaPonte(mesesDaPonte(linhas.map(m => (m.competencia === '2026-03' ? { ...m, lancamentos: 4 } : m)))).length === 0
+    && aberturaDaPonte(mesesDaPonte(linhas.map(m => (m.competencia === '2026-08' ? { ...m, receita_lancada: 100000 } : m)))).length === 0);
+
+  const sis = entradaDoSistema({ cliente: cli, pgdas, dominio: linhas });
+  ok('a receita dos 12 meses: nov/25 a out/26 com os meses de antes (180 mil + 700 mil + 300 mil), e não ago a out anualizado (1,2 mi)',
+    perto(sis.entrada.atividades[0].receita, 1180000) && sis.entrada.meses.reduce((t, v) => t + v, 0) === sis.entrada.atividades[0].receita && sis.entrada.meses[10] === 90000, sis.entrada.atividades[0].receita);
+  ok('a origem da receita diz de onde veio cada parte',
+    sis.origens['atividades.0.receita'].texto.replace(/\u00a0/g, ' ') === 'Domínio, pela ponte: a receita da apuração do Simples de ago/26 a out/26 (3 meses); antes de a empresa vir pro escritório, jan/26 a jul/26 pela abertura de balanço de ago/26 (R$ 700.000,00 de receita lançada pelo escritório anterior) e nov/25 a dez/25 pelo RBT12 do PGDAS de out/26 (R$ 1.180.000,00), por igual em cada mês'
+    && /abertura de balanço/.test(sis.origens['atividades.0.receita'].dica), sis.origens['atividades.0.receita']);
+  ok('a folha e o pró-labore desde julho (o primeiro mês da folha aqui), as compras desde agosto: os meses de antes não contam como zero',
+    sis.entrada.folha === 51000 && sis.entrada.proLabore === 24000 && sis.entrada.compras === 480000
+    && /de jul\/26 a out\/26 \(4 meses, anualizado\)/.test(sis.origens.folha.texto) && /de ago\/26 a out\/26 \(3 meses, anualizado\)/.test(sis.origens.compras.texto), [sis.entrada.folha, sis.entrada.proLabore, sis.entrada.compras]);
+  ok('a série tem as marcas: os estimados, os meses que a abertura cobre e o mês dela', (() => {
+    const m = new Map(sis.serie.map(x => [x.competencia, x]));
+    return m.get('2025-11').estimado === 'rbt12' && m.get('2026-03').estimado === 'abertura' && m.get('2026-03').coberto === '2026-08' && m.get('2026-08').aberturaDe === '2026-01' && !m.get('2026-09').estimado;
+  })());
+  const j = janelaDaReceita(sis.serie);
+  ok('a janela vai de nov/25 a out/26, e a DRE começa em janeiro (o resultado da abertura traz jan a jul)', j.de === '2025-11' && j.ate === '2026-10' && j.dre === '2026-01' && j.aberturas.join() === '2026-08' && j.cobertos.get('2026-01') === '2026-08');
+  const ctb = { faz: true, feitaAte: '2026-09', inicio: '2026-08' };
+  const sug = dreSugerida(sis.serie, ctb);
+  ok('a DRE pedida: de jan/26 até onde a contabilidade está feita (set/26); nov/25, dez/25 e out/26 entram pela margem', sug.de === '2026-01' && sug.ate === '2026-09' && sug.meses === 9 && sug.faltam.join() === '2025-11,2025-12,2026-10', sug);
+  const res = listaDoResultado(linhas);
+  const lp = lucroDaPonte(sis.serie, ctb, res);
+  ok('o lucro pela ponte: o resultado de jan a set (o de agosto traz jan a jul), com a receita de jan a set — e agosto não é "atípico"',
+    lp.de === '2026-01' && lp.ate === '2026-09' && lp.meses === 9 && lp.lucro === 230000 && lp.receita === 910000 && lp.atipicos.length === 0 && lp.aberturas.join() === '2026-08', lp);
+  ok('a origem do lucro diz da abertura', /\(o de jan\/26 a jul\/26 veio na abertura de balanço de ago\/26\)$/.test(origemDoLucroDaPonte(lp).texto));
+  const e = { ...sis.entrada };
+  aplicarLucroDaPonte(e, {}, lp);
+  const pd = periodoDaDre(sis.serie, e);
+  ok('o período da DRE e o fator: a receita de 12 meses ÷ a de jan a set', pd.de === '2026-01' && pd.ate === '2026-09' && pd.receita === 910000 && perto(pd.fator, 1180000 / 910000, 1e-9) && pd.janela.dre === '2026-01' && pd.faltam.join() === '2025-11,2025-12,2026-10', pd);
+  ok('a DRE que termina antes da abertura não tem o resultado de jan a jul: falta (nunca lucro zero)', (() => { const x = lucroDaPonte(sis.serie, ctb, res, '2026-06'); return x.falta === 'sem_lancamento' && x.quais.join() === mesesDeAte('2026-01', '2026-06').join(); })());
+
+  // a abertura no último mês do escritório anterior (julho, sem o faturamento dele aqui), com o Controle começando em agosto
+  // e nada feito ainda aqui: a DRE é a de lá, de janeiro a julho
+  const l2 = linhas.map(m => (m.competencia === '2026-07' ? { ...m, salarios: 0, pro_labore_valor: 0, receita_lancada: 630000, lancamentos: 30, lanc_resultado: 30, resultado_antes_ir: 150000 }
+    : m.competencia === '2026-08' ? { ...m, receita_lancada: 100000, resultado_antes_ir: 20000 } : m));
+  const s2 = serieDaEmpresa({ cliente: cli, pgdas, dominio: l2 });
+  const j2 = janelaDaReceita(s2.serie);
+  ok('a abertura em julho: ela cobre jan a jul (90 mil cada), e julho é o mês da abertura', s2.antes.aberturas[0].competencia === '2026-07' && s2.antes.estimados.get('2026-07').total === 90000
+    && s2.serie.find(x => x.competencia === '2026-07').aberturaDe === '2026-01' && j2.dre === '2026-01');
+  const ctb2 = { faz: true, feitaAte: null, inicio: '2026-08' };
+  const lp2 = lucroDaPonte(s2.serie, ctb2, listaDoResultado(l2));
+  ok('com nada feito aqui, a DRE vai até a abertura (a contabilidade do escritório anterior): jan a jul', dreSugerida(s2.serie, ctb2).ate === '2026-07' && lp2.lucro === 150000 && lp2.receita === 630000, lp2);
+  ok('com agosto feito aqui, vai até agosto', lucroDaPonte(s2.serie, { ...ctb2, feitaAte: '2026-08' }, listaDoResultado(l2)).lucro === 170000);
+
+  // a empresa do grupo: a receita dela também com os meses de antes, e o ano-calendário com janeiro a outubro
+  const rg = receitaDaEmpresa({ cliente: { ...cli, id: 'v2', nome_principal: 'OUTRA DO GRUPO' }, pgdas, dominio: linhas });
+  ok('a empresa dos sócios: a receita dos 12 meses com os meses de antes', perto(rg.receita, 1180000) && /antes de a empresa vir pro escritório/.test(rg.origem.texto));
+  const sit = situacaoDoGrupo(sis.serie, [{ nome: 'OUTRA DO GRUPO', serie: rg.serie }]);
+  ok('o ano-calendário do grupo: janeiro a outubro das duas (2 × 1 mi), não só agosto a outubro', sit.meses === 10 && perto(sit.acumulado, 2000000), sit);
+  ok('a série do relatório solto mantém as marcas da abertura no mês que ele traz', (() => {
+    const m = mesclarSerie(sis.serie, [{ competencia: '2026-03', total: 120000 }, { competencia: '2026-08', total: 101000 }]);
+    const mar = m.find(x => x.competencia === '2026-03'), ago = m.find(x => x.competencia === '2026-08');
+    return mar.total === 120000 && !mar.estimado && mar.coberto === '2026-08' && ago.aberturaDe === '2026-01' && m.find(x => x.competencia === '2025-11').estimado === 'rbt12';
+  })());
+  ok('a empresa de sempre não muda: sem as marcas, a DRE começa no primeiro mês da janela', (() => {
+    const sempre = mesesDeAte('2025-11', '2026-10').map(c => ({ competencia: c, total: 100000 }));
+    const js = janelaDaReceita(sempre); return js.dre === '2025-11' && js.estimados.length === 0 && js.cobertos.size === 0;
+  })());
 }
 
 console.log('\n' + (total - falhas) + ' de ' + total + ' conferências ok' + (falhas ? ' — ' + falhas + ' FALHA(S)' : ''));
