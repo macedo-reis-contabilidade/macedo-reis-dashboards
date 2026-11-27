@@ -236,9 +236,11 @@ export const rotuloDoMes = comp => /^\d{4}-\d{2}$/.test(String(comp || '')) ? co
 // entrada do mês na base falta importar, salvo quando alguém marcou que ela não teve notas de entrada no mês (26/11/2026,
 // pedido da Thalia: destda_sem_notas): aí não tem nada a recolher. Com nota de entrada do mês na base, a marca não vale
 // Com a lista da Domínio (26/11/2026, abaixo): a nota de fora do RS que a Domínio tem e não está na base (`faltam`)
-// também falta importar — a marca não vale, e a empresa sem nada a recolher nas notas que estão aqui fica em 'faltam'
-export function situacaoDaEmpresa(conf, temNotas, marcadaSemNotas = false, faltam = 0) {
-  if (!temNotas) return marcadaSemNotas && !faltam ? 'nada' : 'sem_notas';
+// também falta importar — a marca não vale, e a empresa sem nada a recolher nas notas que estão aqui fica em 'faltam'.
+// `semCompra` (27/11/2026, as empresas do Simples todas na conferência): a Domínio diz que ela não comprou mercadoria no
+// mês (semCompraNaDominio, abaixo) — vale como a marca, sem ninguém marcar
+export function situacaoDaEmpresa(conf, temNotas, marcadaSemNotas = false, faltam = 0, semCompra = false) {
+  if (!temNotas) return (marcadaSemNotas || semCompra) && !faltam ? 'nada' : 'sem_notas';
   if (conf.diferencial.length || conf.st.length || (conf.conferir || []).length || conf.semAliquota.length) return 'a_conferir';
   return faltam ? 'faltam' : 'nada';
 }
@@ -366,4 +368,42 @@ export function faltamPorEmpresa(lista, naBase) {
   });
   out.forEach(v => v.sort((a, b) => a.entrada.localeCompare(b.entrada) || a.cnpj.localeCompare(b.cnpj) || a.serie - b.serie || a.numero - b.numero));
   return out;
+}
+
+// ---------- as empresas do Simples todas (27/11/2026, pedido da Thalia: "todas do simples") ----------
+// Antes, a conferência era só das empresas com o vínculo ativo da obrigação SEDIF/DeSTDA em Obrigações fiscais (as que
+// costumam comprar de fora do RS); as outras a Thalia abria uma por uma pra ver se tiveram nota de fora no mês. Agora
+// entram também todas as do Simples Nacional da carteira de hoje (PJ; o MEI não entrega a DeSTDA), sem o vínculo — e sem
+// a tarefa do mês, que é do vínculo. A mesma regra da função ponte (clientesDaSedif, supabase/functions/ponte/entradas.js:
+// a ponte lê da Domínio as notas dessas empresas; o teste confere as duas).
+export const REGIME_DA_CONFERENCIA = 'Simples Nacional';
+// a carteira de hoje: a linha de carteira_info com a entrada e sem a saída, ou com a saída depois de hoje
+const naCarteiraHoje = (k, hoje) => !!(k && k.cliente_id && k.entrada && (!k.saida || dia(k.saida) > hoje));
+// vinculadas: [cliente_id] · carteira: [{ cliente_id, entrada, saida }] · clientes: [{ id, regime_tributario, tipo_pessoa }]
+// · hoje: 'AAAA-MM-DD' → [{ id, vinculada }], sem repetir, na ordem dos ids
+export function empresasDaConferencia({ vinculadas = [], carteira = [], clientes = [], hoje = '' } = {}) {
+  const vinc = new Set((vinculadas || []).filter(Boolean));
+  const naCarteira = new Set((carteira || []).filter(k => naCarteiraHoje(k, dia(hoje))).map(k => k.cliente_id));
+  const doSimples = (clientes || []).filter(c => c && naCarteira.has(c.id) && c.regime_tributario === REGIME_DA_CONFERENCIA && c.tipo_pessoa === 'PJ')
+    .map(c => c.id);
+  return [...new Set([...vinc, ...doSimples])].sort().map(id => ({ id, vinculada: vinc.has(id) }));
+}
+
+// a Domínio diz que a empresa não comprou mercadoria no mês (27/11/2026): sem nota de entrada do mês na base, a
+// conferência não diz nada da empresa (ela ia pra "Falta importar", esperando alguém marcar que não teve notas). Com as
+// do Simples todas, são dezenas que só prestam serviço. Mas a ponte lê da Domínio, todo dia, o mês de cada empresa
+// (dominio_mensal): com as saídas do mês já lá (a escrita do mês feita — sem elas, a Domínio pode só não ter as notas
+// ainda) e as compras, o ativo e o uso e consumo, as outras entradas e as devoluções de venda zeradas, ela não comprou
+// mercadoria no mês, e não há o que recolher. Sem esses números (a ponte antiga), vale a quantidade de notas de entrada
+// zerada (sem nenhuma nota de entrada, nem de serviço). O vazio (null) nunca é zero: a Domínio não disse.
+// linhas: as de dominio_mensal da empresa no mês (os códigos do Domínio dela todos)
+export const MERCADORIA_NA_DOMINIO = ['compras', 'ativo_e_consumo', 'outras_entradas', 'devolucoes_de_venda'];
+export function semCompraNaDominio(linhas) {
+  const ls = (linhas || []).filter(Boolean);
+  if (!ls.length) return false;
+  const lido = c => ls.every(l => l[c] != null && l[c] !== '' && isFinite(Number(l[c])));
+  const soma = c => ls.reduce((s, l) => s + Math.round(Number(l[c]) * 100), 0);
+  if (!lido('notas_saida') || soma('notas_saida') <= 0) return false;
+  if (MERCADORIA_NA_DOMINIO.every(lido)) return MERCADORIA_NA_DOMINIO.every(c => soma(c) === 0);
+  return lido('notas_entrada') && soma('notas_entrada') === 0;
 }

@@ -63,7 +63,7 @@ import { validarPacoteNotas, empresasAutorizadas, autorizacaoAtiva, corpoDoDesti
 import { validarRelatorio, nomeDoRelatorio, pastaFiscal, pastaSituacao, idDaPasta, linkDoArquivo, PASTA_FISCAL, PASTA_SITUACAO,
   SEM_PASTA, SEM_CADASTRO, SEM_DRIVE, DRIVE_FORA } from './relatorio.js';
 import { criarDrive, ErroDrive } from './drive.js';
-import { validarPacoteEntradas, janelaDasEntradas, empresasDasEntradas, notasParaGravar, clientesParaVarrer, LIMITES_ENTRADAS, SEM_SEDIF } from './entradas.js';
+import { validarPacoteEntradas, janelaDasEntradas, empresasDasEntradas, notasParaGravar, clientesParaVarrer, clientesDaSedif, LIMITES_ENTRADAS, SEM_SEDIF } from './entradas.js';
 import { validarPacoteSedif, notasDaEmpresa, LIMITES_SEDIF } from './sedif.js';
 
 const CABECALHOS = { 'Content-Type': 'application/json' };
@@ -101,16 +101,29 @@ async function autorizadasHoje(db, hoje) {
   return empresasAutorizadas(ativas, emp, cli, hoje, await destinosConfigurados(db));
 }
 
-// as empresas da Conferência SEDIF/DeSTDA (a mesma lista da tela: o vínculo ativo de uma obrigação com "destda" no nome),
-// pelo código do Domínio: [{ codigo, cliente_id }]
-async function empresasDaSedif(db) {
+// as empresas da Conferência SEDIF/DeSTDA (a mesma lista da tela: o vínculo ativo de uma obrigação com "destda" no nome
+// e, desde 27/11/2026, as do Simples da carteira de hoje — clientesDaSedif), pelo código do Domínio: [{ codigo, cliente_id }]
+async function empresasDaSedif(db, agora) {
   const { data: ob, error: e1 } = await db.from('obrigacoes_fiscais').select('id, nome').ilike('nome', '%destda%');
   if (e1) throw e1;
   const obrigacoes = (ob || []).filter(o => /destda/i.test(o.nome || '')).map(o => o.id);
-  if (!obrigacoes.length) return [];
-  const { data: vs, error: e2 } = await db.from('cliente_obrigacoes').select('cliente_id').in('obrigacao_id', obrigacoes).eq('ativo', true);
-  if (e2) throw e2;
-  const ids = [...new Set((vs || []).map(x => x.cliente_id).filter(Boolean))];
+  let vinculadas = [];
+  if (obrigacoes.length) {
+    const { data: vs, error: e2 } = await db.from('cliente_obrigacoes').select('cliente_id').in('obrigacao_id', obrigacoes).eq('ativo', true);
+    if (e2) throw e2;
+    vinculadas = (vs || []).map(x => x.cliente_id).filter(Boolean);
+  }
+  // a carteira inteira (umas centenas de linhas): a de hoje e o Simples, a regra separa
+  const { data: k, error: e3 } = await db.from('carteira_info').select('cliente_id, entrada, saida');
+  if (e3) throw e3;
+  const naCarteira = [...new Set((k || []).filter(x => x && x.entrada).map(x => x.cliente_id).filter(Boolean))];
+  const clientes = [];
+  for (let i = 0; i < naCarteira.length; i += 100) {
+    const { data, error } = await db.from('clientes').select('id, regime_tributario, tipo_pessoa').in('id', naCarteira.slice(i, i + 100));
+    if (error) throw error;
+    clientes.push(...(data || []));
+  }
+  const ids = clientesDaSedif(vinculadas, k, clientes, hojeEmBrasilia(agora()));
   const out = [];
   for (let i = 0; i < ids.length; i += 100) {
     const { data, error } = await db.from('dominio_empresas').select('codigo, cliente_id').in('cliente_id', ids.slice(i, i + 100));
@@ -122,8 +135,8 @@ async function empresasDaSedif(db) {
 
 // as datas de entrada (26/11/2026): só das empresas da lista, gravadas em partes; o banco grava só nas notas de entrada
 // que já estão na base, e só o que mudou (a ponte manda a janela inteira todo dia)
-async function gravarEntradas(db, v, hoje) {
-  const empresas = await empresasDaSedif(db);
+async function gravarEntradas(db, v, hoje, agora) {
+  const empresas = await empresasDaSedif(db, agora);
   const g = notasParaGravar(v.pacote, empresas);
   const recusadas = [...v.recusadas, ...g.recusadas];
   const total = { recebidas: 0, achadas: 0, atualizadas: 0 };
@@ -166,9 +179,9 @@ async function gravarLista(db, visto, notas, varrer, janela) {
 // as notas de entrada de uma empresa da SEDIF/DeSTDA (26/11/2026): o código do Domínio tem de ser de uma empresa da lista,
 // e cada nota, de entrada dela (o destinatário é o documento do cadastro); o banco grava como a importação dos XMLs grava
 const NUMEROS_SEDIF = ['recebidas', 'novas', 'ja_na_base', 'itens', 'itens_completados', 'datas'];
-async function gravarNotasSedif(db, v) {
+async function gravarNotasSedif(db, v, agora) {
   const { empresa } = v.pacote;
-  const ligada = (await empresasDaSedif(db)).find(e => e.codigo === empresa.codigo && e.cliente_id);
+  const ligada = (await empresasDaSedif(db, agora)).find(e => e.codigo === empresa.codigo && e.cliente_id);
   if (!ligada) return resposta({ erro: SEM_SEDIF }, 422);
   const { data: cli, error } = await db.from('clientes').select('id, documento').eq('id', ligada.cliente_id);
   if (error) throw error;
@@ -401,17 +414,17 @@ export function criarServidor({ criarDb, agora = () => Date.now(), enviar = (url
         return await encaminharNotas(db, v, hojeEmBrasilia(agora()), agora, enviar);
       }
       if (corpo.tipo === 'entradas' && corpo.pedir === 'empresas') {
-        return resposta({ empresas: empresasDasEntradas(await empresasDaSedif(db)), ...janelaDasEntradas(hojeEmBrasilia(agora())) });
+        return resposta({ empresas: empresasDasEntradas(await empresasDaSedif(db, agora)), ...janelaDasEntradas(hojeEmBrasilia(agora())) });
       }
       if (corpo.tipo === 'entradas') {
         const v = validarPacoteEntradas(corpo, hojeEmBrasilia(agora()));
         if (!v.ok) return resposta({ erro: 'Pacote das datas de entrada recusado: ' + v.erro + ' (' + v.campo + ').' }, 422);
-        return await gravarEntradas(db, v, hojeEmBrasilia(agora()));
+        return await gravarEntradas(db, v, hojeEmBrasilia(agora()), agora);
       }
       if (corpo.tipo === 'sedif') {
         const v = validarPacoteSedif(corpo, hojeEmBrasilia(agora()));
         if (!v.ok) return resposta({ erro: 'Pacote das notas de entrada recusado: ' + v.erro + ' (' + v.campo + ').' }, 422);
-        return await gravarNotasSedif(db, v);
+        return await gravarNotasSedif(db, v, agora);
       }
       return resposta({ erro: 'Nada pra fazer com este pacote.' }, 422);
     } catch (e) {

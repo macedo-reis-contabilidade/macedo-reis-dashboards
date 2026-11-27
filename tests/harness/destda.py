@@ -50,6 +50,11 @@ Confere, nos temas escuro e claro:
      entra na hora; a regra nova grava e a excluída sai; a desligada tira o ICMS-ST da conferência;
   6. texto de fora entra como texto (o nome da empresa, do fornecedor, do item e do arquivo com <img onerror>);
   7. o card no Fiscal: "4 empresas";
+  8. as do Simples todas (27/11/2026, pedido da Thalia: "todas do simples"): as do Simples Nacional da carteira de hoje
+     entram na conferência sem o vínculo da obrigação (a que saiu da carteira e o MEI, não), com a nota "sem a tarefa do
+     mês" na linha; a sem nota de entrada que a Domínio diz que não comprou mercadoria no mês (as saídas lá, as compras
+     zeradas) vai sozinha pra "Sem nada a recolher", sem botão; a que a Domínio diz que comprou segue em "Falta importar",
+     com o "Não teve"; o mês da Domínio que não se lê não para a conferência; o card no Fiscal conta todas;
 e nenhum erro de JavaScript. Termina com código 1 se alguma checagem falhar.
 Pré-requisito: pip install playwright e python -m playwright install chromium
 """
@@ -837,6 +842,86 @@ def fluxo(b, base, tema, erros):
     ok(selo == '4 empresas', f'"4 empresas" ({selo})')
     cx.close()
 
+# 8. as do Simples todas (27/11/2026): num contexto à parte, com a carteira, o cadastro e o mês na Domínio
+SIMPLES = {
+    'clientes': [
+        {'id': 'd7', 'nome_principal': 'SALÃO DO SIMPLES LTDA', 'nome_fantasia': None, 'documento': '80000000000100', 'status': 'ativo',
+         'regime_tributario': 'Simples Nacional', 'tipo_pessoa': 'PJ'},
+        {'id': 'd8', 'nome_principal': 'FÁBRICA DO SIMPLES LTDA', 'nome_fantasia': None, 'documento': '90000000000100', 'status': 'ativo',
+         'regime_tributario': 'Simples Nacional', 'tipo_pessoa': 'PJ'},
+        {'id': 'd9', 'nome_principal': 'SAIU DO SIMPLES LTDA', 'nome_fantasia': None, 'documento': '91000000000100', 'status': 'ativo',
+         'regime_tributario': 'Simples Nacional', 'tipo_pessoa': 'PJ'},
+        {'id': 'd10', 'nome_principal': 'MEI DE TESTE', 'nome_fantasia': None, 'documento': '92000000000100', 'status': 'ativo',
+         'regime_tributario': 'MEI', 'tipo_pessoa': 'PJ'}],
+    'carteira': [{'cliente_id': c, 'entrada': '2025-01-01', 'saida': s} for c, s in (('d7', None), ('d8', None), ('d9', '2026-09-30'), ('d10', None))],
+    'dominio_empresas': [{'codigo': 977, 'cliente_id': 'd7'}, {'codigo': 978, 'cliente_id': 'd8'}, {'codigo': 973, 'cliente_id': 'd3'}],
+    'dominio_mensal': [
+        {'codigo': 977, 'competencia': '2026-09', 'notas_entrada': 2, 'notas_saida': 15, 'compras': 0, 'ativo_e_consumo': 0, 'outras_entradas': 0, 'devolucoes_de_venda': 0},
+        {'codigo': 973, 'competencia': '2026-09', 'notas_entrada': 9, 'notas_saida': 30, 'compras': 1500, 'ativo_e_consumo': 0, 'outras_entradas': 0, 'devolucoes_de_venda': 0},
+        {'codigo': 978, 'competencia': '2026-09', 'notas_entrada': 1, 'notas_saida': 4, 'compras': 1000, 'ativo_e_consumo': 0, 'outras_entradas': 0, 'devolucoes_de_venda': 0}],
+    'docs': [{'id': 'nd8', 'cliente_id': 'd8', 'importacao_id': None, 'chave': '35260985000000000100550010000008011000008010', 'modelo': '55', 'numero': '801',
+              'data_emissao': '2026-09-10', 'tipo': 'entrada', 'status': 'autorizada', 'emit_doc': '85000000000100', 'emit_nome': 'FORNECEDOR SP TESTE SA',
+              'emit_uf': 'SP', 'dest_doc': '90000000000100', 'tp_nf': 1, 'data_entrada': None, 'entrada_origem': None}],
+    'itens': [{'id': 'ni8', 'documento_id': 'nd8', 'n_item': 1, 'ncm': '85163100', 'descricao': 'SECADOR', 'cfop': '6102', 'valor_total': 1000,
+               'icms_valor': 40, 'icms_st_valor': 0, 'icms_base': 1000, 'icms_aliquota': 4, 'icms_st_base': None}],
+}
+SEMEAR_SIMPLES = """
+(() => {
+  const X = %s;
+  const d = Object.getOwnPropertyDescriptor(window, '__mockDb');
+  Object.defineProperty(window, '__mockDb', { configurable: true, get: d.get, set(v) {
+    d.set(v);
+    v.clientes = v.clientes.concat(X.clientes);
+    v.carteira_info = (v.carteira_info || []).concat(X.carteira);
+    v.dominio_empresas = (v.dominio_empresas || []).concat(X.dominio_empresas);
+    v.dominio_mensal = (v.dominio_mensal || []).concat(X.dominio_mensal);
+    v.nf_documentos = v.nf_documentos.concat(X.docs);
+    v.nf_itens = v.nf_itens.concat(X.itens);
+  } });
+})();
+""" % json.dumps(SIMPLES, ensure_ascii=False)
+
+def simples(b, base, tema, erros):
+    cx = b.new_context(viewport={'width': 1400, 'height': 900})
+    p = cx.new_page()
+    p.on('pageerror', lambda e: erros.append(f'{tema} (8): {e}'))
+    p.add_init_script(f"localStorage.setItem('mr_tema', '{tema}');")
+    p.add_init_script(TOUR); p.add_init_script(SEMEAR); p.add_init_script(SEMEAR_SIMPLES)
+    p.clock.set_fixed_time('2026-10-27T12:00:00')
+    p.route('**/cdnjs.cloudflare.com/**', lambda r: r.abort())
+
+    print(f'[{tema}] 8. As do Simples todas (27/11/2026, pedido da Thalia: "todas do simples")')
+    p.goto(base + 'fiscal-destda.html')
+    esperar_mes(p, '09/2026')
+    ok(abas(p) == {'difal': '1', 'st': '0', 'nada': '1', 'importar': '4', 'todas': '6'},
+       f'as 4 da obrigação e as 2 do Simples da carteira (a que saiu e o MEI, não) ({abas(p)})')
+    ok(cards(p) == ['d1', 'd8'] and valores(p, 'd8') == ['DIFAL: R$ 130,00 1 nota', 'ICMS-ST a recolher: —'],
+       f'a do Simples sem o vínculo, com o DIFAL da nota dela ({cards(p)}, {valores(p, "d8")})')
+    ok('do Simples, sem a obrigação SEDIF/DeSTDA em Obrigações fiscais: sem a tarefa do mês' in p.inner_text('.ds-emp[data-empresa="d8"] > .ds-emp-linha')
+       and 'sem a tarefa do mês' not in p.inner_text('.ds-emp[data-empresa="d1"] > .ds-emp-linha'),
+       'a linha da do Simples diz que ela não tem a obrigação (a da obrigação, não)')
+    abrir_aba(p, 'nada')
+    nada = p.inner_text('#lista')
+    ok('SALÃO DO SIMPLES LTDA\nsem compra de mercadoria no mês, pela Domínio' in nada and p.locator('#lista [data-desmarcar="d7"]').count() == 0
+       and 'As sem compra de mercadoria no mês, pela Domínio' in nada,
+       f'a sem nota de entrada que a Domínio diz que não comprou mercadoria: "Sem nada a recolher", sozinha, sem botão ({nada[:200]!r})')
+    abrir_aba(p, 'importar')
+    imp = p.inner_text('#lista')
+    ok(p.locator('#lista [data-sem-notas="d3"]').count() == 1 and 'SALÃO DO SIMPLES' not in imp and 'SAIU DO SIMPLES' not in imp and 'MEI DE TESTE' not in imp,
+       'a que a Domínio diz que comprou segue em "Falta importar", com o "Não teve"; a sem compra, a que saiu e o MEI, não')
+    p.screenshot(path=str(FOTOS / f'{tema}-destda-simples.png'), full_page=True)
+    p.evaluate("() => { window.__mockErroTabela = { dominio_mensal: 'permission denied for table dominio_mensal' }; }")
+    trocar_mes(p, '2026-08'); trocar_mes(p, '2026-09')
+    ok(abas(p) == {'difal': '1', 'st': '0', 'nada': '0', 'importar': '5', 'todas': '6'} and 'permission denied' not in p.inner_text('body'),
+       f'sem ler o mês na Domínio, a conferência segue como era: a sem compra volta pra "Falta importar" ({abas(p)})')
+    p.evaluate("() => { window.__mockErroTabela = null; }")
+
+    p.goto(base + 'fiscal.html')
+    p.wait_for_function("() => document.querySelector('.card-status[data-mod=\"fiscal-destda.html\"]').textContent !== '·'", timeout=8000)
+    selo = p.text_content('.card-status[data-mod="fiscal-destda.html"]')
+    ok(selo == '6 empresas', f'o card no Fiscal conta as do Simples também ({selo})')
+    cx.close()
+
 def main():
     from playwright.sync_api import sync_playwright
     montar_site()
@@ -846,6 +931,7 @@ def main():
         b = pw.chromium.launch()
         for tema in ('escuro', 'claro'):
             fluxo(b, base, tema, erros)
+            simples(b, base, tema, erros)
         b.close()
     srv.shutdown()
     for e in erros:

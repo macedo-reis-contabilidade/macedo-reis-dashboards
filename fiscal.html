@@ -157,6 +157,7 @@
   <script type="module">
     import { supabase, getCurrentUser, signOut } from './assets/js/supabase.js';
     import { hojeLocal } from './assets/js/utils.js';   // dia no fuso local (toISOString é UTC)
+    import { empresasDaConferencia } from './assets/js/destda.js';
 
     const user = await getCurrentUser();
     if (user) { const el = document.getElementById('userName'); if (el) el.textContent = user.email; const av = document.getElementById('userAvatar'); if (av) av.textContent = (user.email || '?').charAt(0).toUpperCase(); }
@@ -181,12 +182,19 @@
           .select('id', { count: 'exact', head: true }).eq('ativo', true);
         setBadge('fiscal-obrigacoes.html', (vinc ?? 0) + ' vínculos');
 
-        // a Conferência SEDIF/DeSTDA: quantas empresas estão na obrigação
+        // a Conferência SEDIF/DeSTDA: quantas empresas ela confere — as da obrigação e, desde 27/11/2026, as do Simples
+        // da carteira de hoje (a regra da tela, empresasDaConferencia); a leitura que falha deixa o "—"
         const { data: obsDestda } = await supabase.from('obrigacoes_fiscais').select('id, nome').ilike('nome', '%destda%');
         const idsDestda = (obsDestda || []).filter(o => /destda/i.test(o.nome || '')).map(o => o.id);
-        const { count: empDestda } = idsDestda.length ? await supabase.from('cliente_obrigacoes')
-          .select('id', { count: 'exact', head: true }).in('obrigacao_id', idsDestda).eq('ativo', true) : { count: 0 };
-        setBadge('fiscal-destda.html', (empDestda ?? 0) + ' empresas');
+        const [vDestda, kDestda, cDestda] = await Promise.all([
+          idsDestda.length ? supabase.from('cliente_obrigacoes').select('cliente_id').in('obrigacao_id', idsDestda).eq('ativo', true) : { data: [] },
+          supabase.from('carteira_info').select('cliente_id, entrada, saida'),
+          supabase.from('clientes').select('id, regime_tributario, tipo_pessoa').eq('regime_tributario', 'Simples Nacional')
+        ]);
+        const erroDestda = vDestda.error || kDestda.error || cDestda.error;
+        const empDestda = erroDestda ? null : empresasDaConferencia({ vinculadas: (vDestda.data || []).map(v => v.cliente_id),
+          carteira: kDestda.data || [], clientes: cDestda.data || [], hoje: hojeLocal() }).length;
+        setBadge('fiscal-destda.html', empDestda == null ? '—' : empDestda + (empDestda === 1 ? ' empresa' : ' empresas'));
 
         const { count: rtPend } = await supabase.from('rt_casos')
           .select('id', { count: 'exact', head: true }).eq('decisao', 'pendente');

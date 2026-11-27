@@ -4,7 +4,9 @@
 import { lerUfs, ncmDaRegra, ncmFormatado, ehQuatro, regraDoItem, notaDeFora, conferirEmpresa, mesAnterior, limitesDoMes,
   rotuloDoMes, situacaoDaEmpresa, difalDaNota, stDaNota, stRetido, stSemBase, agruparNotas, nomeTem, lerNomes, classificarItem,
   ALIQUOTA_INTERNA_RS, UFS, dataDoMes, noMes, entrouNoutroMes, saiuDoMes, viradaDoMes, DIAS_DA_VIRADA, primeiroDoMesSeguinte,
-  problemaDaEntrada, entradaSugerida, dadosDaChave, cnpjFormatado, chaveDaNota, datasDaLista, aplicarLista, faltamPorEmpresa } from '../assets/js/destda.js';
+  problemaDaEntrada, entradaSugerida, dadosDaChave, cnpjFormatado, chaveDaNota, datasDaLista, aplicarLista, faltamPorEmpresa,
+  empresasDaConferencia, semCompraNaDominio, MERCADORIA_NA_DOMINIO } from '../assets/js/destda.js';
+import { clientesDaSedif } from '../supabase/functions/ponte/entradas.js';
 
 let falhas = 0;
 const chk = (nome, cond, extra) => { if (!cond) falhas++; console.log((cond ? '  ✓ ' : '  ✗ ') + nome + (!cond && extra !== undefined ? ' → ' + JSON.stringify(extra) : '')); };
@@ -309,6 +311,50 @@ console.log('A lista da Domínio (26/11/2026: as notas de fora do RS que ela tem
     && situacaoDaEmpresa(vazio, false, true, 0) === 'nada' && situacaoDaEmpresa(vazio, false, false, 0) === 'sem_notas');
   chk('com nota na base, nada a recolher nela e nota de fora do RS faltando: "faltam", não "nada"', situacaoDaEmpresa(vazio, true, false, 1) === 'faltam' && situacaoDaEmpresa(vazio, true) === 'nada');
   chk('com algo a recolher, a conferir (e a que falta aparece em "Falta importar" também)', situacaoDaEmpresa({ ...vazio, diferencial: [1] }, true, false, 3) === 'a_conferir');
+}
+
+console.log('As do Simples todas (27/11/2026, pedido da Thalia: "todas do simples"):');
+{
+  const HOJE = '2026-11-27';
+  const S = (id, o = {}) => ({ id, regime_tributario: 'Simples Nacional', tipo_pessoa: 'PJ', ...o });
+  const K = (cliente_id, entrada = '2025-01-01', saida = null) => ({ cliente_id, entrada, saida });
+  const carteira = [K('s1'), K('s2', '2025-01-01', '2026-10-31'), K('m1'), K('p1'), K('pr'), K('s3', null), K('s4', '2025-01-01', '2026-11-28'),
+    K('s5', '2025-01-01', HOJE), K('v1')];
+  const clientes = [S('s1'), S('s2'), S('m1', { regime_tributario: 'MEI' }), S('p1', { tipo_pessoa: 'PF' }), S('pr', { regime_tributario: 'Lucro Presumido' }),
+    S('s3'), S('s4'), S('s5'), S('v1'), S('v2', { regime_tributario: 'Lucro Presumido' }), S('fora')];
+  const conf = empresasDaConferencia({ vinculadas: ['v2', 'v1', 'v2', null], carteira, clientes, hoje: HOJE });
+  chk('as vinculadas (mesmo de outro regime) e as do Simples (PJ) da carteira de hoje, cada uma dizendo se tem o vínculo',
+    JSON.stringify(conf) === JSON.stringify([{ id: 's1', vinculada: false }, { id: 's4', vinculada: false }, { id: 'v1', vinculada: true }, { id: 'v2', vinculada: true }]), conf);
+  chk('fora: a que saiu (a saída de hoje também), o MEI, a pessoa física, outro regime, sem a entrada na carteira e o Simples fora da carteira',
+    !conf.some(c => ['s2', 's5', 'm1', 'p1', 'pr', 's3', 'fora'].includes(c.id)));
+  chk('sem nada, nenhuma', empresasDaConferencia().length === 0 && empresasDaConferencia({ vinculadas: ['a'] }).length === 1);
+  // a regra da tela e a da função ponte (a ponte lê da Domínio as notas das empresas que a função diz): as mesmas empresas
+  const casos = [
+    { vinculadas: ['v2', 'v1', 'v2', null], carteira, clientes, hoje: HOJE },
+    { vinculadas: [], carteira, clientes, hoje: '2026-10-30' },
+    { vinculadas: ['x'], carteira: [K('x'), K('y', '2026-12-01')], clientes: [S('x'), S('y')], hoje: HOJE },
+    { vinculadas: [], carteira: [], clientes, hoje: HOJE }
+  ];
+  chk('a tela e a função ponte dão as mesmas empresas', casos.every(c => JSON.stringify(empresasDaConferencia(c).map(e => e.id)) === JSON.stringify(clientesDaSedif(c.vinculadas, c.carteira, c.clientes, c.hoje))),
+    casos.map(c => [empresasDaConferencia(c).map(e => e.id), clientesDaSedif(c.vinculadas, c.carteira, c.clientes, c.hoje)]));
+
+  console.log('A Domínio diz que a empresa não comprou mercadoria no mês:');
+  const M = o => ({ notas_entrada: 3, notas_saida: 12, compras: 0, ativo_e_consumo: 0, outras_entradas: 0, devolucoes_de_venda: 0, ...o });
+  chk('as saídas do mês lá e a mercadoria zerada (só serviço tomado): não comprou', semCompraNaDominio([M()]) === true);
+  chk('com compra, com ativo e consumo, com outras entradas ou com devolução de venda: comprou', MERCADORIA_NA_DOMINIO.every(c => semCompraNaDominio([M({ [c]: 10.5 })]) === false));
+  chk('sem as saídas do mês (a escrita pode não estar feita), não diz', semCompraNaDominio([M({ notas_saida: 0 })]) === false && semCompraNaDominio([M({ notas_saida: null })]) === false);
+  chk('o vazio nunca é zero: sem os números da mercadoria, vale a quantidade de notas de entrada zerada',
+    semCompraNaDominio([M({ compras: null, notas_entrada: 0 })]) === true && semCompraNaDominio([M({ compras: null })]) === false
+      && semCompraNaDominio([M({ compras: null, notas_entrada: null })]) === false);
+  chk('dois códigos do Domínio: o mês dos dois (um com compra, comprou)', semCompraNaDominio([M(), M({ notas_saida: 0 })]) === true
+    && semCompraNaDominio([M(), M({ compras: 1 })]) === false && semCompraNaDominio([M({ notas_saida: 0 }), M({ notas_saida: 0 })]) === false);
+  chk('sem linha do mês, não diz', semCompraNaDominio([]) === false && semCompraNaDominio(null) === false);
+  chk('os números em texto (o numeric do banco) valem', semCompraNaDominio([M({ compras: '0.00', notas_saida: '5' })]) === true
+    && semCompraNaDominio([M({ compras: '0.01' })]) === false);
+  const vazio = { diferencial: [], st: [], conferir: [], semAliquota: [] };
+  chk('a situação: sem nota na base e sem compra pela Domínio, nada a recolher; a Domínio com nota de fora do RS que falta, falta importar',
+    situacaoDaEmpresa(vazio, false, false, 0, true) === 'nada' && situacaoDaEmpresa(vazio, false, false, 1, true) === 'sem_notas'
+      && situacaoDaEmpresa(vazio, true, false, 0, true) === 'nada' && situacaoDaEmpresa({ ...vazio, st: [1] }, true, false, 0, true) === 'a_conferir');
 }
 
 console.log(falhas ? '\n' + falhas + ' falha(s).' : '\nTudo certo.');

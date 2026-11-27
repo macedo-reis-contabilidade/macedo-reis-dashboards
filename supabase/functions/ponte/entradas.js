@@ -10,8 +10,9 @@
 // CPF no lugar do CNPJ, na chave) não vai.
 // O contrato: docs/FILA-CODE-2026-11-26-ENTRADAS.md.
 //   { versao: 1, tipo: 'entradas', pedir: 'empresas' } → { empresas: [{ codigo }], desde, ate }: os códigos do Domínio
-//       das empresas com o vínculo ativo da SEDIF/DeSTDA e a janela das datas de entrada a ler (o mês de hoje e os dois
-//       antes: a conferência é do mês passado, e a nota que entrou nele pode ter sido emitida no fim do mês de antes)
+//       das empresas da conferência (o vínculo ativo da SEDIF/DeSTDA e, desde 27/11/2026, as do Simples da carteira de
+//       hoje: clientesDaSedif) e a janela das datas de entrada a ler (o mês de hoje e os dois antes: a conferência é do
+//       mês passado, e a nota que entrou nele pode ter sido emitida no fim do mês de antes)
 //   { versao: 1, tipo: 'entradas', rodada: { id, inicio, maquina?, ponte? }, empresas: [{ codigo, notas: [{ chave, entrada }] }] }
 // Recusa o pacote inteiro (422) só o que é do pacote (a rodada, a lista); a empresa fora da lista e a nota fora do
 // contrato ficam de fora sozinhas e voltam em `recusadas` ({ codigo, chave, campo, erro }), pra ponte anotar no log.
@@ -58,6 +59,21 @@ const primeiroDia = (hoje, meses) => {
 /** A janela das datas de entrada que a ponte lê: do primeiro dia do mês `meses` antes do de hoje até hoje. */
 export function janelaDasEntradas(hoje, meses = MESES_DA_JANELA) {
   return { desde: primeiroDia(hoje, meses), ate: hoje };
+}
+
+/** As empresas da Conferência SEDIF/DeSTDA (27/11/2026, pedido da Thalia: "todas do simples"): as do vínculo ativo da
+ *  obrigação SEDIF/DeSTDA em Obrigações fiscais e todas as do Simples Nacional da carteira de hoje (PJ; o MEI não entrega
+ *  a DeSTDA) — a carteira de hoje é a linha de carteira_info com a entrada e sem a saída, ou com a saída depois de hoje.
+ *  A mesma regra da tela (empresasDaConferencia, assets/js/destda.js; tests/destda.test.mjs confere as duas).
+ *  vinculadas: [cliente_id] · carteira: [{ cliente_id, entrada, saida }] · clientes: [{ id, regime_tributario,
+ *  tipo_pessoa }] · hoje: 'AAAA-MM-DD' → [cliente_id], sem repetir, em ordem */
+export function clientesDaSedif(vinculadas, carteira, clientes, hoje) {
+  const dia = s => String(s == null ? '' : s).slice(0, 10);
+  const naCarteira = new Set((carteira || []).filter(k => k && k.cliente_id && k.entrada && (!k.saida || dia(k.saida) > dia(hoje)))
+    .map(k => k.cliente_id));
+  const doSimples = (clientes || []).filter(c => c && naCarteira.has(c.id) && c.regime_tributario === 'Simples Nacional' && c.tipo_pessoa === 'PJ')
+    .map(c => c.id);
+  return [...new Set([...(vinculadas || []).filter(Boolean), ...doSimples])].sort();
 }
 
 /** As empresas que a ponte lê: os códigos do Domínio ligados ao cadastro, sem repetir, em ordem.

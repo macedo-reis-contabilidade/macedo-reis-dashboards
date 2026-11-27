@@ -81,6 +81,7 @@
     .ds-emp-nome { min-width:0; }
     .ds-emp-nome small { display:block; font-size:11.5px; font-weight:400; margin-top:1px; }
     .ds-fant { font-size:12.5px; font-weight:400; color:var(--text-muted); }
+    .ds-emp-nome small.ds-obr { color:var(--text-muted); }
     .ds-emp-val { font-variant-numeric:tabular-nums; font-weight:600; color:var(--text); font-size:13.5px; }
     .ds-emp-val small { display:block; font-weight:400; font-size:11.5px; color:var(--text-muted); }
     .ds-emp-val small.ds-sem { color:var(--warn); }
@@ -234,7 +235,7 @@
         </div>
         <div class="eyebrow">Fiscal</div>
         <h1>Conferência SEDIF/DeSTDA</h1>
-        <p>As notas de entrada do mês das empresas da SEDIF/DeSTDA: o que veio de fora do RS com ICMS destacado a 4%, com o diferencial de alíquota (DIFAL) de cada nota já calculado, e o que está nas regras de ICMS-ST na entrada, como a ração pet dos estados da lista, com o ST a recolher. As notas chegam da Domínio sozinhas, todo dia às 7h, depois de lançadas lá. As de fora do RS que não vêm (sem o XML no Catálogo de Notas da Domínio) a tela lista uma por uma, em "Falta importar": solte o XML delas aqui, e o da nota de fornecedor pessoa física também. Cada nota vai pra empresa certa pelo CNPJ e, como na Domínio, conta no mês em que entrou na empresa.</p>
+        <p>As notas de entrada do mês das empresas da SEDIF/DeSTDA e de todas as do Simples Nacional da carteira: o que veio de fora do RS com ICMS destacado a 4%, com o diferencial de alíquota (DIFAL) de cada nota já calculado, e o que está nas regras de ICMS-ST na entrada, como a ração pet dos estados da lista, com o ST a recolher. As notas chegam da Domínio sozinhas, todo dia às 7h, depois de lançadas lá. As de fora do RS que não vêm (sem o XML no Catálogo de Notas da Domínio) a tela lista uma por uma, em "Falta importar": solte o XML delas aqui, e o da nota de fornecedor pessoa física também. Cada nota vai pra empresa certa pelo CNPJ e, como na Domínio, conta no mês em que entrou na empresa.</p>
       </div>
 
       <!-- o alto: a importação e o mês, com as abas, lado a lado (27/10/2026, pedido do Samuel); a lista das empresas embaixo -->
@@ -265,9 +266,9 @@
           <div class="fa-focus" id="abas" role="group" aria-label="Separar as empresas">
             <button type="button" class="fa-focus-card" data-aba="difal" aria-pressed="false" title="Nota de fora do RS com ICMS destacado a 4%"><span class="fc-num">—</span><span class="fc-lbl">Com DIFAL</span></button>
             <button type="button" class="fa-focus-card" data-aba="st" aria-pressed="false" title="Item das regras de ICMS-ST na entrada"><span class="fc-num">—</span><span class="fc-lbl">Com ICMS-ST</span></button>
-            <button type="button" class="fa-focus-card" data-aba="nada" aria-pressed="false" title="Com notas de entrada do mês, nenhuma de fora do RS a 4% nem das regras de ICMS-ST, ou marcadas sem notas de entrada no mês"><span class="fc-num">—</span><span class="fc-lbl">Sem nada a recolher</span></button>
+            <button type="button" class="fa-focus-card" data-aba="nada" aria-pressed="false" title="Com notas de entrada do mês, nenhuma de fora do RS a 4% nem das regras de ICMS-ST; marcadas sem notas de entrada no mês; ou sem compra de mercadoria no mês pela Domínio"><span class="fc-num">—</span><span class="fc-lbl">Sem nada a recolher</span></button>
             <button type="button" class="fa-focus-card" data-aba="importar" aria-pressed="false" title="Sem notas de entrada do mês na base, com nota de fora do RS que a Domínio tem e não está aqui, ou com nota importada antes de 27/10/2026, sem a alíquota"><span class="fc-num">—</span><span class="fc-lbl">Falta importar</span></button>
-            <button type="button" class="fa-focus-card is-active" data-aba="todas" aria-pressed="true" title="Todas as empresas da obrigação SEDIF/DeSTDA"><span class="fc-num">—</span><span class="fc-lbl">Todas</span></button>
+            <button type="button" class="fa-focus-card is-active" data-aba="todas" aria-pressed="true" title="As empresas da obrigação SEDIF/DeSTDA e todas as do Simples Nacional da carteira"><span class="fc-num">—</span><span class="fc-lbl">Todas</span></button>
           </div>
           <p class="ds-dom" id="dominio"></p>
         </section>
@@ -328,7 +329,8 @@ import { normalizarDocumento, hojeLocal } from './assets/js/utils.js';
 import { nomePorEmail } from './assets/js/equipe.js';
 import { importarLote } from './assets/js/importar-xml.js';
 import { conferirEmpresa, situacaoDaEmpresa, agruparNotas, mesAnterior, limitesDoMes, rotuloDoMes, lerUfs, ncmDaRegra, ncmFormatado, lerNomes, palavrasDoNome, ehQuatro, ALIQUOTA_INTERNA_RS, stRetido, stSemBase,
-  entrouNoutroMes, saiuDoMes, viradaDoMes, problemaDaEntrada, entradaSugerida, chaveDaNota, datasDaLista, aplicarLista, faltamPorEmpresa, cnpjFormatado, digitos } from './assets/js/destda.js';
+  entrouNoutroMes, saiuDoMes, viradaDoMes, problemaDaEntrada, entradaSugerida, chaveDaNota, datasDaLista, aplicarLista, faltamPorEmpresa, cnpjFormatado, digitos,
+  empresasDaConferencia, semCompraNaDominio, MERCADORIA_NA_DOMINIO } from './assets/js/destda.js';
 
 const $ = id => document.getElementById(id);
 const esc = s => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
@@ -341,11 +343,14 @@ const fatias = (lista, t) => { const out = []; for (let i = 0; i < lista.length;
 let usuario = null;
 let emailUsuario = null;      // quem marca a data de entrada de uma nota
 let clientes = [];            // todas as empresas do cadastro (a importação acha a dona de cada nota pelo CNPJ)
-let empresas = [];            // as da obrigação SEDIF/DeSTDA (a conferência)
+let empresas = [];            // as da conferência: as da obrigação SEDIF/DeSTDA e as do Simples da carteira de hoje (27/11/2026)
+let vinculadas = new Set();   // as que têm o vínculo da obrigação (as outras não têm a tarefa do mês)
+let codigosDominio = new Map(); // cliente_id → [código do Domínio] (o mês de cada uma na Domínio: dominio_mensal)
 let regras = [];              // destda_regras_st
 let comp = null;              // 'AAAA-MM' na tela
 let doMes = null;             // { comp, comNotas: Set(cliente_id), docs: [], itens: Map(id → itens), virada: { comp, de, ate, docs }, sairam: [],
                               //   marcadas: Map(cliente_id → { marcado_por, marcado_em }) — as sem notas de entrada no mês,
+                              //   semCompra: Set(cliente_id) — as que a Domínio diz que não compraram mercadoria no mês,
                               //   dominio: { erro, lista, faltam: Map(cliente_id → notas), visto } — a lista da Domínio }
                               // — refaz a conferência sem ler de novo
 let aba = 'todas';            // difal | st | nada | importar | todas — fica ao trocar o mês e ao importar
@@ -372,13 +377,17 @@ let rodando = false;
   if (ok) await carregarMes();
 })();
 
+// as empresas da conferência (27/11/2026, pedido da Thalia: "todas do simples"): as do vínculo ativo da obrigação
+// SEDIF/DeSTDA em Obrigações fiscais e todas as do Simples Nacional da carteira de hoje (empresasDaConferencia — a mesma
+// regra da função ponte, que diz à ponte de quais empresas ler as notas na Domínio)
 async function carregarBase(){
-  const [cs, os, rs] = await Promise.all([
-    supabase.todosClientes('id, nome_principal, nome_fantasia, documento'),
+  const [cs, os, rs, ks] = await Promise.all([
+    supabase.todosClientes('id, nome_principal, nome_fantasia, documento, regime_tributario, tipo_pessoa'),
     supabase.from('obrigacoes_fiscais').select('id, nome').ilike('nome', '%destda%'),
-    supabase.from('destda_regras_st').select('id, nome, ncm, ufs, ativo, observacao, nomes_entram, nomes_fora').order('nome')
+    supabase.from('destda_regras_st').select('id, nome, ncm, ufs, ativo, observacao, nomes_entram, nomes_fora').order('nome'),
+    supabase.todasLinhas(() => supabase.from('carteira_info').select('cliente_id, entrada, saida').order('cliente_id'))
   ]);
-  const erro = cs.error || os.error || rs.error;
+  const erro = cs.error || os.error || rs.error || ks.error;
   if (erro) { $('lista').innerHTML = '<div class="ds-vazio ds-err">Não consegui carregar: ' + esc(erro.message) + '</div>'; return false; }
   clientes = cs.data || [];
   regras = rs.data || [];
@@ -390,7 +399,17 @@ async function carregarBase(){
     ids = [...new Set((data || []).map(v => v.cliente_id))];
   }
   const porId = new Map(clientes.map(c => [c.id, c]));
-  empresas = ids.map(id => porId.get(id)).filter(Boolean).sort((a, b) => nomeDe(a).localeCompare(nomeDe(b), 'pt-BR'));
+  const conf = empresasDaConferencia({ vinculadas: ids, carteira: ks.data || [], clientes, hoje: hojeLocal() });
+  vinculadas = new Set(conf.filter(c => c.vinculada).map(c => c.id));
+  empresas = conf.map(c => porId.get(c.id)).filter(Boolean).sort((a, b) => nomeDe(a).localeCompare(nomeDe(b), 'pt-BR'));
+  // os códigos do Domínio de cada uma (o mês delas na Domínio diz quem não comprou mercadoria); a leitura que falha só
+  // deixa a conferência sem isso
+  codigosDominio = new Map();
+  for (const f of fatias(empresas.map(e => e.id), 60)) {
+    const { data, error } = await supabase.todasLinhas(() => supabase.from('dominio_empresas').select('codigo, cliente_id').in('cliente_id', f).order('codigo'));
+    if (error) { codigosDominio = null; break; }
+    (data || []).forEach(d => { if (!codigosDominio.has(d.cliente_id)) codigosDominio.set(d.cliente_id, []); codigosDominio.get(d.cliente_id).push(d.codigo); });
+  }
   desenharRegras();
   return true;
 }
@@ -409,7 +428,7 @@ async function carregarMes(quieto = false){
   $('abas').hidden = !empresas.length;
   if (!quieto || !empresas.length) { marcarAbas(null); $('curtas').innerHTML = ''; $('conta').textContent = ''; $('dominio').textContent = ''; }
   if (!empresas.length) {
-    $('lista').innerHTML = '<div class="ds-vazio">Nenhuma empresa ligada à obrigação SEDIF/DeSTDA em Obrigações fiscais.</div>';
+    $('lista').innerHTML = '<div class="ds-vazio">Nenhuma empresa na conferência: nenhuma do Simples Nacional na carteira de hoje, nem ligada à obrigação SEDIF/DeSTDA em Obrigações fiscais.</div>';
     return;
   }
   if (!quieto) $('lista').innerHTML = '<div class="ds-vazio"><span class="spinner spinner-sm"></span> Carregando as notas de ' + esc(rotuloDoMes(alvo)) + '…</div>';
@@ -428,9 +447,13 @@ async function carregarMes(quieto = false){
     supabase.todasLinhas(() => deFora().is('data_entrada', null).gte('data_emissao', vir.de).lte('data_emissao', vir.ate).order('data_emissao').order('id')),
     supabase.todasLinhas(() => deFora().not('data_entrada', 'is', null).gte('data_emissao', lim.de).lte('data_emissao', lim.ate).order('data_emissao').order('id')),
     // as marcadas sem notas de entrada no mês (26/11/2026, pedido da Thalia)
-    supabase.todasLinhas(() => supabase.from('destda_sem_notas').select('cliente_id, marcado_por, marcado_em').eq('competencia', alvo).in('cliente_id', ids).order('cliente_id'))
+    supabase.todasLinhas(() => supabase.from('destda_sem_notas').select('cliente_id, marcado_por, marcado_em').eq('competencia', alvo).in('cliente_id', ids).order('cliente_id')),
+    // o mês de cada uma na Domínio (27/11/2026): quem não comprou mercadoria no mês
+    lerMesNaDominio(alvo)
   ]);
   if (alvo !== comp) return;                      // trocou de mês no meio
+  // o mês na Domínio que não se lê também não para: sem ele, a que não tem nota fica em "Falta importar", como era
+  const semCompra = leituras.pop();
   // as marcas que não se leem não param a conferência: sem elas, quem não tem nota fica em "Falta importar", sem o botão
   const lidaMarcas = leituras.pop();
   const erro = (leituras.find(r => r.error) || {}).error;
@@ -453,9 +476,29 @@ async function carregarMes(quieto = false){
   }
   if (alvo !== comp) return;
   doMes = { comp: alvo, comNotas: new Set([...cobE, ...cobN].map(d => d.cliente_id).concat([...ap.entram])), docs, itens, virada: { ...vir, docs: vira }, sairam,
-    marcadas: new Map((lidaMarcas.data || []).map(m => [m.cliente_id, m])), semMarcas: !!lidaMarcas.error,
+    marcadas: new Map((lidaMarcas.data || []).map(m => [m.cliente_id, m])), semMarcas: !!lidaMarcas.error, semCompra,
     dominio: { erro: dominio.erro, lista: dominio.lista, faltam: dominio.faltam, visto: dominio.visto } };
   desenharConferencia();
+}
+
+// o mês de cada empresa na Domínio (27/11/2026, as do Simples todas na conferência): as que ela diz que não compraram
+// mercadoria no mês — as saídas do mês lá e as compras, o ativo e o uso e consumo, as outras entradas e as devoluções de
+// venda zeradas (semCompraNaDominio). Set(cliente_id); a leitura que falha devolve o vazio (a conferência segue como era)
+async function lerMesNaDominio(alvo){
+  const semCompra = new Set();
+  if (!codigosDominio || !codigosDominio.size) return semCompra;
+  const doCliente = new Map();
+  codigosDominio.forEach((cods, id) => cods.forEach(c => doCliente.set(c, id)));
+  const linhas = new Map();
+  const cols = 'codigo, competencia, notas_entrada, notas_saida, ' + MERCADORIA_NA_DOMINIO.join(', ');
+  for (const f of fatias([...doCliente.keys()], 150)) {
+    const { data, error } = await supabase.todasLinhas(() => supabase.from('dominio_mensal').select(cols).eq('competencia', alvo).in('codigo', f).order('codigo'));
+    if (error) return new Set();
+    (data || []).forEach(l => { const id = doCliente.get(l.codigo); if (!linhas.has(id)) linhas.set(id, []); linhas.get(id).push(l); });
+  }
+  // a empresa com dois códigos e um sem a linha do mês: a Domínio não disse do outro, então não diz
+  linhas.forEach((ls, id) => { if (ls.length === (codigosDominio.get(id) || []).length && semCompraNaDominio(ls)) semCompra.add(id); });
+  return semCompra;
 }
 
 // a lista das NF-e de fora do RS que a Domínio tem (26/11/2026, o "vai" do Samuel; a ponte manda todo dia às 7h): as
@@ -514,7 +557,9 @@ function desenharConferencia(){
     const conf = conferirEmpresa(porEmpresa.get(e.id) || [], doMes.itens, regras, normalizarDocumento(e.documento));
     const temNotas = doMes.comNotas.has(e.id);
     const faltam = doMes.dominio.faltam.get(e.id) || [];
-    return { e, conf, faltam, situacao: situacaoDaEmpresa(conf, temNotas, doMes.marcadas.has(e.id), faltam.length), marca: temNotas ? null : doMes.marcadas.get(e.id) || null };
+    const semCompra = !temNotas && doMes.semCompra.has(e.id);
+    return { e, conf, faltam, situacao: situacaoDaEmpresa(conf, temNotas, doMes.marcadas.has(e.id), faltam.length, semCompra),
+      marca: temNotas ? null : doMes.marcadas.get(e.id) || null, semCompra };
   });
   const aConferir = linhas.filter(l => l.situacao === 'a_conferir');
   // as abas (27/10/2026, pedido da Thalia): a empresa com DIFAL e ICMS-ST fica nas duas; a da nota importada antes de
@@ -553,11 +598,14 @@ function desenharConferencia(){
     lista = g.nada.length ? soNomes(aberta(blocoNada(g.nada, mes))) : nenhuma ? semImportar
       : vazio('Nenhuma empresa ficou sem nada a recolher em ' + esc(mes) + entreAsImportadas + '.');
   } else {
-    const marcadas = g.nada.filter(l => l.marca).length;
+    // as sem nota de entrada que foram pra "Sem nada a recolher": marcadas aqui, ou sem compra pela Domínio (27/11/2026)
+    const semCompra = g.nada.filter(l => l.semCompra).length, marcadas = g.nada.filter(l => l.marca && !l.semCompra).length;
+    const partes = [marcadas ? (marcadas === 1 ? 'a empresa marcada sem notas de entrada no mês' : 'as ' + marcadas + ' empresas marcadas sem notas de entrada no mês') : '',
+      semCompra ? (semCompra === 1 ? (marcadas ? 'a' : 'a empresa') + ' sem compra de mercadoria no mês, pela Domínio,'
+        : 'as ' + semCompra + (marcadas ? '' : ' empresas') + ' sem compra de mercadoria no mês, pela Domínio,') : ''].filter(Boolean);
     lista = g.semNotas.length || g.deNovo.length || g.faltam.length
       ? soNomes(aberta(blocoFaltam(g.faltam, mes)) + aberta(blocoSemNotas(g.semNotas, mes)) + aberta(blocoDeNovo(g.deNovo)))
-      : vazio(marcadas ? 'Nada falta importar de ' + esc(mes) + ': ' + (marcadas === 1 ? 'a empresa marcada sem notas de entrada no mês está'
-        : 'as ' + marcadas + ' empresas marcadas sem notas de entrada no mês estão') + ' em "Sem nada a recolher".'
+      : vazio(partes.length ? 'Nada falta importar de ' + esc(mes) + ': ' + partes.join(' e ') + (marcadas + semCompra === 1 ? ' está' : ' estão') + ' em "Sem nada a recolher".'
         : 'Todas as empresas têm notas de entrada de ' + esc(mes) + ' importadas.');
   }
   $('ferr').hidden = !comEmpresas;
@@ -669,12 +717,16 @@ const nomeDaEmpresa = e => esc(nomeDe(e)) + (e.nome_fantasia && e.nome_fantasia 
 const listaDeNomes = (l, extra) => '<ul class="ds-nomes">' + l.map(x => '<li>' + nomeDaEmpresa(x.e) + (extra ? extra(x) : '') + '</li>').join('') + '</ul>';
 // a marca "sem notas de entrada no mês" (26/11/2026, pedido da Thalia): quem e quando, e o Desmarcar
 const quemMarcou = m => (nomePorEmail(m.marcado_por) || (m.marcado_por ? String(m.marcado_por).split('@')[0] : 'alguém')) + (m.marcado_em ? ' em ' + diaMes(m.marcado_em) : '');
+// a sem compra pela Domínio (27/11/2026): ninguém marcou, e a marca, se houver, não precisa — ela fica sem botão
 function blocoNada(l, mes){
-  const marcadas = l.filter(x => x.marca).length;
+  const marcadas = l.filter(x => x.marca && !x.semCompra).length, semCompra = l.filter(x => x.semCompra).length;
+  const comNotas = l.length - marcadas - semCompra;
   return l.length ? { titulo: 'Sem nada a recolher em ' + esc(mes) + ' (' + l.length + ')', classe: '',
-    corpo: listaDeNomes(l, x => x.marca ? '<small>sem notas de entrada no mês · marcado por ' + esc(quemMarcou(x.marca)) + '</small>'
+    corpo: listaDeNomes(l, x => x.semCompra ? '<small>sem compra de mercadoria no mês, pela Domínio</small>'
+      : x.marca ? '<small>sem notas de entrada no mês · marcado por ' + esc(quemMarcou(x.marca)) + '</small>'
       + '<button type="button" class="ds-marcar" data-desmarcar="' + esc(x.e.id) + '">Desmarcar</button>' : '')
-      + '<p class="ds-vazio">' + (marcadas < l.length ? 'Têm notas de entrada do mês na base, e nenhuma de fora do RS a 4% nem das regras de ICMS-ST. ' : '')
+      + '<p class="ds-vazio">' + (comNotas ? 'Têm notas de entrada do mês na base, e nenhuma de fora do RS a 4% nem das regras de ICMS-ST. ' : '')
+      + (semCompra ? 'As sem compra de mercadoria no mês, pela Domínio: as saídas do mês já estão lá, e as compras, o ativo e o uso e consumo, as outras entradas e as devoluções de venda estão zerados. ' : '')
       + (marcadas ? 'As marcadas sem notas de entrada no mês ficam aqui até chegar alguma nota de entrada do mês na base: aí vale a nota.' : '') + '</p>' } : null;
 }
 function blocoSemNotas(l, mes){
@@ -686,6 +738,7 @@ function blocoSemNotas(l, mes){
   return l.length ? { titulo: 'Sem notas de entrada importadas de ' + esc(mes) + ' (' + l.length + ')', classe: 'ds-warn',
     corpo: listaDeNomes(l, x => x.faltam.length ? pelaLista(x) : marca ? '<button type="button" class="ds-marcar" data-sem-notas="' + esc(x.e.id) + '">Não teve notas de entrada no mês</button>' : '')
       + '<p class="ds-vazio">Sem as notas de entrada a conferência não diz nada sobre elas. As da Domínio chegam todo dia às 7h, depois de lançadas lá: se a empresa teve nota no mês e ela não chegou, importe os XMLs. '
+      + 'A que a Domínio diz que não comprou mercadoria no mês (as saídas do mês já lá, as compras zeradas) vai sozinha pra "Sem nada a recolher". '
       + (marca ? 'A que não teve nota de entrada no mês, marque em "Não teve notas de entrada no mês": ela vai pra "Sem nada a recolher".'
         : 'Não consegui ler agora quais foram marcadas sem notas de entrada no mês: recarregue a tela pra marcar.') + '</p>' } : null;
 }
@@ -865,6 +918,7 @@ function linhaDaEmpresa(l, modo){
     + '<span class="ds-emp-nome">' + esc(nomeDe(e)) + (e.nome_fantasia && e.nome_fantasia !== e.nome_principal ? ' <span class="ds-fant">' + esc(e.nome_fantasia) + '</span>' : '')
     + (incompletas.length ? '<small class="ds-sem">' + qtd(incompletas.length, 'nota de fora do RS sem a alíquota: importe de novo', 'notas de fora do RS sem a alíquota: importe de novo') + '</small>' : '')
     + (l.faltam && l.faltam.length ? '<small class="ds-sem">' + qtd(l.faltam.length, 'nota de fora do RS que a Domínio tem não está aqui', 'notas de fora do RS que a Domínio tem não estão aqui') + '</small>' : '')
+    + (vinculadas.has(e.id) ? '' : '<small class="ds-obr">do Simples, sem a obrigação SEDIF/DeSTDA em Obrigações fiscais: sem a tarefa do mês</small>')
     + '</span></button></h3>'
     + (modo !== 'st' ? valor('DIFAL', conf.diferencial.length, td.difal, td.notas,
         modo === 'difal' && aQuatroAConferir(conf) ? '<small class="ds-sem">' + qtd(aQuatroAConferir(conf), 'item a 4% a conferir', 'itens a 4% a conferir') + '</small>' : '') : '')

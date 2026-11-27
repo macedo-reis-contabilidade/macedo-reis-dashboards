@@ -11,7 +11,7 @@ import { validarPacote, empresasDaCarteira, documento, hojeEmBrasilia, sha256Hex
 import { criarServidor } from '../supabase/functions/ponte/servidor.js';
 import { validarPacoteDominio, LIMITES_DOMINIO, BLOCOS_DA_VERSAO, BLOCOS_DOMINIO, BLOCOS_DA_5 } from '../supabase/functions/ponte/dominio.js';
 import { validarPacoteNotas, empresasAutorizadas, destinosDaConfig, dvDaChave, pareceCpf, semCpf, LIMITES_NOTAS, SEM_DESTINO, SEM_AUTORIZACAO, DESTINO_FORA } from '../supabase/functions/ponte/notas.js';
-import { validarPacoteEntradas, janelaDasEntradas, empresasDasEntradas, notasParaGravar, clientesParaVarrer, LIMITES_ENTRADAS, SEM_SEDIF } from '../supabase/functions/ponte/entradas.js';
+import { validarPacoteEntradas, janelaDasEntradas, empresasDasEntradas, notasParaGravar, clientesParaVarrer, clientesDaSedif, LIMITES_ENTRADAS, SEM_SEDIF } from '../supabase/functions/ponte/entradas.js';
 import { validarPacoteSedif, notasDaEmpresa, docNorm, avulsa, LIMITES_SEDIF, NAO_E_DA_EMPRESA } from '../supabase/functions/ponte/sedif.js';
 
 let falhas = 0;
@@ -1268,12 +1268,25 @@ console.log('A data de entrada das notas de compra de fora do RS (26/11/2026):')
 
   // a porta de entrada, com um banco de mentira
   const AGORA_E = () => Date.parse('2026-11-26T07:30:00-03:00');
-  function dbEntradas({ rpcErro = null, semDestda = false, listaErro = null } = {}) {
+  // as do Simples da carteira de hoje (27/11/2026, pedido da Thalia: "todas do simples"): s1 e s4 entram (a s4 sai da
+  // carteira depois de hoje); a s2 saiu, a m1 é MEI, a p1 é pessoa física, a s3 não tem a entrada na carteira e a s5 não
+  // tem o código do Domínio — ficam fora; a "a", vinculada e do Simples, não repete
+  const CARTEIRA_E = [{ cliente_id: 'a', entrada: '2024-01-01', saida: null }, { cliente_id: 's1', entrada: '2025-01-01', saida: null },
+    { cliente_id: 's2', entrada: '2025-01-01', saida: '2026-10-31' }, { cliente_id: 'm1', entrada: '2025-01-01', saida: null },
+    { cliente_id: 'p1', entrada: '2025-01-01', saida: null }, { cliente_id: 's3', entrada: null, saida: null },
+    { cliente_id: 's4', entrada: '2025-01-01', saida: '2026-12-31' }, { cliente_id: 's5', entrada: '2025-01-01', saida: null }];
+  const SIMPLES = (id, o = {}) => ({ id, regime_tributario: 'Simples Nacional', tipo_pessoa: 'PJ', ...o });
+  const CLIENTES_E = [SIMPLES('a'), SIMPLES('s1'), SIMPLES('s2'), SIMPLES('m1', { regime_tributario: 'MEI' }), SIMPLES('p1', { tipo_pessoa: 'PF' }),
+    SIMPLES('s3'), SIMPLES('s4'), SIMPLES('s5')];
+  function dbEntradas({ rpcErro = null, semDestda = false, listaErro = null, comCarteira = false } = {}) {
     const t = {
       configuracoes_escritorio: [{ chave: 'ponte_chave_sha256', valor: h }],
       obrigacoes_fiscais: semDestda ? [{ id: 'o2', nome: 'PGDAS' }] : [{ id: 'o1', nome: 'SEDIF/DESTDA - SIMPLES NACIONAL' }, { id: 'o2', nome: 'PGDAS' }],
       cliente_obrigacoes: [{ cliente_id: 'a', obrigacao_id: 'o1', ativo: true }, { cliente_id: 'b', obrigacao_id: 'o1', ativo: false }, { cliente_id: 'c', obrigacao_id: 'o2', ativo: true }],
       dominio_empresas: [{ codigo: 901, cliente_id: 'a' }, { codigo: 902, cliente_id: 'b' }, { codigo: 903, cliente_id: 'c' }, { codigo: 904, cliente_id: 'a' }]
+        .concat(comCarteira ? [{ codigo: 905, cliente_id: 's1' }, { codigo: 906, cliente_id: 's2' }, { codigo: 907, cliente_id: 'm1' }, { codigo: 908, cliente_id: 'p1' },
+          { codigo: 909, cliente_id: 's3' }, { codigo: 910, cliente_id: 's4' }] : []),
+      ...(comCarteira ? { carteira_info: CARTEIRA_E, clientes: CLIENTES_E } : {})
     };
     const chamadas = [];
     return {
@@ -1315,6 +1328,26 @@ console.log('A data de entrada das notas de compra de fora do RS (26/11/2026):')
     re.status === 200 && JSON.stringify(re.corpo) === JSON.stringify({ empresas: [{ codigo: 901 }, { codigo: 904 }], desde: '2026-09-01', ate: HOJE }), re);
   re = await pedirE(dbEntradas({ semDestda: true }), { versao: 1, tipo: 'entradas', pedir: 'empresas' });
   chk('sem a obrigação no catálogo, a lista vem vazia', re.status === 200 && re.corpo.empresas.length === 0, re);
+  console.log('As do Simples da carteira de hoje (27/11/2026, pedido da Thalia: "todas do simples"):');
+  chk('a regra: as vinculadas e as do Simples (PJ) da carteira de hoje, sem repetir, em ordem',
+    JSON.stringify(clientesDaSedif(['a', 'a', null], CARTEIRA_E, CLIENTES_E, HOJE)) === JSON.stringify(['a', 's1', 's4', 's5']));
+  chk('a saída de hoje já não conta; a de amanhã, conta',
+    JSON.stringify(clientesDaSedif([], [{ cliente_id: 'x', entrada: '2025-01-01', saida: HOJE }, { cliente_id: 'y', entrada: '2025-01-01', saida: '2026-11-27' }],
+      [SIMPLES('x'), SIMPLES('y')], HOJE)) === JSON.stringify(['y']));
+  chk('sem carteira nem cadastro, só as vinculadas', JSON.stringify(clientesDaSedif(['b', 'a'], null, null, HOJE)) === JSON.stringify(['a', 'b']));
+  re = await pedirE(dbEntradas({ comCarteira: true }), { versao: 1, tipo: 'entradas', pedir: 'empresas' });
+  chk('a lista vai com as do Simples da carteira, pelo código do Domínio (a sem código fica de fora)',
+    re.status === 200 && JSON.stringify(re.corpo.empresas) === JSON.stringify([{ codigo: 901 }, { codigo: 904 }, { codigo: 905 }, { codigo: 910 }]), re);
+  re = await pedirE(dbEntradas({ comCarteira: true, semDestda: true }), { versao: 1, tipo: 'entradas', pedir: 'empresas' });
+  chk('sem a obrigação no catálogo, ficam as do Simples da carteira',
+    re.status === 200 && JSON.stringify(re.corpo.empresas) === JSON.stringify([{ codigo: 901 }, { codigo: 904 }, { codigo: 905 }, { codigo: 910 }]), re);
+  {
+    const dbc = dbEntradas({ comCarteira: true });
+    const rc = await pedirE(dbc, PAC(p => { p.empresas.push({ codigo: 905, notas: [{ chave: chaveDe(11), entrada: '2026-10-05' }] }, { codigo: 906, notas: [{ chave: chaveDe(12), entrada: '2026-10-05' }] }); }));
+    chk('as notas da do Simples da carteira são gravadas; a da que saiu volta em recusadas',
+      rc.status === 200 && dbc.chamadas[0].args.p.notas.some(n => n.cliente_id === 's1') && !dbc.chamadas[0].args.p.notas.some(n => n.cliente_id === 's2')
+        && rc.corpo.recusadas.some(x => x.codigo === 906 && x.erro === SEM_SEDIF), rc);
+  }
   let dbe = dbEntradas();
   re = await pedirE(dbe, PAC(p => { p.empresas.push({ codigo: 903, notas: [{ chave: chaveDe(7), entrada: '2026-10-05' }] }); p.empresas[0].notas.push({ chave: chaveDe(8, { uf: '43' }), entrada: '2026-10-05' }); }));
   chk('o pacote: grava as notas das empresas da lista, pelo cliente; a de fora da lista e a nota do RS voltam em recusadas',
